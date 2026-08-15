@@ -9,7 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.7.6",
+    "convertapi": "^1.15.0",
+    "form-data": "^4.0.6",
+    "lucide-react": "^1.31.0",
+    "multiparty": "^4.3.0",
     "next": "16.3.1",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

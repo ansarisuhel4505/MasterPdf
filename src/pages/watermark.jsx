@@ -1,0 +1,187 @@
+import React, { useState } from 'react';
+import Head from 'next/head';
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
+import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
+import { UploadCloud, FileText, X, Type, Settings, Stamp } from 'lucide-react';
+
+export default function AddWatermark() {
+  const [file, setFile] = useState(null);
+  const [isWatermarking, setIsWatermarking] = useState(false);
+  const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
+
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile && selectedFile.type === 'application/pdf') {
+      setFile(selectedFile);
+    } else {
+      alert("Please upload a valid PDF file.");
+    }
+  };
+
+  const removeFile = () => {
+    setFile(null);
+  };
+
+  // Client-Side Watermark Logic
+  const applyWatermark = async () => {
+    if (!file) return;
+    if (!watermarkText.trim()) {
+      alert("Please enter some text for the watermark.");
+      return;
+    }
+
+    setIsWatermarking(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      
+      // Font embed karna
+      const customFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const pages = pdfDoc.getPages();
+
+      // Har page ke center mein watermark lagana
+      pages.forEach((page) => {
+        const { width, height } = page.getSize();
+        const textSize = 60;
+        const textWidth = customFont.widthOfTextAtSize(watermarkText, textSize);
+        
+        page.drawText(watermarkText, {
+          x: width / 2 - textWidth / 2, // Center X
+          y: height / 2 - textSize / 2, // Center Y
+          size: textSize,
+          font: customFont,
+          color: rgb(0.9, 0.2, 0.2), // Red color
+          opacity: 0.3, // Transparency taaki piche ka text padha ja sake
+          rotate: degrees(45), // Diagonal rotation
+        });
+      });
+
+      const pdfBytes = await pdfDoc.save();
+
+      // Download trigger karna
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `MasterPdf_Watermarked_${file.name}`;
+      link.click();
+      
+    } catch (error) {
+      console.error("Error adding watermark:", error);
+      alert("Failed to add watermark. The file might be corrupted or heavily encrypted.");
+    }
+    setIsWatermarking(false);
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      <Head>
+        <title>Add watermark to PDFs online - MasterPdf</title>
+      </Head>
+      <Navbar />
+
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+        
+        {/* Tool Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Add Watermark to PDF</h1>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Stamp a text over your PDF in seconds. Secure your documents easily.
+          </p>
+        </div>
+
+        {/* Workspace Area */}
+        <div className="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[450px] flex flex-col items-center justify-center relative">
+          
+          {!file ? (
+            // Upload State
+            <div className="text-center w-full">
+              <input 
+                type="file" 
+                id="file-upload" 
+                accept=".pdf" 
+                onChange={handleFileChange} 
+                className="hidden" 
+              />
+              <label 
+                htmlFor="file-upload" 
+                className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+              >
+                <UploadCloud size={28} />
+                Select PDF file
+              </label>
+              <p className="mt-4 text-gray-400 text-sm">or drop PDF here</p>
+            </div>
+          ) : (
+            // File Selected State
+            <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start pt-4">
+              
+              {/* Left Side: File Preview */}
+              <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-8 relative h-[350px]">
+                <button 
+                  onClick={removeFile}
+                  className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition"
+                >
+                  <X size={20} />
+                </button>
+                <div className="relative">
+                  <FileText size={80} className="text-[#E5322D] mb-4 opacity-90" />
+                  {/* Visual indication of watermark */}
+                  <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -rotate-45 text-red-500 font-bold opacity-30 text-xl tracking-widest pointer-events-none">
+                    TEXT
+                  </span>
+                </div>
+                <p className="text-sm text-gray-800 font-bold text-center break-words w-full px-4">
+                  {file.name}
+                </p>
+              </div>
+
+              {/* Right Side: Watermark Settings */}
+              <div className="w-full md:w-1/2 flex flex-col h-[350px] justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Watermark Text</h3>
+                  
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Type your text</label>
+                      <div className="relative">
+                        <Type className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                        <input 
+                          type="text" 
+                          value={watermarkText}
+                          onChange={(e) => setWatermarkText(e.target.value)}
+                          placeholder="e.g. CONFIDENTIAL or DRAFT"
+                          className="w-full border border-gray-300 rounded-md py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-[#E5322D] font-medium"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-500 bg-gray-50 p-4 rounded-lg mt-2">
+                      The text will be stamped diagonally across the center of all pages with 30% transparency.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                   <button 
+                     onClick={applyWatermark}
+                     disabled={isWatermarking || !watermarkText.trim()}
+                     className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400"
+                   >
+                     {isWatermarking ? (
+                       <><Settings className="animate-spin" size={24} /> Stamping...</>
+                     ) : (
+                       <>Add Watermark <Stamp size={24} /></>
+                     )}
+                   </button>
+                </div>
+              </div>
+
+            </div>
+          )}
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}

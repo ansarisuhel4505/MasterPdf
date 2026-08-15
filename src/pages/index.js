@@ -1,82 +1,128 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import React from 'react';
+import Head from 'next/head';
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
+import { Settings, CheckCircle2 } from 'lucide-react';
+import Link from 'next/link';
 
 export default function Home() {
+  // Exact tools array mapped from your 7 screenshots
+  const allTools = [
+    { title: 'Merge PDF', desc: 'Combine PDFs in the order you want with the easiest PDF merger available.', color: 'text-red-500' },
+    { title: 'Split PDF', desc: 'Separate one page or a whole set for easy conversion into independent PDF files.', color: 'text-orange-500' },
+    { title: 'Compress PDF', desc: 'Reduce file size while optimizing for maximal PDF quality.', color: 'text-green-600' },
+    { title: 'PDF to Word', desc: 'Easily convert your PDF files into easy to edit DOC and DOCX documents.', color: 'text-blue-600' },
+    { title: 'PDF to PowerPoint', desc: 'Turn your PDF files into easy to edit PPT and PPTX slideshows.', color: 'text-orange-600' },
+    { title: 'PDF to Excel', desc: 'Pull data straight from PDFs into Excel spreadsheets in a few short seconds.', color: 'text-green-500' },
+    { title: 'Word to PDF', desc: 'Make DOC and DOCX files easy to read by converting them to PDF.', color: 'text-blue-500' },
+    { title: 'PowerPoint to PDF', desc: 'Make PPT and PPTX slideshows easy to view by converting them to PDF.', color: 'text-orange-400' },
+    { title: 'Excel to PDF', desc: 'Make EXCEL spreadsheets easy to read by converting them to PDF.', color: 'text-green-400' },
+    { title: 'Edit PDF', desc: 'Add text, images, shapes or freehand annotations to a PDF document.', color: 'text-red-400' },
+    { title: 'PDF to JPG', desc: 'Convert each PDF page into a JPG or extract all images contained in a PDF.', color: 'text-yellow-500' },
+    { title: 'JPG to PDF', desc: 'Convert JPG images to PDF in seconds. Easily adjust orientation and margins.', color: 'text-yellow-600' },
+    { title: 'Sign PDF', desc: 'Sign yourself or request electronic signatures from others.', color: 'text-blue-700' },
+    { title: 'Watermark', desc: 'Stamp an image or text over your PDF in seconds. Choose typography, transparency.', color: 'text-pink-600' },
+    { title: 'Rotate PDF', desc: 'Rotate your PDFs the way you need them. You can even rotate multiple PDFs.', color: 'text-purple-600' },
+    { title: 'HTML to PDF', desc: 'Convert webpages in HTML to PDF. Copy and paste the URL of the page.', color: 'text-blue-400' },
+    { title: 'Unlock PDF', desc: 'Remove PDF password security, giving you the freedom to use your PDFs.', color: 'text-gray-500' },
+    { title: 'Protect PDF', desc: 'Protect PDF files with a password. Encrypt PDF documents to prevent access.', color: 'text-blue-800' },
+    { title: 'Organize PDF', desc: 'Sort pages of your PDF file however you like. Delete PDF pages or add pages.', color: 'text-orange-700' },
+    { title: 'PDF to PDF/A', desc: 'Transform your PDF to PDF/A, the ISO-standardized version of PDF.', color: 'text-teal-600' },
+    { title: 'Repair PDF', desc: 'Repair a damaged PDF and recover data from corrupt PDF. Fix PDF files.', color: 'text-green-700' },
+    { title: 'Page numbers', desc: 'Add page numbers into PDFs with ease. Choose your positions, dimensions.', color: 'text-red-600' },
+    { title: 'Scan to PDF', desc: 'Capture document scans from your mobile device and send them instantly.', color: 'text-orange-500' },
+    { title: 'OCR PDF', desc: 'Easily convert scanned PDF into searchable and selectable documents.', color: 'text-blue-600' },
+    { title: 'Compare PDF', desc: 'Show a side-by-side document comparison and easily spot changes.', color: 'text-indigo-500' },
+    { title: 'Redact PDF', desc: 'Redact text and graphics to permanently remove sensitive information.', color: 'text-gray-800' },
+    { title: 'Crop PDF', desc: 'Crop margins of PDF documents or select specific areas, then apply.', color: 'text-pink-500' },
+    { title: 'PDF Forms', desc: 'Detect form fields automatically, create interactive fillable PDFs.', color: 'text-purple-500' },
+    { title: 'AI Summarizer', desc: 'Quickly generate concise summaries from articles, paragraphs, and essays.', color: 'text-indigo-600', badge: 'New!' },
+    { title: 'Translate PDF', desc: 'Easily translate PDF files powered by AI. Keep fonts, layout intact.', color: 'text-blue-500', badge: 'New!' },
+    { title: 'PDF to Markdown', desc: 'Easily turn PDFs into Markdown files. Perfect for notes, docs, and LLMs.', color: 'text-gray-700', badge: 'New!' },
+  ];
+
+  const tabs = ['All', 'Workflows', 'Organize PDF', 'Optimize PDF', 'Convert PDF', 'Edit PDF', 'PDF Security', 'PDF Intelligence'];
+
   return (
-    <div
-      className={`${geistSans.variable} ${geistMono.variable} flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black`}
-    >
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              index.js
-            </code>{" "}
-            file.
+    <div className="min-h-screen bg-[#F5F5F7] font-sans">
+      <Head><title>MasterPdf | Online PDF tools for PDF lovers</title></Head>
+      <Navbar />
+
+      <main className="max-w-[1400px] mx-auto px-4 py-12">
+        {/* Header Text */}
+        <div className="text-center mb-10">
+          <h1 className="text-4xl md:text-[42px] font-bold text-gray-900 mb-4 tracking-tight">
+            Every tool you need to work with PDFs in one place
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-lg md:text-xl text-gray-600 max-w-4xl mx-auto font-medium">
+            Every tool you need to use PDFs, at your fingertips. All are 100% FREE and easy to use! Merge, split, compress, convert, rotate, unlock and watermark PDFs with just a few clicks.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs/pages/getting-started?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Navigation Tabs */}
+        <div className="flex flex-wrap justify-center gap-2 mb-10">
+          {tabs.map((tab, idx) => (
+            <button key={idx} className={`px-4 py-2 rounded-full text-sm font-semibold transition ${idx === 0 ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 shadow-sm'}`}>
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {/* Tools Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 xl:gap-5 mb-20">
+          {allTools.map((tool, index) => (
+            <Link href={`/${tool.title.toLowerCase().replace(/ /g, '-')}`} key={index}>
+              <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md border border-gray-100 h-full cursor-pointer relative group transition-all duration-200">
+                {tool.badge && (
+                  <span className="absolute top-4 right-4 bg-teal-100 text-teal-700 text-xs font-bold px-2 py-1 rounded-md">
+                    {tool.badge}
+                  </span>
+                )}
+                <div className={`w-10 h-10 mb-4 flex items-center justify-center ${tool.color}`}>
+                  <Settings size={36} strokeWidth={1.5} /> {/* Using generic settings icon placeholder */}
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-[#E5322D] transition-colors">{tool.title}</h3>
+                <p className="text-[13px] text-gray-500 leading-relaxed">{tool.desc}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {/* Promo Features Section */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+          <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center md:text-left">
+            <h3 className="text-xl font-bold mb-3">Work offline with Desktop</h3>
+            <p className="text-gray-500 mb-6 text-sm">Batch edit and manage documents locally, with no internet and no limits.</p>
+            <span className="inline-block text-xl">↗</span>
+          </div>
+          <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center md:text-left">
+            <h3 className="text-xl font-bold mb-3">On-the-go with Mobile</h3>
+            <p className="text-gray-500 mb-6 text-sm">Your favorite tools, right in your pocket. Keep working on your projects anytime, anywhere.</p>
+            <span className="inline-block text-xl text-red-500">↗</span>
+          </div>
+          <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center md:text-left">
+            <h3 className="text-xl font-bold mb-3">Built for business</h3>
+            <p className="text-gray-500 mb-6 text-sm">Automate document management, onboard teams easily, and scale with flexible plans.</p>
+            <span className="inline-block text-xl">↗</span>
+          </div>
+        </div>
+
+        {/* Premium Banner */}
+        <div className="bg-[#FFF4E5] rounded-2xl p-10 flex flex-col md:flex-row items-center justify-between mb-10 overflow-hidden relative">
+          <div className="z-10 w-full md:w-1/2">
+            <h2 className="text-4xl font-bold text-gray-900 mb-6">Get more with Premium</h2>
+            <ul className="space-y-4 mb-8">
+              <li className="flex items-start gap-3"><CheckCircle2 className="text-green-600 mt-1 shrink-0" size={20} /><span className="text-gray-700">Get full access to MasterPdf and work offline with Desktop</span></li>
+              <li className="flex items-start gap-3"><CheckCircle2 className="text-green-600 mt-1 shrink-0" size={20} /><span className="text-gray-700">Edit PDFs, get advanced OCR for scanned documents and request secure e-Signatures</span></li>
+              <li className="flex items-start gap-3"><CheckCircle2 className="text-green-600 mt-1 shrink-0" size={20} /><span className="text-gray-700">Connect tools and create custom workflows</span></li>
+            </ul>
+            <button className="bg-[#FFB822] hover:bg-[#F2A900] text-gray-900 font-bold px-8 py-3 rounded-md transition">Get Premium</button>
+          </div>
+          {/* Aesthetic graphics placeholder for right side */}
+          <div className="hidden md:block w-1/2 absolute right-0 top-0 h-full bg-cover bg-right opacity-30" style={{backgroundImage: "url('https://www.ilovepdf.com/img/ilovepdf/premium/premium-home-banner.svg')"}}></div>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }
