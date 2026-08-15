@@ -48,7 +48,8 @@ export default function Home() {
       <Head><title>MasterPdf | Online PDF tools for PDF lovers</title></Head>
       <Navbar />
 
-      <main className="max-w-[1400px] mx-auto px-4 py-12">
+            <main className="max-w-[1400px] mx-auto px-4 pt-28 pb-12">
+    
         {/* Header Text */}
         <div className="text-center mb-10">
           <h1 className="text-4xl md:text-[42px] font-bold text-gray-900 mb-4 tracking-tight">
