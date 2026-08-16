@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { PDFDocument } from 'pdf-lib';
 import { UploadCloud, FileText, X, Unlock, Lock, Settings } from 'lucide-react';
 
 export default function UnlockPdf() {
@@ -28,7 +27,7 @@ export default function UnlockPdf() {
     setErrorMsg('');
   };
 
-  // Client-Side PDF Decryption Logic
+  // Server-Side PDF Decryption Logic (API Call)
   const unlockPdf = async () => {
     if (!file) return;
     if (!password) {
@@ -39,35 +38,34 @@ export default function UnlockPdf() {
     setIsUnlocking(true);
     setErrorMsg('');
 
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      
-      // Load the PDF with the provided password
-      const pdfDoc = await PDFDocument.load(arrayBuffer, { password: password });
-      
-      // Save it without setting any new password (this removes the encryption)
-      const pdfBytes = await pdfDoc.save();
+    // FormData banakar backend API ko bhej rahe hain
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('action', 'unlock-pdf'); // Backend is action ko detect karega
+    formData.append('password', password); // Aadhar Card ya protected PDF ka password
 
-      // Trigger Download
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `MasterPdf_Unlocked_${file.name}`;
-      link.click();
+    try {
+      const res = await fetch('/api/master-convert', {
+        method: 'POST',
+        body: formData,
+      });
       
+      const data = await res.json();
+
+      if (data.success) {
+        // Successful hone par automatic download shuru
+        window.location.href = data.downloadUrl;
+      } else {
+        // Backend se error aane par message dikhao
+        setErrorMsg(data.error || "Incorrect password or file is not protected.");
+      }
     } catch (error) {
       console.error("Error unlocking PDF:", error);
-      // pdf-lib throws specific errors for incorrect passwords
-      if (error.message.includes('Invalid password') || error.message.includes('encrypted')) {
-        setErrorMsg("Incorrect password. Please try again.");
-      } else {
-        setErrorMsg("Failed to unlock. The encryption method might not be supported in the browser.");
-      }
+      setErrorMsg("Server connection failed. Make sure your file size is under 4MB.");
     }
     
     setIsUnlocking(false);
   };
-
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head>
