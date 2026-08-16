@@ -32,6 +32,10 @@ export default async function handler(req, res) {
       if (action === 'protect-pdf') {
         result = await convertapi.convert('encrypt', { File: file.path, PdfUserPassword: password, PdfOwnerPassword: password }, 'pdf');
       } 
+      // NAYA CODE: Unlock PDF (Decrypt) logic add kiya hai
+      else if (action === 'unlock-pdf') {
+        result = await convertapi.convert('decrypt', { File: file.path, Password: password }, 'pdf');
+      }
       else if (action === 'pdf-to-word') result = await convertapi.convert('docx', { File: file.path }, 'pdf');
       else if (action === 'pdf-to-excel') result = await convertapi.convert('xlsx', { File: file.path }, 'pdf');
       else if (action === 'pdf-to-powerpoint') result = await convertapi.convert('pptx', { File: file.path }, 'pdf');
