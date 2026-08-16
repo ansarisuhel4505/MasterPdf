@@ -1,12 +1,11 @@
-// Sahi syntax ConvertAPI ko initialize karne ka
 const convertapi = require('convertapi')(process.env.CONVERT_API_SECRET);
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Frontend se ab sirf fileUrl aur action aayega
   const { action, fileUrl, password } = req.body;
 
   if (!fileUrl) {
@@ -45,15 +44,15 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // 🧠 CATEGORY 3: AI TOOLS (Gemini API Integration)
+    // 🧠 CATEGORY 3: AI TOOLS (Official Google SDK)
     // ==========================================
     else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare') {
       if (!process.env.GEMINI_API_KEY) {
         return res.status(500).json({ error: "Gemini API Key is missing in Vercel settings." });
       }
 
-      // Naya aur jyada stable Gemini Model
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       // 1. AI SUMMARIZER
       if (action === 'ai-summarizer') {
@@ -61,16 +60,11 @@ export default async function handler(req, res) {
         const textResponse = await fetch(txtResult.response.Files[0].Url);
         const extractedText = await textResponse.text();
 
-        const aiResponse = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `Summarize the following document concisely in bullet points:\n\n${extractedText.substring(0, 15000)}` }] }]
-          })
-        });
-        const aiData = await aiResponse.json();
-        if (aiData.error) throw new Error(aiData.error.message);
-        return res.status(200).json({ success: true, textResult: aiData.candidates[0].content.parts[0].text });
+        const prompt = `Summarize the following document concisely in bullet points:\n\n${extractedText.substring(0, 15000)}`;
+        const aiResult = await model.generateContent(prompt);
+        const response = await aiResult.response;
+
+        return res.status(200).json({ success: true, textResult: response.text() });
       }
 
       // 2. TRANSLATE PDF
@@ -80,40 +74,29 @@ export default async function handler(req, res) {
         const textResponse = await fetch(txtResult.response.Files[0].Url);
         const extractedText = await textResponse.text();
 
-        const aiResponse = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `Translate the following document into ${targetLang}:\n\n${extractedText.substring(0, 15000)}` }] }]
-          })
-        });
-        const aiData = await aiResponse.json();
-        if (aiData.error) throw new Error(aiData.error.message);
-        return res.status(200).json({ success: true, textResult: aiData.candidates[0].content.parts[0].text });
+        const prompt = `Translate the following document into ${targetLang}:\n\n${extractedText.substring(0, 15000)}`;
+        const aiResult = await model.generateContent(prompt);
+        const response = await aiResult.response;
+
+        return res.status(200).json({ success: true, textResult: response.text() });
       }
 
-      // 3. SMART AI COMPARE (Naya Feature)
+      // 3. SMART AI COMPARE
       else if (action === 'ai-compare') {
         const { fileUrl2 } = req.body;
         if (!fileUrl2) return res.status(400).json({ error: 'Second file URL is missing for comparison' });
 
-        // File 1 aur File 2 dono ka text nikalna
         const txtResult1 = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
         const text1 = await (await fetch(txtResult1.response.Files[0].Url)).text();
 
         const txtResult2 = await convertapi.convert('txt', { File: fileUrl2 }, 'pdf');
         const text2 = await (await fetch(txtResult2.response.Files[0].Url)).text();
 
-        const aiResponse = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `You are an expert document analyzer. Compare these two documents and tell me exactly what changed. Highlight additions, removals, and key differences in bullet points.\n\n--- DOCUMENT 1 ---\n${text1.substring(0, 7000)}\n\n--- DOCUMENT 2 ---\n${text2.substring(0, 7000)}` }] }]
-          })
-        });
-        const aiData = await aiResponse.json();
-        if (aiData.error) throw new Error(aiData.error.message);
-        return res.status(200).json({ success: true, textResult: aiData.candidates[0].content.parts[0].text });
+        const prompt = `Compare these two documents and list what changed, what was added, and what was removed in bullet points:\n\n--- DOC 1 ---\n${text1.substring(0, 7000)}\n\n--- DOC 2 ---\n${text2.substring(0, 7000)}`;
+        const aiResult = await model.generateContent(prompt);
+        const response = await aiResult.response;
+
+        return res.status(200).json({ success: true, textResult: response.text() });
       }
     }
     // ==========================================
