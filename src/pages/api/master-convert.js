@@ -32,6 +32,8 @@ export default async function handler(req, res) {
     else if (action === 'repair-pdf') result = await convertapi.convert('repair', { File: fileUrl }, 'pdf');
     // 👇 Naya add kiya gaya HTML to PDF logic
     else if (action === 'html-to-pdf') result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
+    // 👇 Naya add kiya gaya PDF to Markdown logic
+    else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
 
     // ==========================================
     // 🟡 CATEGORY 2: SECURITY TOOLS (Working)
@@ -47,8 +49,8 @@ export default async function handler(req, res) {
     // 🔴 CATEGORY 3: UNAVAILABLE / REQUIRES CUSTOM UI
     // ==========================================
     // Ye features ConvertAPI ke basic system se direct convert nahi hote. 
-    // Inke liye React par custom UI banana padega. (Yahan se html-to-pdf hata diya gaya hai)
-    else if (['merge-pdf', 'split-pdf', 'edit-pdf', 'sign-pdf', 'watermark', 'rotate-pdf', 'organize-pdf', 'page-numbers', 'scan-to-pdf', 'ocr-pdf', 'compare-pdf', 'redact-pdf', 'crop-pdf', 'pdf-forms', 'pdf-to-markdown'].includes(action)) {
+    // Inke liye React par custom UI banana padega. (Yahan se pdf-to-markdown hata diya gaya hai)
+    else if (['merge-pdf', 'split-pdf', 'edit-pdf', 'sign-pdf', 'watermark', 'rotate-pdf', 'organize-pdf', 'page-numbers', 'scan-to-pdf', 'ocr-pdf', 'compare-pdf', 'redact-pdf', 'crop-pdf', 'pdf-forms'].includes(action)) {
       return res.status(501).json({ error: `The ${action.toUpperCase()} tool requires a custom frontend UI or advanced engine setup which is currently pending.` });
     }
     // AI tools require OpenAI API key
