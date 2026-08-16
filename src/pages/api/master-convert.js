@@ -1,5 +1,8 @@
 const convertapi = require('convertapi')(process.env.CONVERT_API_SECRET);
 
+// Vercel Timeout Fix (Allows function to run longer without cutting off)
+export const maxDuration = 60;
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -43,83 +46,80 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // 🧠 CATEGORY 3: AI TOOLS (AUTO-DETECT MODEL)
+    // 🧠 CATEGORY 3: AI TOOLS (BULLETPROOF FALLBACK LOOP)
     // ==========================================
     else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare') {
       if (!process.env.GEMINI_API_KEY) {
-        return res.status(200).json({ success: true, textResult: "⚠️ Gemini API Key is missing." });
+        return res.status(200).json({ success: false, textResult: "⚠️ Gemini API Key is missing." });
       }
 
       try {
         const apiKey = process.env.GEMINI_API_KEY;
 
-        // SMART AUTO-DETECT HELPER FUNCTION
-        const callGeminiAutoDetect = async (promptText) => {
-          // 1. Pehle Google se pucho ki is API key par kaunse models allowed hain
-          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-          const listData = await listRes.json();
+        // SMART LOOP: Try different models until one succeeds
+        const callGeminiBulletproof = async (promptText) => {
+          const modelsToTry = ["gemini-1.5-flash", "gemini-pro", "gemini-1.5-pro"];
+          let lastErrorMessage = "";
 
-          if (listData.error) throw new Error("API Key Issue: " + listData.error.message);
-          if (!listData.models || listData.models.length === 0) throw new Error("No models assigned to this key by Google.");
+          for (const model of modelsToTry) {
+            try {
+              const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+              const aiResponse = await fetch(geminiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
+              });
 
-          // 2. Aisa model dhundo jo text generate kar sake
-          let targetModel = listData.models.find(m => m.name.includes("flash") && (m.supportedGenerationMethods || []).includes("generateContent"));
-          if (!targetModel) targetModel = listData.models.find(m => m.name.includes("pro") && (m.supportedGenerationMethods || []).includes("generateContent"));
-          if (!targetModel) targetModel = listData.models.find(m => (m.supportedGenerationMethods || []).includes("generateContent"));
+              const data = await aiResponse.json();
 
-          if (!targetModel) throw new Error("No text generation model found on your key.");
-
-          // 3. Jo exact naam Google ne diya, usko use karo (Example: "models/gemini-pro")
-          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/${targetModel.name}:generateContent?key=${apiKey}`;
-
-          const aiResponse = await fetch(geminiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: promptText }] }]
-            })
-          });
-
-          const data = await aiResponse.json();
-          if (data.error) throw new Error(data.error.message);
-          return data.candidates[0].content.parts[0].text;
+              if (aiResponse.ok && data.candidates) {
+                return data.candidates[0].content.parts[0].text; // SUCCESS! Code yahin se wapas chala jayega
+              } else {
+                lastErrorMessage = data.error?.message || "Unknown API error";
+                console.log(`Failed to connect with ${model}:`, lastErrorMessage);
+                // Agar fail hua, toh loop agle model par jump kar jayega
+              }
+            } catch (err) {
+              lastErrorMessage = err.message;
+            }
+          }
+          
+          // Agar teeno models fail ho gaye
+          throw new Error(lastErrorMessage);
         };
 
         // RUN AI BASED ON ACTION
         if (action === 'ai-summarizer') {
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
           const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-          const resultText = await callGeminiAutoDetect(`Summarize concisely:\n\n${extractedText.substring(0, 15000)}`);
+          const resultText = await callGeminiBulletproof(`Summarize this clearly in bullet points:\n\n${extractedText.substring(0, 15000)}`);
           return res.status(200).json({ success: true, textResult: resultText });
         }
-
         else if (action === 'translate-pdf') {
           const targetLang = req.body.targetLanguage || 'English';
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
           const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-          const resultText = await callGeminiAutoDetect(`Translate into ${targetLang}:\n\n${extractedText.substring(0, 15000)}`);
+          const resultText = await callGeminiBulletproof(`Translate into ${targetLang}:\n\n${extractedText.substring(0, 15000)}`);
           return res.status(200).json({ success: true, textResult: resultText });
         }
-
         else if (action === 'ai-compare') {
           const { fileUrl2 } = req.body;
           if (!fileUrl2) return res.status(400).json({ error: 'Second file URL missing' });
 
           const txtResult1 = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
           const text1 = await (await fetch(txtResult1.response.Files[0].Url)).text();
-
           const txtResult2 = await convertapi.convert('txt', { File: fileUrl2 }, 'pdf');
           const text2 = await (await fetch(txtResult2.response.Files[0].Url)).text();
 
-          const resultText = await callGeminiAutoDetect(`Compare these documents:\n\n--- DOC 1 ---\n${text1.substring(0, 7000)}\n\n--- DOC 2 ---\n${text2.substring(0, 7000)}`);
+          const resultText = await callGeminiBulletproof(`Compare these documents and list differences:\n\n--- DOC 1 ---\n${text1.substring(0, 7000)}\n\n--- DOC 2 ---\n${text2.substring(0, 7000)}`);
           return res.status(200).json({ success: true, textResult: resultText });
         }
 
       } catch (aiError) {
-        console.error("AI Auto-Detect Error:", aiError.message);
+        console.error("AI Bulletproof Error:", aiError.message);
         return res.status(200).json({ 
           success: true, 
-          textResult: `⚠️ AI Setup Error: ${aiError.message}\nBut your website is safe and the other 30 tools are perfectly working!` 
+          textResult: `❌ Google API Error: ${aiError.message}\nGoogle servers are completely rejecting your API key right now. Please create a fresh key from a NEW project in Google AI Studio.` 
         });
       }
     }
