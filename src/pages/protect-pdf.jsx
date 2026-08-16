@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { PDFDocument } from 'pdf-lib';
 import { UploadCloud, FileText, X, Lock, Settings } from 'lucide-react';
 
 export default function ProtectPdf() {
@@ -29,6 +28,7 @@ export default function ProtectPdf() {
   };
 
   // PDF Protect Logic (Client-Side Encryption)
+  // PDF Protect Logic (Backend API Call)
   const protectPdf = async () => {
     if (!file) return;
 
@@ -36,7 +36,6 @@ export default function ProtectPdf() {
       setPasswordError("Password must be at least 4 characters long.");
       return;
     }
-
     if (password !== confirmPassword) {
       setPasswordError("Passwords do not match.");
       return;
@@ -45,32 +44,33 @@ export default function ProtectPdf() {
     setPasswordError('');
     setIsProtecting(true);
 
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      
-      // Save the PDF with a password
-      const pdfBytes = await pdfDoc.save({
-        userPassword: password,
-        ownerPassword: password, // Sets the master password
-        useObjectStreams: false,
-      });
+    // FormData banakar backend API ko bhej rahe hain
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('action', 'protect-pdf');
+    formData.append('password', password); // Password add kiya
 
-      // Trigger Download
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `MasterPdf_Protected_${file.name}`;
-      link.click();
+    try {
+      const res = await fetch('/api/master-convert', {
+        method: 'POST',
+        body: formData,
+      });
       
+      const data = await res.json();
+
+      if (data.success) {
+        // Successful hone par automatic download shuru
+        window.location.href = data.downloadUrl;
+      } else {
+        alert("Error: " + data.error);
+      }
     } catch (error) {
       console.error("Error protecting PDF:", error);
-      alert("Failed to protect PDF. The file might already be encrypted or corrupted.");
+      alert("Server connection failed. Make sure your file size is under 4MB.");
     }
     
     setIsProtecting(false);
   };
-
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head>
