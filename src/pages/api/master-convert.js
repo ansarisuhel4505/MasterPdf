@@ -83,6 +83,46 @@ export default async function handler(req, res) {
       // AI Tools ke liye sirf text return karna hai (download URL nahi)
       return res.status(200).json({ success: true, textResult: finalSummary });
     }
+      // === TRANSLATE PDF (Gemini API Integration) ===
+    else if (action === 'translate-pdf') {
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ error: "Gemini API Key is missing in Vercel settings." });
+      }
+
+      // Frontend se aayi language (default English)
+      const targetLang = req.body.targetLanguage || 'English';
+
+      // Step A: ConvertAPI se Text nikalna
+      const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+      const textFileUrl = txtResult.response.Files[0].Url;
+      const textResponse = await fetch(textFileUrl);
+      const extractedText = await textResponse.text();
+
+      // Step B: Translation prompt send karna
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+      
+      const aiResponse = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ 
+            parts: [{ 
+              text: `Translate the following document content into ${targetLang}. Ensure the professional tone and meaning remain intact:\n\n${extractedText.substring(0, 15000)}` 
+            }] 
+          }]
+        })
+      });
+      
+      const aiData = await aiResponse.json();
+      
+      if (aiData.error) {
+        throw new Error(aiData.error.message);
+      }
+
+      const finalTranslation = aiData.candidates[0].content.parts[0].text;
+      
+      return res.status(200).json({ success: true, textResult: finalTranslation });
+    }
 
     // ==========================================
     // 🔴 CATEGORY 4: UNAVAILABLE / REQUIRES CUSTOM UI
