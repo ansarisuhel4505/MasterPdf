@@ -53,7 +53,7 @@ export default async function handler(req, res) {
       }
 
       // Naya aur jyada stable Gemini Model
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`;
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
       // 1. AI SUMMARIZER
       if (action === 'ai-summarizer') {
