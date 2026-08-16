@@ -1,5 +1,4 @@
 const convertapi = require('convertapi')(process.env.CONVERT_API_SECRET);
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -44,46 +43,49 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // 🧠 CATEGORY 3: AI TOOLS (Protected with Inner Try-Catch)
+    // 🧠 CATEGORY 3: AI TOOLS (Direct v1 API - No Buggy SDK)
     // ==========================================
     else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare') {
       if (!process.env.GEMINI_API_KEY) {
-        return res.status(200).json({ success: true, textResult: "⚠️ Gemini API Key is missing in Vercel settings." });
+        return res.status(200).json({ success: true, textResult: "⚠️ Gemini API Key is missing in Vercel." });
       }
 
-      // Yahan humne ek extra Try-Catch lagaya hai taaki AI fail hone par server crash na ho
       try {
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // DIRECT HIT TO 'v1' (SDK bypass kar diya hai)
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+
+        // Helper function for clean API calls
+        const callGemini = async (promptText) => {
+          const aiResponse = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: promptText }] }]
+            })
+          });
+          const data = await aiResponse.json();
+          if (data.error) throw new Error(data.error.message);
+          return data.candidates[0].content.parts[0].text;
+        };
 
         if (action === 'ai-summarizer') {
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-          const textResponse = await fetch(txtResult.response.Files[0].Url);
-          const extractedText = await textResponse.text();
-
-          const prompt = `Summarize the following document concisely in bullet points:\n\n${extractedText.substring(0, 15000)}`;
-          const aiResult = await model.generateContent(prompt);
-          const response = await aiResult.response;
-
-          return res.status(200).json({ success: true, textResult: response.text() });
+          const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
+          const resultText = await callGemini(`Summarize concisely:\n\n${extractedText.substring(0, 15000)}`);
+          return res.status(200).json({ success: true, textResult: resultText });
         }
 
         else if (action === 'translate-pdf') {
           const targetLang = req.body.targetLanguage || 'English';
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-          const textResponse = await fetch(txtResult.response.Files[0].Url);
-          const extractedText = await textResponse.text();
-
-          const prompt = `Translate the following document into ${targetLang}:\n\n${extractedText.substring(0, 15000)}`;
-          const aiResult = await model.generateContent(prompt);
-          const response = await aiResult.response;
-
-          return res.status(200).json({ success: true, textResult: response.text() });
+          const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
+          const resultText = await callGemini(`Translate into ${targetLang}:\n\n${extractedText.substring(0, 15000)}`);
+          return res.status(200).json({ success: true, textResult: resultText });
         }
 
         else if (action === 'ai-compare') {
           const { fileUrl2 } = req.body;
-          if (!fileUrl2) return res.status(400).json({ error: 'Second file URL is missing for comparison' });
+          if (!fileUrl2) return res.status(400).json({ error: 'Second file URL is missing' });
 
           const txtResult1 = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
           const text1 = await (await fetch(txtResult1.response.Files[0].Url)).text();
@@ -91,18 +93,14 @@ export default async function handler(req, res) {
           const txtResult2 = await convertapi.convert('txt', { File: fileUrl2 }, 'pdf');
           const text2 = await (await fetch(txtResult2.response.Files[0].Url)).text();
 
-          const prompt = `Compare these two documents and list what changed, what was added, and what was removed in bullet points:\n\n--- DOC 1 ---\n${text1.substring(0, 7000)}\n\n--- DOC 2 ---\n${text2.substring(0, 7000)}`;
-          const aiResult = await model.generateContent(prompt);
-          const response = await aiResult.response;
-
-          return res.status(200).json({ success: true, textResult: response.text() });
+          const resultText = await callGemini(`Compare these documents:\n\n--- DOC 1 ---\n${text1.substring(0, 7000)}\n\n--- DOC 2 ---\n${text2.substring(0, 7000)}`);
+          return res.status(200).json({ success: true, textResult: resultText });
         }
       } catch (aiError) {
-        // Yeh block website ko crash hone se bachayega aur popup nahi aane dega
-        console.error("Gemini SDK Error Caught:", aiError.message);
+        console.error("Direct Gemini Error:", aiError.message);
         return res.status(200).json({ 
           success: true, 
-          textResult: "⚠️ AI Error: Your Google API key is correct, but 'Generative Language API' is not enabled in your Google Cloud Project. Please enable it in Google Cloud Console.\n\nGood News: The other 30 PDF tools are 100% working!" 
+          textResult: `⚠️ AI Error: ${aiError.message}\nBut good news: The other 30 PDF tools are perfectly working!` 
         });
       }
     }
@@ -114,10 +112,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Unknown action request." });
     }
 
-    // Normal files response send karna (Download URL bhejna)
     if (result && result.response && result.response.Files) {
-      const convertedFileUrl = result.response.Files[0].Url;
-      return res.status(200).json({ success: true, downloadUrl: convertedFileUrl });
+      return res.status(200).json({ success: true, downloadUrl: result.response.Files[0].Url });
     }
 
   } catch (error) {
