@@ -1,43 +1,36 @@
 import { handleUpload } from '@vercel/blob/client';
 
-export default async function handler(request, response) {
-  // Fix for Next.js body parsing behavior
-  const body = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
+export default async function handler(req, res) {
+  // Sirf POST request allow karna
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   try {
+    // Next.js body ko sahi se parse karna (400 error yahan se bhi aa sakta hai)
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+
     const jsonResponse = await handleUpload({
       body,
-      request,
+      request: req,
       onBeforeGenerateToken: async (pathname) => {
         return {
-          // 🚀 FIX 1: Bypass the default 4MB Blob limit! Allow up to 100MB.
+          // 🚀 FIX 1: Default limit hata kar 100 MB allow kar diya
           maximumSizeInBytes: 100 * 1024 * 1024,
           
-          // 🚀 FIX 2: Allow all formats (PDF, Word, Excel, PPT, Images)
-          allowedContentTypes: [
-            'application/pdf',
-            'image/jpeg',
-            'image/png',
-            'image/jpg',
-            'application/msword', // .doc
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-            'application/vnd.ms-excel', // .xls
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
-            'application/vnd.ms-powerpoint', // .ppt
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation' // .pptx
-          ],
-          tokenPayload: JSON.stringify({}),
+          // 🚀 FIX 2: allowedContentTypes hata diya gaya hai taaki PDF, JPG, Excel kisi par bhi format error na aaye
         };
       },
-      onUploadCompleted: async ({ blob, tokenPayload }) => {
-        console.log('Upload completed:', blob.url);
+      onUploadCompleted: async ({ blob }) => {
+        console.log('Upload successful:', blob.url);
       },
     });
 
-    return response.status(200).json(jsonResponse);
+    return res.status(200).json(jsonResponse);
+    
   } catch (error) {
-    console.error("Blob Upload Error:", error);
-    // Yahi wo jagah hai jahan se 400 error aa raha tha
-    return response.status(400).json({ error: error.message });
+    console.error("Vercel Blob API Error:", error);
+    // Error message ko properly return karna
+    return res.status(400).json({ error: error.message });
   }
 }
