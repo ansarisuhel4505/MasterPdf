@@ -30,8 +30,9 @@ export default async function handler(req, res) {
 
       // 1. FILE CONVERSION TOOLS (Returns a File URL)
       if (action === 'protect-pdf') {
-        result = await convertapi.convert('encrypt', { File: file.path, PdfUserPassword: password, PdfOwnerPassword: password }, 'pdf');
-      } 
+        // 'Pdf' word hata diya gaya hai parameter keys se
+        result = await convertapi.convert('encrypt', { File: file.path, UserPassword: password, OwnerPassword: password }, 'pdf');
+      }
       // NAYA CODE: Unlock PDF (Decrypt) logic add kiya hai
       else if (action === 'unlock-pdf') {
         result = await convertapi.convert('decrypt', { File: file.path, Password: password }, 'pdf');
