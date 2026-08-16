@@ -6,11 +6,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Frontend se ab sirf fileUrl aur action aayega (4.5MB limit bypass)
+  // Frontend se ab sirf fileUrl (ya website ka link) aur action aayega
   const { action, fileUrl, password } = req.body;
 
-  if (!fileUrl && action !== 'html-to-pdf') {
-    return res.status(400).json({ error: 'No file URL provided' });
+  if (!fileUrl) {
+    return res.status(400).json({ error: 'No file URL or link provided' });
   }
 
   try {
@@ -30,6 +30,8 @@ export default async function handler(req, res) {
     else if (action === 'pdf-to-pdfa') result = await convertapi.convert('pdfa', { File: fileUrl }, 'pdf');
     else if (action === 'compress-pdf') result = await convertapi.convert('compress', { File: fileUrl }, 'pdf');
     else if (action === 'repair-pdf') result = await convertapi.convert('repair', { File: fileUrl }, 'pdf');
+    // 👇 Naya add kiya gaya HTML to PDF logic
+    else if (action === 'html-to-pdf') result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
 
     // ==========================================
     // 🟡 CATEGORY 2: SECURITY TOOLS (Working)
@@ -45,8 +47,8 @@ export default async function handler(req, res) {
     // 🔴 CATEGORY 3: UNAVAILABLE / REQUIRES CUSTOM UI
     // ==========================================
     // Ye features ConvertAPI ke basic system se direct convert nahi hote. 
-    // Inke liye React par custom UI banana padega (jaise Edit PDF par text likhna).
-    else if (['merge-pdf', 'split-pdf', 'edit-pdf', 'sign-pdf', 'watermark', 'rotate-pdf', 'organize-pdf', 'page-numbers', 'scan-to-pdf', 'ocr-pdf', 'compare-pdf', 'redact-pdf', 'crop-pdf', 'pdf-forms', 'html-to-pdf', 'pdf-to-markdown'].includes(action)) {
+    // Inke liye React par custom UI banana padega. (Yahan se html-to-pdf hata diya gaya hai)
+    else if (['merge-pdf', 'split-pdf', 'edit-pdf', 'sign-pdf', 'watermark', 'rotate-pdf', 'organize-pdf', 'page-numbers', 'scan-to-pdf', 'ocr-pdf', 'compare-pdf', 'redact-pdf', 'crop-pdf', 'pdf-forms', 'pdf-to-markdown'].includes(action)) {
       return res.status(501).json({ error: `The ${action.toUpperCase()} tool requires a custom frontend UI or advanced engine setup which is currently pending.` });
     }
     // AI tools require OpenAI API key
