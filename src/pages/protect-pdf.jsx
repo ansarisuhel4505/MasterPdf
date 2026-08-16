@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { UploadCloud, FileText, X, Lock, Settings } from 'lucide-react';
+import { upload } from '@vercel/blob/client';
 
 export default function ProtectPdf() {
   const [file, setFile] = useState(null);
@@ -23,12 +24,8 @@ export default function ProtectPdf() {
     }
   };
 
-  const removeFile = () => {
-    setFile(null);
-  };
+  const removeFile = () => setFile(null);
 
-  // PDF Protect Logic (Client-Side Encryption)
-  // PDF Protect Logic (Backend API Call)
   const protectPdf = async () => {
     if (!file) return;
 
@@ -44,33 +41,39 @@ export default function ProtectPdf() {
     setPasswordError('');
     setIsProtecting(true);
 
-    // FormData banakar backend API ko bhej rahe hain
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('action', 'protect-pdf');
-    formData.append('password', password); // Password add kiya
-
     try {
+      // 1. Seedha Vercel Blob par upload (Bypasses 4.5MB limit)
+      const blob = await upload(file.name, file, { 
+        access: 'public', 
+        handleUploadUrl: '/api/upload' 
+      });
+
+      // 2. Sirf URL backend ko bhejo (Tiny JSON Request)
       const res = await fetch('/api/master-convert', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'protect-pdf', 
+          fileUrl: blob.url, 
+          password: password 
+        }),
       });
       
       const data = await res.json();
 
-      if (data.success) {
-        // Successful hone par automatic download shuru
+      if (res.ok && data.downloadUrl) {
         window.location.href = data.downloadUrl;
       } else {
         alert("Error: " + data.error);
       }
     } catch (error) {
       console.error("Error protecting PDF:", error);
-      alert("Server connection failed. Make sure your file size is under 4MB.");
+      alert("Server connection failed.");
     }
     
     setIsProtecting(false);
   };
+
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head>
