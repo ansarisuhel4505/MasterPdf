@@ -1,3 +1,5 @@
+import { PDFDocument, rgb } from 'pdf-lib';
+import { put } from '@vercel/blob';
 const convertapi = require('convertapi')(process.env.CONVERT_API_SECRET);
 
 // Vercel Timeout Fix
@@ -8,7 +10,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { action, fileUrl, password } = req.body;
+  // Yahan 'boxes' aur 'mode' add kiya hai Redact feature ke liye
+  const { action, fileUrl, password, boxes, mode } = req.body;
 
   if (!fileUrl) {
     return res.status(400).json({ error: 'No file URL provided' });
@@ -18,9 +21,57 @@ export default async function handler(req, res) {
     let result;
 
     // ==========================================
+    // 🛡️ CATEGORY 0: NEW REDACT PDF FEATURE
+    // ==========================================
+    if (action === 'redact-pdf') {
+      try {
+        // 1. PDF ko read karo
+        const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const pages = pdfDoc.getPages();
+
+        if (mode === 'manual' && boxes && boxes.length > 0) {
+          // Frontend se aayi exact location par black box draw karo
+          boxes.forEach((box) => {
+            const page = pages[box.pageIndex || 0]; 
+            const { height: pageHeight } = page.getSize();
+            
+            page.drawRectangle({
+              x: box.x,
+              y: pageHeight - box.y - box.height, 
+              width: box.width,
+              height: box.height,
+              color: rgb(0, 0, 0), // Solid Black Box
+            });
+          });
+        } 
+        else if (mode === 'auto') {
+          return res.status(200).json({ 
+            success: false, 
+            error: "Auto-Redact requires an external OCR API. Please use Manual Mode for now." 
+          });
+        }
+
+        // 2. Modified PDF save karo
+        const modifiedPdfBytes = await pdfDoc.save();
+        
+        // 3. Nayi PDF ko Vercel Blob par upload karke link lo
+        const blob = await put(`redacted-document-${Date.now()}.pdf`, modifiedPdfBytes, {
+          access: 'public',
+          contentType: 'application/pdf'
+        });
+
+        return res.status(200).json({ success: true, downloadUrl: blob.url });
+      } catch (err) {
+        console.error("Redaction Error:", err);
+        return res.status(500).json({ error: "Failed to apply redaction to the PDF." });
+      }
+    }
+
+    // ==========================================
     // 🟢 CATEGORY 1: 100% WORKING CONVERSIONS
     // ==========================================
-    if (action === 'pdf-to-word') result = await convertapi.convert('docx', { File: fileUrl }, 'pdf');
+    else if (action === 'pdf-to-word') result = await convertapi.convert('docx', { File: fileUrl }, 'pdf');
     else if (action === 'pdf-to-excel') result = await convertapi.convert('xlsx', { File: fileUrl }, 'pdf');
     else if (action === 'pdf-to-powerpoint') result = await convertapi.convert('pptx', { File: fileUrl }, 'pdf');
     else if (action === 'word-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'docx');
@@ -56,7 +107,6 @@ export default async function handler(req, res) {
       try {
         const apiKey = process.env.GROQ_API_KEY;
 
-        // SMART GROQ FETCHER
         const callGroqAI = async (promptText) => {
           const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
           const aiResponse = await fetch(groqUrl, {
@@ -66,7 +116,7 @@ export default async function handler(req, res) {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-             model: "llama-3.1-8b-instant",
+              model: "llama-3.1-8b-instant",
               messages: [{ role: "user", content: promptText }],
               temperature: 0.5
             })
@@ -81,7 +131,6 @@ export default async function handler(req, res) {
           }
         };
 
-        // RUN AI BASED ON ACTION
         if (action === 'ai-summarizer') {
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
           const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
