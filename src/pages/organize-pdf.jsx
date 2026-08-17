@@ -10,7 +10,7 @@ import {
   Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus
 } from 'lucide-react';
 
-// SSR को ब्लॉक करना (Next.js के लिए जरूरी)
+// Dynamic Import (Zaroori hai Next.js ke liye)
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
@@ -24,10 +24,10 @@ export default function OrganizePdf() {
   const [renderError, setRenderError] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]); 
 
-  // 🛑 100% FINAL FIX: बिना node_modules के सीधे CDN से लोड करें
+  // 🛑 FINAL 100% FIX: cdnjs को हटा कर unpkg का इस्तेमाल किया
   useEffect(() => {
-    // react-pdf@9.1.0 के लिए pdf.js वर्जन 4.4.168 है
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js';
+    // react-pdf@9.1.0 सही वर्जन 4.4.168 यूज़ करता है
+    pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js';
   }, []);
 
   const pushHistory = (newPages) => {
@@ -369,6 +369,7 @@ export default function OrganizePdf() {
               </div>
 
               <div className="p-6 bg-white max-h-[65vh] overflow-y-auto custom-scrollbar">
+                {/* अगर PDF लोड नहीं हुआ, तो बैकअप टेक्स्ट मोड में ही "Refresh" विकल्प दिया है */}
                 {renderError ? (
                   <div className="w-full">
                     <div className="flex flex-col gap-2">
@@ -391,6 +392,9 @@ export default function OrganizePdf() {
                           </div>
                         </div>
                       ))}
+                      <div className="mt-4 text-center text-xs text-gray-500">
+                        Thumbnails failed to load. Please <strong>refresh the page</strong> to retry.
+                      </div>
                     </div>
                   </div>
                 ) : (
