@@ -9,12 +9,18 @@ import {
   UploadCloud, Trash2, ArrowUp, ArrowDown, RotateCcw, RotateCw, 
   Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus, RefreshCw
 } from 'lucide-react';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
 
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
+// 🔥 100% PERMANENT FIX: Version 9 .mjs worker setup (Removed from useEffect) 🔥
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
 export default function OrganizePdf() {
   const [file, setFile] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null); // Added this to match redact-pdf logic
   const [pages, setPages] = useState([]); 
   const [pdfDoc, setPdfDoc] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -22,11 +28,6 @@ export default function OrganizePdf() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [renderError, setRenderError] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]); 
-
-  // 🔥 100% PERMANENT FIX: सीधे इस वर्जन को इस्तेमाल करें, यह कभी नहीं टूटेगा
-  useEffect(() => {
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js';
-  }, []);
 
   const pushHistory = (newPages) => {
     setHistory(prev => [prev, pages].slice(-20));
@@ -46,7 +47,9 @@ export default function OrganizePdf() {
       alert("Please upload a valid PDF file.");
       return;
     }
+    
     setFile(selectedFile);
+    setPdfUrl(URL.createObjectURL(selectedFile)); // Object URL is safer for loading
     setIsLoading(true);
     setPages([]);
     setPdfDoc(null);
@@ -78,6 +81,7 @@ export default function OrganizePdf() {
 
   const removeFile = () => {
     setFile(null);
+    setPdfUrl(null);
     setPages([]);
     setPdfDoc(null);
     setHistory([]);
@@ -333,7 +337,7 @@ export default function OrganizePdf() {
                   </div>
                 ) : (
                   <Document 
-                    file={file} 
+                    file={pdfUrl} 
                     loading={<div className="col-span-full text-center py-10 text-gray-500">Loading page previews...</div>}
                     onLoadError={(err) => { console.error("React-PDF Load Error:", err); setRenderError(true); }}
                     onSourceError={(err) => { console.error("Source Error:", err); setRenderError(true); }}
