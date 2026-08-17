@@ -178,7 +178,11 @@ export default function OrganizePdf() {
       if (selectedFile.type === 'application/pdf') {
         const insertPdf = await PDFDocument.load(arrayBuffer);
         const totalInsertPages = insertPdf.getPageCount();
-        setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'pdf' }]);
+        
+        // 🔥 FIX: Inserted PDF ke liye ab hum Preview URL bana rahe hain taaki "Lock/Failed" error na aaye
+        const previewUrl = URL.createObjectURL(selectedFile);
+        
+        setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'pdf', previewUrl }]);
         
         for (let i = 0; i < totalInsertPages; i++) {
           pagesToInsert.push({ 
@@ -193,7 +197,6 @@ export default function OrganizePdf() {
       } else if (selectedFile.type === 'image/png' || selectedFile.type === 'image/jpeg') {
         const previewUrl = URL.createObjectURL(selectedFile);
         
-        // 🔥 FIX 2: EXIF Orientation Cleaner (Permanently straightens mobile photos) 🔥
         const cleanImageBuffer = await new Promise((resolve) => {
           const img = new window.Image();
           img.onload = () => {
@@ -271,7 +274,6 @@ export default function OrganizePdf() {
           } else if (uploaded.type === 'image') {
             let image = uploaded.mimeType === 'image/png' ? await newPdf.embedPng(uploaded.bytes) : await newPdf.embedJpg(uploaded.bytes);
             
-            // 🔥 FIX 3: Smart Landscape vs Portrait Page sizing 🔥
             const isLandscape = image.width > image.height;
             const page = newPdf.addPage(isLandscape ? [841.89, 595.28] : [595.28, 841.89]); 
             
@@ -377,7 +379,6 @@ export default function OrganizePdf() {
                       >
                         <div className="shadow-sm rounded bg-white overflow-hidden flex items-center justify-center w-full aspect-[1/1.414] border border-gray-200 relative">
                           
-                          {/* 1. Show Original PDF Pages */}
                           {pageData.type === 'source' && (
                             <Document file={pdfUrl}>
                               <Page 
@@ -390,12 +391,11 @@ export default function OrganizePdf() {
                             </Document>
                           )}
                           
-                          {/* 2. Show Blank Page */}
                           {pageData.type === 'blank' && (
                              <div className="text-gray-300 font-bold tracking-widest uppercase text-xs w-full h-full flex items-center justify-center bg-white">Blank</div>
                           )}
                           
-                          {/* 🔥 FIX 1: Show Previews for Inserted PDF/Images 🔥 */}
+                          {/* 🔥 THE FIX: Now using previewUrl to display all inserted PDF pages smoothly 🔥 */}
                           {pageData.type === 'upload' && (() => {
                              const uploaded = uploadedFiles.find(f => f.id === pageData.uploadId);
                              if (!uploaded) return null;
@@ -406,7 +406,7 @@ export default function OrganizePdf() {
                              
                              if (uploaded.type === 'pdf') {
                                return (
-                                 <Document file={uploaded.bytes}>
+                                 <Document file={uploaded.previewUrl}>
                                    <Page 
                                      pageNumber={pageData.uploadPageIndex + 1} 
                                      width={130} 
