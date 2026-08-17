@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     let result;
 
     // ==========================================
-    // 🛡️ CATEGORY 0: NEW REDACT PDF FEATURE
+    // 🛡️ CATEGORY 0: ENTERPRISE REDACT PDF
     // ==========================================
     if (action === 'redact-pdf') {
       try {
@@ -28,27 +28,30 @@ export default async function handler(req, res) {
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const pages = pdfDoc.getPages();
 
-        if (mode === 'manual' && boxes && boxes.length > 0) {
+        if (boxes && boxes.length > 0) {
           boxes.forEach((box) => {
             const page = pages[box.pageIndex || 0]; 
-            const { height: pageHeight } = page.getSize();
+            
+            // 🚀 SMART SCALING LOGIC
+            const { width: actualWidth, height: actualHeight } = page.getSize();
+            const scale = actualWidth / 700; // 700px is the frontend render width
+
+            // Calculate exact position based on real PDF size
+            const scaledX = box.x * scale;
+            const scaledY = box.y * scale;
+            const scaledWidth = box.width * scale;
+            const scaledHeight = box.height * scale;
             
             page.drawRectangle({
-              x: box.x,
-              y: pageHeight - box.y - box.height, 
-              width: box.width,
-              height: box.height,
+              x: scaledX,
+              y: actualHeight - scaledY - scaledHeight, 
+              width: scaledWidth,
+              height: scaledHeight,
               color: rgb(0, 0, 0), // Solid Black Box
             });
           });
         } 
-        else if (mode === 'auto') {
-          return res.status(200).json({ 
-            success: false, 
-            error: "Auto-Redact requires an external OCR API. Please use Manual Mode for now." 
-          });
-        }
-
+        
         const modifiedPdfBytes = await pdfDoc.save();
         
         const blob = await put(`redacted-document-${Date.now()}.pdf`, modifiedPdfBytes, {
@@ -64,7 +67,7 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // 🟢 CATEGORY 1: 100% WORKING CONVERSIONS
+    // 🟢 CATEGORY 1: NORMAL CONVERSIONS
     // ==========================================
     else if (action === 'pdf-to-word') result = await convertapi.convert('docx', { File: fileUrl }, 'pdf');
     else if (action === 'pdf-to-excel') result = await convertapi.convert('xlsx', { File: fileUrl }, 'pdf');
@@ -80,19 +83,22 @@ export default async function handler(req, res) {
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     else if (action === 'ocr-pdf') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     
-    // 🔥 FIX: 5001 ERROR PROOF HTML/CODE TO PDF 🔥
+    // 🔥 FIX: SMART HTML / CODE TO PDF (Preserves Formatting) 🔥
     else if (action === 'html-to-pdf') {
       if (fileUrl.startsWith('http')) {
-        // Agar proper website ka link hai
+        // Normal Website Link
         result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
       } else {
-        // Raw Code ko as a .txt file Vercel par dalo (No HTML rendering block)
-        const tempBlob = await put(`source-code-${Date.now()}.txt`, fileUrl, {
-          access: 'public',
-          contentType: 'text/plain'
-        });
-        // 'web' ki jagah 'txt' API use karo
-        result = await convertapi.convert('pdf', { File: tempBlob.url }, 'txt');
+        // Raw Code - Escaping tags to show as plain text code
+        const escapedCode = fileUrl.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const htmlWrapper = `
+          <!DOCTYPE html><html><body style="padding: 20px; font-family: monospace;">
+            <pre style="white-space: pre-wrap; word-wrap: break-word;">${escapedCode}</pre>
+          </body></html>
+        `;
+        const tempBlob = await put(`code-${Date.now()}.html`, htmlWrapper, { access: 'public', contentType: 'text/html' });
+        // Use 'web' to render the nicely wrapped code block
+        result = await convertapi.convert('pdf', { Url: tempBlob.url }, 'web');
       }
     }
 
@@ -110,9 +116,7 @@ export default async function handler(req, res) {
     // 🧠 CATEGORY 3: AI TOOLS (GROQ / LLAMA 3)
     // ==========================================
     else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare') {
-      if (!process.env.GROQ_API_KEY) {
-        return res.status(200).json({ success: false, textResult: "⚠️ Groq API Key is missing in Vercel settings." });
-      }
+      if (!process.env.GROQ_API_KEY) return res.status(200).json({ success: false, textResult: "⚠️ Groq API Key is missing." });
 
       try {
         const apiKey = process.env.GROQ_API_KEY;
@@ -121,10 +125,7 @@ export default async function handler(req, res) {
           const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
           const aiResponse = await fetch(groqUrl, {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json'
-            },
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model: "llama-3.1-8b-instant",
               messages: [{ role: "user", content: promptText }],
@@ -133,52 +134,35 @@ export default async function handler(req, res) {
           });
 
           const data = await aiResponse.json();
-
-          if (aiResponse.ok && data.choices && data.choices.length > 0) {
-            return data.choices[0].message.content; // SUCCESS!
-          } else {
-            throw new Error(data.error?.message || "Unknown Groq API error");
-          }
+          if (aiResponse.ok && data.choices && data.choices.length > 0) return data.choices[0].message.content;
+          else throw new Error(data.error?.message || "Unknown Groq API error");
         };
 
         if (action === 'ai-summarizer') {
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
           const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-          const resultText = await callGroqAI(`Summarize this clearly in bullet points:\n\n${extractedText.substring(0, 15000)}`);
-          return res.status(200).json({ success: true, textResult: resultText });
+          return res.status(200).json({ success: true, textResult: await callGroqAI(`Summarize in bullets:\n\n${extractedText.substring(0, 15000)}`) });
         }
         else if (action === 'translate-pdf') {
           const targetLang = req.body.targetLanguage || 'English';
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
           const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-          const resultText = await callGroqAI(`Translate into ${targetLang}:\n\n${extractedText.substring(0, 15000)}`);
-          return res.status(200).json({ success: true, textResult: resultText });
+          return res.status(200).json({ success: true, textResult: await callGroqAI(`Translate to ${targetLang}:\n\n${extractedText.substring(0, 15000)}`) });
         }
         else if (action === 'ai-compare') {
-          const { fileUrl2 } = req.body;
-          if (!fileUrl2) return res.status(400).json({ error: 'Second file URL missing' });
-
-          const txtResult1 = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-          const text1 = await (await fetch(txtResult1.response.Files[0].Url)).text();
-          const txtResult2 = await convertapi.convert('txt', { File: fileUrl2 }, 'pdf');
-          const text2 = await (await fetch(txtResult2.response.Files[0].Url)).text();
-
-          const resultText = await callGroqAI(`Compare these documents and list differences:\n\n--- DOC 1 ---\n${text1.substring(0, 7000)}\n\n--- DOC 2 ---\n${text2.substring(0, 7000)}`);
-          return res.status(200).json({ success: true, textResult: resultText });
+          if (!req.body.fileUrl2) return res.status(400).json({ error: 'Second file URL missing' });
+          const txt1 = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+          const text1 = await (await fetch(txt1.response.Files[0].Url)).text();
+          const txt2 = await convertapi.convert('txt', { File: req.body.fileUrl2 }, 'pdf');
+          const text2 = await (await fetch(txt2.response.Files[0].Url)).text();
+          return res.status(200).json({ success: true, textResult: await callGroqAI(`Compare:\n\nDOC1:\n${text1.substring(0, 7000)}\n\nDOC2:\n${text2.substring(0, 7000)}`) });
         }
 
       } catch (aiError) {
-        console.error("Groq AI Error:", aiError.message);
-        return res.status(200).json({ 
-          success: true, 
-          textResult: `❌ AI Error: ${aiError.message}\nPlease check your API limit or key.` 
-        });
+        return res.status(200).json({ success: true, textResult: `❌ AI Error: ${aiError.message}` });
       }
     }
 
-    // ==========================================
-    // 🔴 CATEGORY 4: UNKNOWN ACTIONS
-    // ==========================================
     else {
       return res.status(400).json({ error: "Unknown action request." });
     }
@@ -189,6 +173,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error("Backend Error:", error);
-    return res.status(500).json({ error: 'Server processing failed. File might be corrupted.' });
+    return res.status(500).json({ error: 'Server processing failed.' });
   }
 }
