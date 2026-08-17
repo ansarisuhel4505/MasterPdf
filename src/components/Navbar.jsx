@@ -76,15 +76,18 @@ export default function Navbar() {
               COMPRESS PDF
             </Link>
 
-            {/* CONVERT PDF DESKTOP DROPDOWN */}
+            {/* CONVERT PDF DESKTOP DROPDOWN (Hover + Click support added) */}
             <div 
               className="relative h-full flex items-center"
               onMouseEnter={() => setActiveDropdown('convert')}
               onMouseLeave={() => setActiveDropdown(null)}
             >
-              <Link href="/pdf-to-word" className={`px-3 h-full flex items-center gap-1 cursor-pointer transition-colors duration-200 ${activeDropdown === 'convert' ? 'text-[#E5322D]' : 'hover:text-[#E5322D]'}`}>
+              <button
+                onClick={() => setActiveDropdown(prev => prev === 'convert' ? null : 'convert')}
+                className={`px-3 h-full flex items-center gap-1 bg-transparent border-none cursor-pointer transition-colors duration-200 ${activeDropdown === 'convert' ? 'text-[#E5322D]' : 'hover:text-[#E5322D]'}`}
+              >
                 CONVERT PDF <ChevronDown size={16} className={`transition-transform duration-200 ${activeDropdown === 'convert' ? 'rotate-180' : ''}`} />
-              </Link>
+              </button>
 
               {activeDropdown === 'convert' && (
                 <div className="absolute top-full left-1/2 -translate-x-1/2 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.1)] border border-gray-100 rounded-b-xl p-8 w-[600px] flex gap-12 z-50 cursor-default">
@@ -112,15 +115,18 @@ export default function Navbar() {
               )}
             </div>
 
-            {/* ALL PDF TOOLS DESKTOP DROPDOWN */}
+            {/* ALL PDF TOOLS DESKTOP DROPDOWN (Hover + Click support added) */}
             <div 
               className="relative h-full flex items-center"
               onMouseEnter={() => setActiveDropdown('allTools')}
               onMouseLeave={() => setActiveDropdown(null)}
             >
-              <Link href="/tools" className={`px-3 h-full flex items-center gap-1 cursor-pointer transition-colors duration-200 ${activeDropdown === 'allTools' ? 'text-[#E5322D]' : 'hover:text-[#E5322D]'}`}>
+              <button
+                onClick={() => setActiveDropdown(prev => prev === 'allTools' ? null : 'allTools')}
+                className={`px-3 h-full flex items-center gap-1 bg-transparent border-none cursor-pointer transition-colors duration-200 ${activeDropdown === 'allTools' ? 'text-[#E5322D]' : 'hover:text-[#E5322D]'}`}
+              >
                 ALL PDF TOOLS <ChevronDown size={16} className={`transition-transform duration-200 ${activeDropdown === 'allTools' ? 'rotate-180' : ''}`} />
-              </Link>
+              </button>
             </div>
           </div>
         </div>
