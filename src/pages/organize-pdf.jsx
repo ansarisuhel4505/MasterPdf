@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Head from 'next/head';
-import dynamic from 'next/dynamic';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument } from 'pdf-lib';
-import { pdfjs } from 'react-pdf';
+// 🔥 FIX: Removed 'next/dynamic' and imported statically like redact-pdf 🔥
+import { Document, Page, pdfjs } from 'react-pdf';
 import { 
   UploadCloud, Trash2, ArrowUp, ArrowDown, RotateCcw, RotateCw, 
   Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus, RefreshCw
@@ -12,15 +12,12 @@ import {
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
-const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
-
-// 🔥 100% PERMANENT FIX: Version 9 .mjs worker setup (Removed from useEffect) 🔥
+// 🔥 100% WORKING WORKER FOR VERSION 9 🔥
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function OrganizePdf() {
   const [file, setFile] = useState(null);
-  const [pdfUrl, setPdfUrl] = useState(null); // Added this to match redact-pdf logic
+  const [pdfUrl, setPdfUrl] = useState(null); 
   const [pages, setPages] = useState([]); 
   const [pdfDoc, setPdfDoc] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,7 +46,7 @@ export default function OrganizePdf() {
     }
     
     setFile(selectedFile);
-    setPdfUrl(URL.createObjectURL(selectedFile)); // Object URL is safer for loading
+    setPdfUrl(URL.createObjectURL(selectedFile)); 
     setIsLoading(true);
     setPages([]);
     setPdfDoc(null);
