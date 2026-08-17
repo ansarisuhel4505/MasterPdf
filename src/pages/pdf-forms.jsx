@@ -351,12 +351,23 @@ export default function PdfForms() {
                     </div>
                   ) : (
                     <Document file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
-                      <Page 
-                        pageNumber={1} 
-                        width={400} 
-                        renderTextLayer={false} 
-                        renderAnnotationLayer={true}
-                      />
+                      {/* 🔥 FIX: Loop through all pages and render them in a scrollable column 🔥 */}
+                      <div className="flex flex-col gap-6 items-center pb-4">
+                        {Array.from(new Array(totalPages), (el, index) => (
+                          <div key={`page_${index + 1}`} className="relative border border-gray-300 shadow-md rounded bg-white overflow-hidden">
+                            {/* Page Number Badge */}
+                            <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10 pointer-events-none">
+                              Page {index + 1}
+                            </div>
+                            <Page 
+                              pageNumber={index + 1} 
+                              width={400} 
+                              renderTextLayer={false} 
+                              renderAnnotationLayer={true}
+                            />
+                          </div>
+                        ))}
+                      </div>
                     </Document>
                   )}
                   <div className="mt-2 text-center text-xs font-bold text-gray-700 bg-white/80 px-3 py-1 border rounded-full w-fit mx-auto">
