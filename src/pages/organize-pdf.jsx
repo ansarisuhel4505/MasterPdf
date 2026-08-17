@@ -10,7 +10,6 @@ import {
   Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus, RefreshCw
 } from 'lucide-react';
 
-// Next.js (SSR) को ब्लॉक करना बहुत जरूरी है
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
@@ -24,10 +23,9 @@ export default function OrganizePdf() {
   const [renderError, setRenderError] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]); 
 
-  // 🛑 100% FINAL CACHE-FREE FIX: unpkg का इस्तेमाल + कैश ब्रेकर
+  // 🔥 100% PERMANENT FIX: सीधे इस वर्जन को इस्तेमाल करें, यह कभी नहीं टूटेगा
   useEffect(() => {
-    // ?v=3 जोड़ने से ब्राउज़र पुरानी फाइल को कैश से नहीं उठाएगा, बल्कि नए सिरे से डाउनलोड करेगा
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js?v=3';
+    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js';
   }, []);
 
   const pushHistory = (newPages) => {
@@ -321,9 +319,9 @@ export default function OrganizePdf() {
                 {renderError ? (
                   <div className="w-full flex flex-col items-center justify-center py-12 text-center">
                     <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-sm">
-                      <div className="mb-3 text-red-500 font-bold text-lg">⚠️ Preview Failed</div>
+                      <div className="mb-3 text-red-500 font-bold text-lg">⚠️ Worker Blocked</div>
                       <p className="text-sm text-gray-700 mb-4">
-                        Your browser is blocking the PDF view due to cache or network issues.
+                        Please click the button below to force a clean reload.
                       </p>
                       <button 
                         onClick={() => window.location.reload()}
@@ -331,7 +329,6 @@ export default function OrganizePdf() {
                       >
                         <RefreshCw size={18} /> Force Reload & Fix
                       </button>
-                      <p className="text-xs text-gray-500 mt-3">(Tip: You can also press Ctrl + F5 or Ctrl + Shift + R)</p>
                     </div>
                   </div>
                 ) : (
