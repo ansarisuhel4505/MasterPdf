@@ -7,6 +7,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
+import { upload } from '@vercel/blob/client';
 
 // 🔥 FIX FOR REACT-PDF VERSION 9 (Notice the .mjs at the end) 🔥
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -40,15 +41,44 @@ export default function RedactPdf() {
 
   const handleProcess = async () => {
     setIsProcessing(true);
-    // Yahan backend API call aayegi jo pdf-lib se black boxes draw karegi
-    console.log("Processing with Mode:", mode);
-    if (mode === 'manual') console.log("Boxes Coordinates:", boxes);
-    if (mode === 'auto') console.log("Auto Targets:", autoOptions);
-    
-    setTimeout(() => {
-      alert("Redaction Logic connected! Ready for Backend.");
-      setIsProcessing(false);
-    }, 2000);
+    try {
+      // 1. PDF ko pehle Vercel par secure upload karo
+      const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
+      
+      // 2. Boxes ki location (Coordinates) backend ke format mein set karo
+      const formattedBoxes = boxes.map(b => ({
+        x: parseInt(b.x),
+        y: parseInt(b.y),
+        width: parseInt(b.width),
+        height: parseInt(b.height),
+        pageIndex: pageNumber - 1 // Backend page counting 0 se shuru karta hai
+      }));
+
+      // 3. Backend ko Request bhejo
+      const response = await fetch('/api/master-convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'redact-pdf',
+          fileUrl: blob.url,
+          mode: mode,
+          boxes: formattedBoxes
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.downloadUrl) {
+        // 4. Success! Censor ki hui (Blackout) PDF automatically download ho jayegi
+        window.location.href = data.downloadUrl;
+      } else {
+        alert("Error: " + (data.error || "Failed to redact document."));
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Server connection failed!");
+    }
+    setIsProcessing(false);
   };
 
   return (
