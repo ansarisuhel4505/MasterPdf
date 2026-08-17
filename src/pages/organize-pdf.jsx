@@ -10,7 +10,7 @@ import {
   Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus
 } from 'lucide-react';
 
-// Dynamic Import (Zaroori hai Next.js ke liye)
+// SSR (Server Side Rendering) को ब्लॉक करना बहुत जरूरी है
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
@@ -24,10 +24,9 @@ export default function OrganizePdf() {
   const [renderError, setRenderError] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]); 
 
-  // 🛑 FINAL 100% FIX: cdnjs को हटा कर unpkg का इस्तेमाल किया
+  // 🛑 FINAL 100% FIX: वर्कर यूआरएल के आगे `?v=2` लगा दिया है ताकि ब्राउज़र पुराना कैश छोड़कर नया डाउनलोड करे
   useEffect(() => {
-    // react-pdf@9.1.0 सही वर्जन 4.4.168 यूज़ करता है
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js';
+    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js?v=2';
   }, []);
 
   const pushHistory = (newPages) => {
@@ -95,7 +94,6 @@ export default function OrganizePdf() {
     e.preventDefault();
     const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
     if (dragIndex === dropIndex) return;
-
     const newPages = [...pages];
     const [draggedItem] = newPages.splice(dragIndex, 1);
     newPages.splice(dropIndex, 0, draggedItem);
@@ -146,12 +144,10 @@ export default function OrganizePdf() {
   const extractSelected = async () => {
     const selectedSourceIndices = pages.filter(p => p.selected && p.type === 'source').map(p => p.sourceIndex);
     if (selectedSourceIndices.length === 0) return alert("Select original source pages to extract.");
-
     try {
       const newPdf = await PDFDocument.create();
       const copiedPages = await newPdf.copyPages(pdfDoc, selectedSourceIndices);
       copiedPages.forEach(page => newPdf.addPage(page));
-
       const pdfBytes = await newPdf.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
@@ -175,17 +171,14 @@ export default function OrganizePdf() {
   const handleInsertFile = async (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
-
     try {
       const arrayBuffer = await selectedFile.arrayBuffer();
       let pagesToInsert = [];
-      
       if (selectedFile.type === 'application/pdf') {
         const insertPdf = await PDFDocument.load(arrayBuffer);
         const totalInsertPages = insertPdf.getPageCount();
         const uniqueId = `upload-${Date.now()}`;
         setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'pdf' }]);
-
         for (let i = 0; i < totalInsertPages; i++) {
           pagesToInsert.push({ 
             id: `${uniqueId}-${i}`, 
@@ -196,29 +189,19 @@ export default function OrganizePdf() {
             selected: false 
           });
         }
-      } 
-      else if (selectedFile.type === 'image/png' || selectedFile.type === 'image/jpeg') {
+      } else if (selectedFile.type === 'image/png' || selectedFile.type === 'image/jpeg') {
         const uniqueId = `upload-${Date.now()}`;
         setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'image', mimeType: selectedFile.type }]);
-        pagesToInsert.push({ 
-          id: uniqueId, 
-          type: 'upload', 
-          uploadId: uniqueId, 
-          uploadPageIndex: 0, 
-          rotation: 0, 
-          selected: false 
-        });
+        pagesToInsert.push({ id: uniqueId, type: 'upload', uploadId: uniqueId, uploadPageIndex: 0, rotation: 0, selected: false });
       } else {
         alert("Only PDF, JPG, or PNG files can be inserted.");
         return;
       }
-
       const newPages = [...pages];
       const lastSelectedIndex = newPages.map((p, i) => p.selected ? i : -1).reduce((max, curr) => Math.max(max, curr), -1);
       const insertIndex = lastSelectedIndex !== -1 ? lastSelectedIndex + 1 : newPages.length;
       newPages.splice(insertIndex, 0, ...pagesToInsert);
       pushHistory(newPages);
-
     } catch (error) {
       console.error("Insert Error:", error);
       alert("Failed to insert file.");
@@ -243,47 +226,36 @@ export default function OrganizePdf() {
       alert("Please upload a primary PDF to organize.");
       return;
     }
-
     setIsProcessing(true);
     try {
       const newPdf = await PDFDocument.create();
-      
       for (let i = 0; i < pages.length; i++) {
         const pageData = pages[i];
-
         if (pageData.type === 'source') {
           const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageData.sourceIndex]);
           copiedPage.setRotation(pageData.rotation);
           newPdf.addPage(copiedPage);
-        } 
-        else if (pageData.type === 'blank') {
+        } else if (pageData.type === 'blank') {
           const blankPage = newPdf.addPage([595.28, 841.89]); 
           blankPage.setRotation(pageData.rotation);
-        } 
-        else if (pageData.type === 'upload') {
+        } else if (pageData.type === 'upload') {
           const uploaded = uploadedFiles.find(f => f.id === pageData.uploadId);
           if (!uploaded) continue;
-
           if (uploaded.type === 'pdf') {
             const insertPdf = await PDFDocument.load(uploaded.bytes);
             const [copiedPage] = await newPdf.copyPages(insertPdf, [pageData.uploadPageIndex]);
             copiedPage.setRotation(pageData.rotation);
             newPdf.addPage(copiedPage);
-          } 
-          else if (uploaded.type === 'image') {
+          } else if (uploaded.type === 'image') {
             let image;
-            if (uploaded.mimeType === 'image/png') {
-              image = await newPdf.embedPng(uploaded.bytes);
-            } else {
-              image = await newPdf.embedJpg(uploaded.bytes);
-            }
+            if (uploaded.mimeType === 'image/png') image = await newPdf.embedPng(uploaded.bytes);
+            else image = await newPdf.embedJpg(uploaded.bytes);
             const page = newPdf.addPage([image.width, image.height]);
             page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
             page.setRotation(pageData.rotation);
           }
         }
       }
-
       const pdfBytes = await newPdf.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
@@ -300,17 +272,12 @@ export default function OrganizePdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head>
-        <title>Organize PDF Pages - MasterPdf</title>
-      </Head>
+      <Head><title>Organize PDF Pages - MasterPdf</title></Head>
       <Navbar />
-
       <main className="flex-grow flex flex-col items-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Organize PDF</h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Drag to reorder, delete, rotate, extract, or insert images/PDFs as new pages.
-          </p>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">Drag to reorder, delete, rotate, extract, or insert images/PDFs as new pages.</p>
         </div>
 
         <div className="w-full max-w-6xl bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
@@ -334,53 +301,27 @@ export default function OrganizePdf() {
                   <span className="text-sm font-semibold text-gray-700">{pages.length} Pages</span>
                   <span className="text-xs text-gray-500">({pages.filter(p => p.selected).length} selected)</span>
                 </div>
-                <button onClick={undo} disabled={history.length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 text-sm text-gray-600">
-                  <Undo2 size={18} /> Undo
-                </button>
-                <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
+                <button onClick={undo} disabled={history.length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 text-sm text-gray-600"><Undo2 size={18} /> Undo</button>
                 <button onClick={selectAll} className="text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">Select All</button>
                 <button onClick={deselectAll} className="text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">Deselect</button>
-                <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
-                <button onClick={deleteSelected} disabled={pages.filter(p => p.selected).length === 0} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed" title="Delete Selected">
-                  <Trash2 size={18} />
-                </button>
-                <button onClick={() => rotateSelected(-90)} disabled={pages.filter(p => p.selected).length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600" title="Rotate Left 90°">
-                  <RotateCcw size={18} />
-                </button>
-                <button onClick={() => rotateSelected(90)} disabled={pages.filter(p => p.selected).length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600" title="Rotate Right 90°">
-                  <RotateCw size={18} />
-                </button>
-                <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
-                <button onClick={extractSelected} disabled={pages.filter(p => p.selected && p.type === 'source').length === 0} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600">
-                  <FileOutput size={18} /> Extract
-                </button>
+                <button onClick={deleteSelected} disabled={pages.filter(p => p.selected).length === 0} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 size={18} /></button>
+                <button onClick={() => rotateSelected(-90)} disabled={pages.filter(p => p.selected).length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600"><RotateCcw size={18} /></button>
+                <button onClick={() => rotateSelected(90)} disabled={pages.filter(p => p.selected).length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600"><RotateCw size={18} /></button>
+                <button onClick={extractSelected} disabled={pages.filter(p => p.selected && p.type === 'source').length === 0} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600"><FileOutput size={18} /> Extract</button>
                 <div className="relative">
                    <input type="file" id="insert-upload" accept=".pdf,.jpg,.jpeg,.png" onChange={handleInsertFile} className="hidden" />
-                   <label htmlFor="insert-upload" className="flex items-center gap-1 text-sm cursor-pointer hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">
-                     <FilePlus size={18} /> Insert File
-                   </label>
+                   <label htmlFor="insert-upload" className="flex items-center gap-1 text-sm cursor-pointer hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600"><FilePlus size={18} /> Insert File</label>
                 </div>
-                <button onClick={insertBlankPage} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">
-                  <Layers size={18} /> Insert Blank
-                </button>
-                <button onClick={reverseOrder} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">
-                  <ArrowUp size={16} className="rotate-180" /><ArrowDown size={16} /> Reverse
-                </button>
+                <button onClick={insertBlankPage} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600"><Layers size={18} /> Insert Blank</button>
+                <button onClick={reverseOrder} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600"><ArrowUp size={16} className="rotate-180" /><ArrowDown size={16} /> Reverse</button>
               </div>
 
               <div className="p-6 bg-white max-h-[65vh] overflow-y-auto custom-scrollbar">
-                {/* अगर PDF लोड नहीं हुआ, तो बैकअप टेक्स्ट मोड में ही "Refresh" विकल्प दिया है */}
                 {renderError ? (
                   <div className="w-full">
                     <div className="flex flex-col gap-2">
                       {pages.map((pageData, index) => (
-                        <div 
-                          key={index}
-                          onClick={(e) => handlePageClick(index, e)}
-                          className={`flex items-center justify-between px-4 py-3 border-2 rounded-lg cursor-pointer transition-all bg-white ${
-                            pageData.selected ? 'border-[#E5322D] bg-red-50' : 'border-gray-300 hover:border-gray-400'
-                          }`}
-                        >
+                        <div key={index} onClick={(e) => handlePageClick(index, e)} className={`flex items-center justify-between px-4 py-3 border-2 rounded-lg cursor-pointer transition-all bg-white ${pageData.selected ? 'border-[#E5322D] bg-red-50' : 'border-gray-300 hover:border-gray-400'}`}>
                           <div className="flex items-center gap-3">
                             <span className="font-bold text-sm text-gray-700">Page {index + 1}</span>
                             {pageData.type === 'blank' && <span className="text-xs text-gray-400 border px-2 py-0.5 rounded-full">Blank</span>}
@@ -392,8 +333,8 @@ export default function OrganizePdf() {
                           </div>
                         </div>
                       ))}
-                      <div className="mt-4 text-center text-xs text-gray-500">
-                        Thumbnails failed to load. Please <strong>refresh the page</strong> to retry.
+                      <div className="mt-4 text-center text-xs font-medium text-gray-600">
+                        Thumbnails failed to load. Please <span className="font-bold text-[#E5322D] cursor-pointer underline" onClick={() => window.location.reload()}>Refresh the page</span> to retry.
                       </div>
                     </div>
                   </div>
@@ -413,9 +354,7 @@ export default function OrganizePdf() {
                           onDragOver={onDragOver}
                           onDrop={(e) => onDrop(e, index)}
                           onClick={(e) => handlePageClick(index, e)}
-                          className={`relative group flex flex-col items-center rounded-lg p-2 transition-all cursor-pointer border-2 ${
-                            pageData.selected ? 'border-[#E5322D] bg-red-50 ring-2 ring-red-100' : 'border-transparent hover:border-gray-300 hover:bg-gray-50'
-                          }`}
+                          className={`relative group flex flex-col items-center rounded-lg p-2 transition-all cursor-pointer border-2 ${pageData.selected ? 'border-[#E5322D] bg-red-50 ring-2 ring-red-100' : 'border-transparent hover:border-gray-300 hover:bg-gray-50'}`}
                         >
                           <div className="shadow-sm rounded bg-gray-50 overflow-hidden flex items-center justify-center w-full h-auto min-h-[140px] border border-gray-100">
                             {pageData.type === 'source' && (
@@ -447,22 +386,11 @@ export default function OrganizePdf() {
               </div>
 
               <div className="border-t border-gray-200 p-6 bg-gray-50 flex justify-end">
-                <button 
-                  onClick={processPdf}
-                  disabled={isProcessing}
-                  className="w-full md:w-auto flex items-center justify-center gap-2 px-12 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  {isProcessing ? (
-                    <><Settings className="animate-spin" size={24} /> Generating Organized PDF...</>
-                  ) : (
-                    <>Download Organized PDF <ChevronDown size={24} className="rotate-[-90deg]" /></>
-                  )}
+                <button onClick={processPdf} disabled={isProcessing} className="w-full md:w-auto flex items-center justify-center gap-2 px-12 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed">
+                  {isProcessing ? <><Settings className="animate-spin" size={24} /> Generating Organized PDF...</> : <>Download Organized PDF <ChevronDown size={24} className="rotate-[-90deg]" /></>}
                 </button>
               </div>
-
-              <button onClick={removeFile} className="absolute top-16 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm hover:shadow-md transition z-20">
-                <X size={20} />
-              </button>
+              <button onClick={removeFile} className="absolute top-16 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm hover:shadow-md transition z-20"><X size={20} /></button>
             </div>
           )}
         </div>
