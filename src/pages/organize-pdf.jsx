@@ -1,29 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument } from 'pdf-lib';
 import { Document, Page, pdfjs } from 'react-pdf';
-// 🚀 PRO FIX: अपने प्रोजेक्ट में इंस्टॉल हुए pdfjs-dist के वर्कर को सीधे इंपोर्ट करें
-import worker from 'pdfjs-dist/build/pdf.worker.mjs';
 import { 
   UploadCloud, Trash2, ArrowUp, ArrowDown, RotateCcw, RotateCw, 
-  Layers, FileOutput, Undo2, X, Settings, ChevronDown
+  Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus
 } from 'lucide-react';
 
-// Worker को सेट करें (इससे CORS और Browser Blocking बिल्कुल खत्म हो जाएगा)
-pdfjs.GlobalWorkerOptions.workerSrc = worker;
-
+// 🛑 FIX: Vercel Build Error (Server-Side Worker को ब्लॉक करने के लिए)
+// यह सिर्फ क्लाइंट-साइड पर चलेगा, इसलिए Vercel पर Deploy फेल नहीं होगा
 export default function OrganizePdf() {
   const [file, setFile] = useState(null);
-  const [pages, setPages] = useState([]); // [{originalIndex, rotation(0,90,180,270), selected}]
+  const [pages, setPages] = useState([]); 
   const [pdfDoc, setPdfDoc] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [renderError, setRenderError] = useState(false); // Preview load hone par error handle karega
+  const [renderError, setRenderError] = useState(false);
+  
+  // ⭐ नया स्टेट: डाले गए फाइल्स (PDF/Images) को स्टोर करने के लिए
+  const [uploadedFiles, setUploadedFiles] = useState([]); 
 
-  // Undo को ट्रैक करने के लिए (Max 20 steps)
+  // 🛠️ Vercel/Client Fix: Worker को CDN से सिर्फ ब्राउज़र पर लोड करें
+  useEffect(() => {
+    pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+  }, []);
+
+  // Undo को ट्रैक करने के लिए
   const pushHistory = (newPages) => {
     setHistory(prev => [prev, pages].slice(-20));
     setPages(newPages);
@@ -36,7 +41,7 @@ export default function OrganizePdf() {
     setPages(lastState);
   };
 
-  // फाइल अपलोड हैंडलर
+  // Main PDF फाइल अपलोड
   const handleFileChange = async (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile || selectedFile.type !== 'application/pdf') {
@@ -48,7 +53,8 @@ export default function OrganizePdf() {
     setPages([]);
     setPdfDoc(null);
     setHistory([]);
-    setRenderError(false); // Reset error state
+    setUploadedFiles([]); // पुरानी इमेज/PDF रीसेट करें
+    setRenderError(false);
 
     try {
       const arrayBuffer = await selectedFile.arrayBuffer();
@@ -56,8 +62,11 @@ export default function OrganizePdf() {
       setPdfDoc(loadedPdf);
       
       const totalPages = loadedPdf.getPageCount();
+      // नया स्ट्रक्चर: type 'source' main PDF है, 'blank' खाली पेज है, 'upload' बाहर से डाला गया है
       const initialPages = Array.from({ length: totalPages }, (_, i) => ({
-        originalIndex: i,
+        id: `src-${i}`,
+        type: 'source',
+        sourceIndex: i,
         rotation: 0,
         selected: false,
       }));
@@ -75,10 +84,11 @@ export default function OrganizePdf() {
     setPages([]);
     setPdfDoc(null);
     setHistory([]);
+    setUploadedFiles([]);
     setRenderError(false);
   };
 
-  // === DRAG & DROP (Desktop) ===
+  // === DRAG & DROP ===
   const onDragStart = (e, index) => {
     e.dataTransfer.setData('text/plain', index.toString());
   };
@@ -97,10 +107,10 @@ export default function OrganizePdf() {
   // === SELECTION LOGIC ===
   const handlePageClick = (index, event) => {
     const newPages = [...pages];
-    if (event.ctrlKey || event.metaKey) { // Toggle selection
+    if (event.ctrlKey || event.metaKey) {
       newPages[index].selected = !newPages[index].selected;
       setPages(newPages);
-    } else if (event.shiftKey) { // Range selection
+    } else if (event.shiftKey) {
       const lastSelected = newPages.findIndex(p => p.selected);
       if (lastSelected !== -1) {
         const start = Math.min(lastSelected, index);
@@ -112,14 +122,14 @@ export default function OrganizePdf() {
         newPages[index].selected = true;
         setPages(newPages);
       }
-    } else { // Single select
+    } else {
       setPages(newPages.map(p => ({ ...p, selected: false })));
       newPages[index].selected = true;
       setPages(newPages);
     }
   };
 
-  // === TOOLBAR ACTION FUNCTIONS ===
+  // === TOOLBAR ACTIONS ===
   const selectAll = () => setPages(pages.map(p => ({ ...p, selected: true })));
   const deselectAll = () => setPages(pages.map(p => ({ ...p, selected: false })));
 
@@ -138,12 +148,12 @@ export default function OrganizePdf() {
   };
 
   const extractSelected = async () => {
-    const selectedOriginalIndices = pages.filter(p => p.selected).map(p => p.originalIndex);
-    if (selectedOriginalIndices.length === 0) return alert("Select pages to extract.");
+    const selectedSourceIndices = pages.filter(p => p.selected && p.type === 'source').map(p => p.sourceIndex);
+    if (selectedSourceIndices.length === 0) return alert("Select original source pages to extract.");
 
     try {
       const newPdf = await PDFDocument.create();
-      const copiedPages = await newPdf.copyPages(pdfDoc, selectedOriginalIndices);
+      const copiedPages = await newPdf.copyPages(pdfDoc, selectedSourceIndices);
       copiedPages.forEach(page => newPdf.addPage(page));
 
       const pdfBytes = await newPdf.save();
@@ -158,13 +168,12 @@ export default function OrganizePdf() {
     }
   };
 
-  // Insert Blank Page सही लोकेशन पर (अगर पेज सेलेक्टेड है तो उसके बाद, वरना अंत में)
   const insertBlankPage = () => {
     const newPages = [...pages];
     const lastSelectedIndex = newPages.map((p, i) => p.selected ? i : -1).reduce((max, curr) => Math.max(max, curr), -1);
     const insertIndex = lastSelectedIndex !== -1 ? lastSelectedIndex + 1 : newPages.length;
     
-    newPages.splice(insertIndex, 0, { originalIndex: -1, rotation: 0, selected: false });
+    newPages.splice(insertIndex, 0, { id: `blank-${Date()}`, type: 'blank', rotation: 0, selected: false });
     pushHistory(newPages);
   };
 
@@ -173,7 +182,67 @@ export default function OrganizePdf() {
     pushHistory(newPages);
   };
 
-  // Mobile में Move Up/Down
+  // 🔥 **PRO FEATURE: बाहर से PDF या IMAGE डालना** 🔥
+  const handleInsertFile = async (e) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+
+    try {
+      const arrayBuffer = await selectedFile.arrayBuffer();
+      let pagesToInsert = [];
+
+      // 1. अगर फाइल PDF है
+      if (selectedFile.type === 'application/pdf') {
+        const insertPdf = await PDFDocument.load(arrayBuffer);
+        const totalInsertPages = insertPdf.getPageCount();
+        
+        // PDF को अपने `uploadedFiles` में सेव करें (बाद में इसे फाइनल PDF में मर्ज करने के लिए)
+        const uniqueId = `upload-${Date.now()}`;
+        setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'pdf' }]);
+
+        for (let i = 0; i < totalInsertPages; i++) {
+          pagesToInsert.push({ 
+            id: `${uniqueId}-${i}`, 
+            type: 'upload', 
+            uploadId: uniqueId, 
+            uploadPageIndex: i, 
+            rotation: 0, 
+            selected: false 
+          });
+        }
+      } 
+      // 2. अगर फाइल IMAGE (JPG/PNG) है
+      else if (selectedFile.type === 'image/png' || selectedFile.type === 'image/jpeg') {
+        const uniqueId = `upload-${Date.now()}`;
+        setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'image', mimeType: selectedFile.type }]);
+        
+        pagesToInsert.push({ 
+          id: uniqueId, 
+          type: 'upload', 
+          uploadId: uniqueId, 
+          uploadPageIndex: 0, 
+          rotation: 0, 
+          selected: false 
+        });
+      } else {
+        alert("Only PDF, JPG, or PNG files can be inserted.");
+        return;
+      }
+
+      // 3. इन नए पेजों को मौजूदा पेजों के बीच इन्सर्ट करना (अगर कोई पेज सेलेक्ट है, तो उसके बाद)
+      const newPages = [...pages];
+      const lastSelectedIndex = newPages.map((p, i) => p.selected ? i : -1).reduce((max, curr) => Math.max(max, curr), -1);
+      const insertIndex = lastSelectedIndex !== -1 ? lastSelectedIndex + 1 : newPages.length;
+      
+      newPages.splice(insertIndex, 0, ...pagesToInsert);
+      pushHistory(newPages);
+
+    } catch (error) {
+      console.error("Insert Error:", error);
+      alert("Failed to insert file. File might be corrupted.");
+    }
+  };
+
   const movePage = (index, direction) => {
     const newPages = [...pages];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -182,24 +251,55 @@ export default function OrganizePdf() {
     pushHistory(newPages);
   };
 
-  // === FINAL DOWNLOAD HANDLER ===
+  // === FINAL DOWNLOAD HANDLER (Now supports inserted Images/PDFs) ===
   const processPdf = async () => {
-    if (!pdfDoc || pages.length === 0) return;
-    setIsProcessing(true);
+    if (!pdfDoc && pages.every(p => p.type !== 'source')) {
+      alert("Please upload a primary PDF to organize.");
+      return;
+    }
 
+    setIsProcessing(true);
     try {
       const newPdf = await PDFDocument.create();
       
       for (let i = 0; i < pages.length; i++) {
         const pageData = pages[i];
-        if (pageData.originalIndex === -1) {
-          // Insert Blank Page (A4 Size)
-          const blankPage = newPdf.addPage([595.28, 841.89]); 
-          blankPage.setRotation(pageData.rotation);
-        } else {
-          const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageData.originalIndex]);
+
+        if (pageData.type === 'source') {
+          // मुख्य PDF के पेज कॉपी करें
+          const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageData.sourceIndex]);
           copiedPage.setRotation(pageData.rotation);
           newPdf.addPage(copiedPage);
+        } 
+        else if (pageData.type === 'blank') {
+          // खाली पेज (A4)
+          const blankPage = newPdf.addPage([595.28, 841.89]); 
+          blankPage.setRotation(pageData.rotation);
+        } 
+        else if (pageData.type === 'upload') {
+          // यूज़र द्वारा अपलोड की गई फाइल लाएं
+          const uploaded = uploadedFiles.find(f => f.id === pageData.uploadId);
+          if (!uploaded) continue;
+
+          if (uploaded.type === 'pdf') {
+            const insertPdf = await PDFDocument.load(uploaded.bytes);
+            // उस PDF का वो स्पेसिफिक पेज कॉपी करें
+            const [copiedPage] = await newPdf.copyPages(insertPdf, [pageData.uploadPageIndex]);
+            copiedPage.setRotation(pageData.rotation);
+            newPdf.addPage(copiedPage);
+          } 
+          else if (uploaded.type === 'image') {
+            // इमेज को एक नए पेज पर ड्रॉ करें
+            let image;
+            if (uploaded.mimeType === 'image/png') {
+              image = await newPdf.embedPng(uploaded.bytes);
+            } else {
+              image = await newPdf.embedJpg(uploaded.bytes);
+            }
+            const page = newPdf.addPage([image.width, image.height]);
+            page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+            page.setRotation(pageData.rotation);
+          }
         }
       }
 
@@ -228,14 +328,13 @@ export default function OrganizePdf() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Organize PDF</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Drag to reorder, select to delete, rotate, or extract individual pages from your document.
+            Drag to reorder, delete, rotate, extract, or insert images/PDFs as new pages.
           </p>
         </div>
 
         <div className="w-full max-w-6xl bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
           
           {!file ? (
-            // UPLOAD ZONE
             <div className="min-h-[450px] flex flex-col items-center justify-center p-10 bg-gray-50/50 transition-colors">
               <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
               <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1 border-4 border-dashed border-red-200/50 hover:border-red-100">
@@ -244,13 +343,11 @@ export default function OrganizePdf() {
               <p className="mt-4 text-gray-400 text-sm">or drop your PDF file here</p>
             </div>
           ) : isLoading ? (
-            // LOADING STATE
             <div className="min-h-[450px] flex flex-col items-center justify-center bg-gray-50">
               <Settings size={48} className="animate-spin text-[#E5322D] mb-4" />
               <p className="text-gray-600 font-medium">Analyzing and loading pages...</p>
             </div>
           ) : (
-            // EDITOR WORKSPACE
             <div className="flex flex-col h-full relative">
               
               {/* Toolbar */}
@@ -284,9 +381,18 @@ export default function OrganizePdf() {
 
                 <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
 
-                <button onClick={extractSelected} disabled={pages.filter(p => p.selected).length === 0} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600">
+                <button onClick={extractSelected} disabled={pages.filter(p => p.selected && p.type === 'source').length === 0} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600">
                   <FileOutput size={18} /> Extract
                 </button>
+                
+                {/* ⭐ NEW: Insert Button */}
+                <div className="relative">
+                   <input type="file" id="insert-upload" accept=".pdf,.jpg,.jpeg,.png" onChange={handleInsertFile} className="hidden" />
+                   <label htmlFor="insert-upload" className="flex items-center gap-1 text-sm cursor-pointer hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">
+                     <FilePlus size={18} /> Insert File
+                   </label>
+                </div>
+
                 <button onClick={insertBlankPage} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">
                   <Layers size={18} /> Insert Blank
                 </button>
@@ -295,39 +401,30 @@ export default function OrganizePdf() {
                 </button>
               </div>
 
-              {/* 🛑 FIXED: Thumbnail Grid with Worker and Error Handling */}
+              {/* Thumbnail Grid */}
               <div className="p-6 bg-white max-h-[65vh] overflow-y-auto custom-scrollbar">
                 {renderError ? (
-                  // Error State - अगर react-pdf प्रीव्यू लोड करने में फेल हो जाता है
                   <div className="col-span-full text-center py-10 text-red-600">
                     <div className="bg-red-50 p-6 rounded-xl border border-red-200 inline-block">
                       <p className="font-bold text-lg mb-2">⚠️ Preview Failed</p>
                       <p className="text-sm text-gray-700 max-w-md">
-                        We couldn't render the visual thumbnails due to a browser security block. 
-                        Don't worry! The tool is still fully functional. You can still <strong>use the hidden operations</strong> based on page numbers, or <strong>refresh the page</strong> to try again.
+                        We couldn't render the visual thumbnails. Don't worry! You can still <strong>use the tools</strong>. Refresh the page to try again.
                       </p>
                     </div>
                   </div>
                 ) : (
-                  // Rendering the actual PDF pages
                   <Document 
                     file={file} 
                     loading={<div className="col-span-full text-center py-10 text-gray-500">Loading page previews...</div>}
-                    onLoadError={(err) => {
-                      console.error("React-PDF Load Error:", err);
-                      setRenderError(true); // अगर लोड नहीं होता तो Error UI दिखाएं
-                    }}
-                    onSourceError={(err) => {
-                      console.error("Source Error:", err);
-                      setRenderError(true);
-                    }}
+                    onLoadError={(err) => { console.error("React-PDF Load Error:", err); setRenderError(true); }}
+                    onSourceError={(err) => { console.error("Source Error:", err); setRenderError(true); }}
                   >
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
                       {pages.map((pageData, index) => (
                         <div 
                           key={index} 
-                          draggable={true}
-                          onDragStart={(e) => onDragStart(e, index)}
+                          draggable={pageData.type === 'source'}
+                          onDragStart={(e) => pageData.type === 'source' && onDragStart(e, index)}
                           onDragOver={onDragOver}
                           onDrop={(e) => onDrop(e, index)}
                           onClick={(e) => handlePageClick(index, e)}
@@ -335,23 +432,26 @@ export default function OrganizePdf() {
                             pageData.selected ? 'border-[#E5322D] bg-red-50 ring-2 ring-red-100' : 'border-transparent hover:border-gray-300 hover:bg-gray-50'
                           }`}
                         >
-                          {/* Page Render */}
                           <div className="shadow-sm rounded bg-gray-50 overflow-hidden flex items-center justify-center w-full h-auto min-h-[140px] border border-gray-100">
-                            <Page 
-                              pageNumber={pageData.originalIndex + 1} 
-                              width={140} 
-                              renderTextLayer={false} 
-                              renderAnnotationLayer={false}
-                              scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.8 : 1} 
-                            />
+                            {/* सिर्फ Source वाले पेज रेंडर होंगे */}
+                            {pageData.type === 'source' && (
+                              <Page 
+                                pageNumber={pageData.sourceIndex + 1} 
+                                width={140} 
+                                renderTextLayer={false} 
+                                renderAnnotationLayer={false}
+                                scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.8 : 1} 
+                              />
+                            )}
+                            {/* Blank और Inserted वालों के लिए प्लेसहोल्डर */}
+                            {pageData.type === 'blank' && <div className="text-gray-400 text-xs">Blank Page</div>}
+                            {pageData.type === 'upload' && <div className="text-gray-400 text-xs flex flex-col items-center"><FilePlus size={30} className="mb-2"/> Inserted</div>}
                           </div>
 
-                          {/* Page Number Overlay */}
                           <div className="absolute bottom-8 left-0 right-0 text-center text-xs font-mono bg-black/60 text-white w-fit mx-auto px-3 py-0.5 rounded-full">
-                            {pageData.originalIndex + 1}
+                            {index + 1}
                           </div>
 
-                          {/* Mobile Only: Quick Move arrows */}
                           {pageData.selected && (
                             <div className="md:hidden absolute -top-3 flex gap-2 bg-white shadow-md border rounded-full p-1 px-2 z-20">
                                <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowUp size={14} /></button>
@@ -365,7 +465,6 @@ export default function OrganizePdf() {
                 )}
               </div>
 
-              {/* Download Action Footer */}
               <div className="border-t border-gray-200 p-6 bg-gray-50 flex justify-end">
                 <button 
                   onClick={processPdf}
@@ -380,19 +479,13 @@ export default function OrganizePdf() {
                 </button>
               </div>
 
-              {/* Small Remove File Button (Top Right) */}
-              <button 
-                onClick={removeFile}
-                className="absolute top-16 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm hover:shadow-md transition z-20"
-              >
+              <button onClick={removeFile} className="absolute top-16 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm hover:shadow-md transition z-20">
                 <X size={20} />
               </button>
-
             </div>
           )}
         </div>
       </main>
-
       <Footer />
     </div>
   );
