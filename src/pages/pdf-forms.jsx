@@ -3,13 +3,13 @@ import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import dynamic from 'next/dynamic';
-import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { pdfjs } from 'react-pdf';
 import JSZip from 'jszip';
 import { 
   UploadCloud, FileText, X, CheckSquare, ArrowRight, Settings, 
-  Lock, Unlock, RefreshCw, Download, Layers, Signature, FileOutput,
-  Trash2, Calendar, Calculator, Upload, AlertTriangle
+  Lock, RefreshCw, Download, Layers, Signature, FileOutput,
+  Trash2, Upload, AlertTriangle, Sparkles  // 🛑 मिसिंग इंपोर्ट (Sparkles) यहाँ ऐड कर दिया गया है
 } from 'lucide-react';
 
 // 📄 Next.js SSR ब्लॉक करें
@@ -35,8 +35,6 @@ export default function PdfForms() {
   const [overlayMode, setOverlayMode] = useState('text'); // 'text' | 'signature'
   const [overlayText, setOverlayText] = useState('');
   const [overlayPage, setOverlayPage] = useState(1);
-  const [overlayX, setOverlayX] = useState(50);
-  const [overlayY, setOverlayY] = useState(50);
   const [overlayColor, setOverlayColor] = useState('#000000');
   const [overlaySize, setOverlaySize] = useState(20);
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
@@ -48,15 +46,10 @@ export default function PdfForms() {
   const [validateRequired, setValidateRequired] = useState(false);
   const [metadataAuthor, setMetadataAuthor] = useState('');
   const [metadataTitle, setMetadataTitle] = useState('');
-  const [calculationField, setCalculationField] = useState('');
 
   // ========== BATCH PROCESSING ==========
   const [csvFile, setCsvFile] = useState(null);
   const [csvData, setCsvData] = useState([]);
-  const [csvHeaders, setCsvHeaders] = useState([]);
-
-  // ========== EXPORT DATA ==========
-  const [exportedJson, setExportedJson] = useState(null);
 
   // 🛡️ Setup Worker
   useEffect(() => {
@@ -117,7 +110,6 @@ export default function PdfForms() {
     setFormData({});
     setCsvData([]);
     setSignatureDataUrl(null);
-    setExportedJson(null);
   };
 
   // ================== 2. FILL MODE HANDLERS ==================
@@ -164,10 +156,9 @@ export default function PdfForms() {
       const rows = lines.slice(1).map(line => {
         const values = line.split(',').map(v => v.trim());
         const obj = {};
-        headers.forEach((h, i) => obj[h] = values[i] || '');
+        headers.forEach((h, i) => obj[h] = values[i] || '';
         return obj;
       });
-      setCsvHeaders(headers);
       setCsvData(rows);
     };
     reader.readAsText(file);
@@ -222,8 +213,8 @@ export default function PdfForms() {
 
         if (overlayMode === 'text' && overlayText.trim()) {
           page.drawText(overlayText, {
-            x: (width / 100) * overlayX,
-            y: (height / 100) * overlayY,
+            x: width * 0.1, // Left align
+            y: height * 0.5, // Middle vertically
             size: overlaySize,
             font: font,
             color: { r: parseInt(overlayColor.slice(1,3),16)/255, g: parseInt(overlayColor.slice(3,5),16)/255, b: parseInt(overlayColor.slice(5,7),16)/255 },
@@ -232,8 +223,8 @@ export default function PdfForms() {
         else if (overlayMode === 'signature' && signatureDataUrl) {
           const pngImage = await baseDoc.embedPng(signatureDataUrl.split(',')[1]);
           page.drawImage(pngImage, {
-            x: (width / 100) * overlayX,
-            y: (height / 100) * overlayY,
+            x: width * 0.1,
+            y: height * 0.5,
             width: 150, // Fixed signature size
             height: 75,
           });
@@ -460,7 +451,7 @@ export default function PdfForms() {
                         <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                           <span>Place on Page: </span>
                           <input type="number" min="1" max={totalPages} value={overlayPage} onChange={(e) => setOverlayPage(parseInt(e.target.value))} className="w-16 bg-white border border-gray-300 text-gray-800 rounded p-1 text-center focus:ring-2 focus:ring-[#E5322D] outline-none" />
-                          <span className="text-xs text-gray-500">| X,Y Position default is top-left</span>
+                          <span className="text-xs text-gray-500">| X,Y default is centered</span>
                         </div>
                       </div>
                     </div>
