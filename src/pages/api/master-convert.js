@@ -83,22 +83,28 @@ export default async function handler(req, res) {
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     else if (action === 'ocr-pdf') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     
-    // 🔥 FIX: SMART HTML / CODE TO PDF (Preserves Formatting) 🔥
+    // 🔥 FIX: 5001 ERROR PROOF HTML/CODE TO PDF (Preserves Formatting) 🔥
     else if (action === 'html-to-pdf') {
       if (fileUrl.startsWith('http')) {
-        // Normal Website Link
+        // Normal live website link ke liye 'web' engine chalega
         result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
       } else {
-        // Raw Code - Escaping tags to show as plain text code
+        // Raw Code ko <pre> tag mein dalo taaki line-by-line formatting bachi rahe
         const escapedCode = fileUrl.replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const htmlWrapper = `
-          <!DOCTYPE html><html><body style="padding: 20px; font-family: monospace;">
+          <!DOCTYPE html><html><body style="padding: 20px; font-family: monospace; font-size: 14px;">
             <pre style="white-space: pre-wrap; word-wrap: break-word;">${escapedCode}</pre>
           </body></html>
         `;
-        const tempBlob = await put(`code-${Date.now()}.html`, htmlWrapper, { access: 'public', contentType: 'text/html' });
-        // Use 'web' to render the nicely wrapped code block
-        result = await convertapi.convert('pdf', { Url: tempBlob.url }, 'web');
+        
+        // Vercel par file save karo
+        const tempBlob = await put(`code-${Date.now()}.html`, htmlWrapper, { 
+          access: 'public', 
+          contentType: 'text/html' 
+        });
+
+        // 🔥 THE FIX: 'Url' ki jagah 'File' aur 'web' ki jagah 'html' engine use karo 🔥
+        result = await convertapi.convert('pdf', { File: tempBlob.url }, 'html');
       }
     }
 
