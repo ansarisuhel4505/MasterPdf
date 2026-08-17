@@ -4,39 +4,35 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { upload } from '@vercel/blob/client';
 import { 
-  UploadCloud, FileText, Image as ImageIcon, X, Settings, 
+  UploadCloud, FileText, X, Settings, 
   Sliders, PaintBucket, Lock, Unlock, Layers, Download, AlertTriangle
 } from 'lucide-react';
 
 export default function CompressPdf() {
-  // फाइल स्टेट
   const [file, setFile] = useState(null);
-  const [fileType, setFileType] = useState(''); // 'pdf', 'image'
+  const [fileType, setFileType] = useState(''); 
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [sizeWarning, setSizeWarning] = useState(false);
 
-  // कॉमन सेटिंग्स
+  // Common Settings
   const [quality, setQuality] = useState(60);
   const [colorMode, setColorMode] = useState('color');
   const [bgColor, setBgColor] = useState('#ffffff');
 
-  // इमेज (फोटो) स्पेसिफिक सेटिंग्स
+  // Image Specific Settings
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
   const [lockAspectRatio, setLockAspectRatio] = useState(true);
   const [fitToPage, setFitToPage] = useState(false);
   const [outputFormat, setOutputFormat] = useState('pdf');
 
-  // PDF स्पेसिफिक सेटिंग्स (बैकएंड को भेजी जाएंगी)
+  // PDF Specific Settings (Sent to Backend)
   const [removeMetadata, setRemoveMetadata] = useState(true);
   const [pageRange, setPageRange] = useState('');
   const [pdfBgColor, setPdfBgColor] = useState('#ffffff');
 
-  // ------------------------------------------------------------------------
-  // फाइल अपलोड और हैंडलिंग
-  // ------------------------------------------------------------------------
   const handleFileChange = (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
@@ -65,59 +61,35 @@ export default function CompressPdf() {
     setSizeWarning(false);
   };
 
-  // ------------------------------------------------------------------------
-  // क्वालिटी अलर्ट
-  // ------------------------------------------------------------------------
   const handleQualityChange = (val) => {
     setQuality(val);
     if (val < 30) setSizeWarning(true);
     else setSizeWarning(false);
   };
 
-  // ------------------------------------------------------------------------
-  // मेन प्रोसेसिंग लॉजिक
-  // ------------------------------------------------------------------------
   const processFile = async () => {
     if (!file) return;
     setIsProcessing(true);
 
     try {
-      // ==========================================
-      // 1. अगर अपलोड की गई फाइल PDF है (बैकएंड API को कॉल करें)
-      // ==========================================
+      // 1. PDF
       if (fileType === 'pdf') {
-        // फाइल को पहले Vercel Blob पर अपलोड करें
-        const blob = await upload(file.name, file, { 
-          access: 'public', 
-          handleUploadUrl: '/api/upload' 
-        });
-
-        // अपने Backend master-convert API को कॉल करें
+        const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
         const response = await fetch('/api/master-convert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             action: 'compress-pdf', 
             fileUrl: blob.url,
-            quality,
-            removeMetadata,
-            pageRange,
-            colorMode,
-            pdfBgColor // PDF का बैकग्राउंड रंग बैकएंड को भेजें
+            quality, removeMetadata, pageRange, colorMode, pdfBgColor
           }),
         });
-
         const data = await response.json();
-        if (response.ok && data.downloadUrl) {
-          window.location.href = data.downloadUrl; // सीधा डाउनलोड
-        } else {
-          alert("Compression Failed: " + (data.error || "Unknown error"));
-        }
+        if (response.ok && data.downloadUrl) window.location.href = data.downloadUrl;
+        else alert("Compression Failed: " + (data.error || "Unknown error"));
       } 
       
-      // ==========================================
-      // 2. अगर अपलोड की गई फाइल इमेज (फोटो) है (100% Client-Side Canvas)
-      // ==========================================
+      // 2. Image (Photo)
       else if (fileType === 'image') {
         const img = new Image();
         img.src = previewUrl;
@@ -129,7 +101,6 @@ export default function CompressPdf() {
         let targetWidth = width ? parseInt(width) : img.naturalWidth;
         let targetHeight = height ? parseInt(height) : img.naturalHeight;
 
-        // रेसाइज़ करने का लॉजिक (A4 फिट और लॉक रेशियो)
         if (fitToPage) {
           const A4Width = 792;
           const A4Height = 1122;
@@ -149,14 +120,10 @@ export default function CompressPdf() {
         canvas.width = targetWidth;
         canvas.height = targetHeight;
 
-        // बैकग्राउंड कलर ड्रॉ करें
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-        // इमेज ड्रॉ करें
         ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
-        // ग्रेस्केल (Black & White) लागू करें
         if (colorMode === 'grayscale') {
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const data = imageData.data;
@@ -170,24 +137,15 @@ export default function CompressPdf() {
         let finalBlob;
         let fileExtension = outputFormat;
 
-        // JPG या PNG में एक्सपोर्ट करें
         if (outputFormat === 'jpg' || outputFormat === 'png') {
           const mimeType = outputFormat === 'jpg' ? 'image/jpeg' : 'image/png';
           finalBlob = await new Promise(resolve => canvas.toBlob(resolve, mimeType, quality / 100));
-        } 
-        // PDF में एक्सपोर्ट करें (पीडीएफ बनाने के लिए आपको बैकएंड या pdf-lib क्लाइंट चाहिए। 
-        // टकराव से बचने के लिए हम इसे बैकएंड पर ही करेंगे) -> लेकिन अभी इसे पीडीएफ के रूप में कैसे डाउनलोड करें?
-        // क्लाइंट पर बैकएंड को बुलाए बिना पीडीएफ बनाना संभव नहीं है।
-        // इसलिए इमेज को क्लाइंट पर सिर्फ JPG/PNG में रीसाइज़ करें।
-        // अगर यूजर इमेज को PDF चाहता है, तो हम उन्हें बता देंगे कि बैकएंड इसका सपोर्ट करता है।
-        if (outputFormat === 'pdf') {
-           alert("For Image to PDF conversion, please use the 'PDF Tools > JPG to PDF' or backend API. Currently resizing as JPG.");
-           // Fallback to JPG
+        } else {
+           alert("Image to PDF conversion is handled securely via backend. Resizing as JPG.");
            finalBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality / 100));
            fileExtension = 'jpg';
         }
 
-        // डाउनलोड करें
         const link = document.createElement('a');
         link.href = URL.createObjectURL(finalBlob);
         link.download = `Resized_${file.name.split('.')[0]}.${fileExtension === 'pdf' ? 'pdf' : fileExtension}`;
@@ -226,7 +184,7 @@ export default function CompressPdf() {
           ) : (
             <div className="flex flex-col md:flex-row h-full relative p-6 gap-8">
               
-              {/* LEFT SIDE: File Preview */}
+              {/* Left Preview */}
               <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-xl p-6 min-h-[400px] relative">
                 <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition z-20"><X size={20} /></button>
                 <div className="w-full flex flex-col items-center justify-center h-full gap-4">
@@ -236,14 +194,14 @@ export default function CompressPdf() {
                     previewUrl && <img src={previewUrl} alt="Preview" className="max-h-[250px] max-w-full object-contain rounded shadow-sm border border-gray-200 bg-white" />
                   )}
                   <p className="text-sm font-bold text-gray-800 text-center break-words w-full px-4">{file.name}</p>
-                  <p className="text-xs text-gray-500 bg-white px-3 py-1 border rounded-full">
+                  <p className="text-xs text-gray-600 bg-white px-3 py-1 border rounded-full">
                     {(file.size / (1024 * 1024)).toFixed(2)} MB 
                     <span className="ml-2 font-semibold text-[#E5322D] uppercase">{file.type}</span>
                   </p>
                 </div>
               </div>
 
-              {/* RIGHT SIDE: Settings */}
+              {/* Right Settings (High Contrast Fix) */}
               <div className="w-full md:w-1/2 flex flex-col justify-between">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 mb-4 border-b pb-2 flex items-center gap-2">
@@ -251,10 +209,9 @@ export default function CompressPdf() {
                   </h3>
 
                   <div className="space-y-4">
-                    {/* Quality Slider */}
                     <div>
                       <div className="flex justify-between">
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Quality (%)</label>
+                        <label className="block text-sm font-semibold text-gray-800 mb-2">Quality (%)</label>
                         <span className="text-sm font-bold text-[#E5322D]">{quality}%</span>
                       </div>
                       <input 
@@ -263,63 +220,59 @@ export default function CompressPdf() {
                         className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#E5322D]"
                       />
                       {sizeWarning && (
-                         <div className="mt-2 flex items-center gap-2 text-xs text-orange-500 font-semibold bg-orange-50 p-1.5 rounded-md">
+                         <div className="mt-2 flex items-center gap-2 text-xs text-orange-600 font-semibold bg-orange-50 p-1.5 rounded-md">
                            <AlertTriangle size={14} /> Warning: Quality &lt; 30% results in ~100-200 KB size, but images/text will become blurry/pixelated.
                          </div>
                       )}
                     </div>
 
-                    {/* Advanced Settings Toggle */}
                     <button 
                       onClick={() => setShowAdvanced(!showAdvanced)}
-                      className="w-full bg-gray-50 border hover:bg-gray-100 text-gray-700 text-sm font-bold py-2 rounded-lg transition flex items-center justify-center gap-2"
+                      className="w-full bg-gray-50 border border-gray-300 hover:bg-gray-100 text-gray-800 font-bold py-2 rounded-lg transition flex items-center justify-center gap-2"
                     >
                       <Settings size={16} /> {showAdvanced ? 'Hide' : 'Show'} Advanced Settings
                     </button>
 
-                    {/* Pro Settings Panel */}
                     {showAdvanced && (
-                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 space-y-3 transition-all duration-300">
-                        
-                        {/* --- COMMON CONTROLS --- */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3 transition-all duration-300">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Color Mode</label>
-                            <select value={colorMode} onChange={(e) => setColorMode(e.target.value)} className="w-full bg-white border rounded-md p-2 text-sm">
+                            <label className="block text-sm font-semibold text-gray-800 mb-1">Color Mode</label>
+                            <select value={colorMode} onChange={(e) => setColorMode(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D]">
                               <option value="color">Full Color</option>
                               <option value="grayscale">Grayscale (B&W)</option>
                             </select>
                           </div>
                         </div>
 
-                        {/* --- IMAGE (PHOTO) SPECIFIC CONTROLS --- */}
+                        {/* IMAGE SETTINGS (High Contrast Enabled) */}
                         {fileType === 'image' && (
                           <div className="pt-3 border-t border-gray-200 space-y-3">
                             <div className="flex items-center gap-3">
-                              <label className="block text-xs font-semibold text-gray-600">Width (px)</label>
-                              <input type="number" value={width} onChange={(e) => setWidth(e.target.value)} placeholder="Auto" className="w-20 bg-white border rounded-md p-1.5 text-sm" />
-                              <label className="block text-xs font-semibold text-gray-600">Height (px)</label>
-                              <input type="number" value={height} onChange={(e) => setHeight(e.target.value)} placeholder="Auto" className="w-20 bg-white border rounded-md p-1.5 text-sm" />
+                              <label className="block text-sm font-semibold text-gray-800">Width (px)</label>
+                              <input type="number" value={width} onChange={(e) => setWidth(e.target.value)} placeholder="Auto" className="w-20 bg-white border border-gray-300 text-gray-800 rounded-md p-1.5 text-sm focus:ring-2 focus:ring-[#E5322D]" />
+                              <label className="block text-sm font-semibold text-gray-800">Height (px)</label>
+                              <input type="number" value={height} onChange={(e) => setHeight(e.target.value)} placeholder="Auto" className="w-20 bg-white border border-gray-300 text-gray-800 rounded-md p-1.5 text-sm focus:ring-2 focus:ring-[#E5322D]" />
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-3 text-xs">
-                              <label className="flex items-center gap-1 cursor-pointer">
-                                <input type="checkbox" checked={lockAspectRatio} onChange={(e) => setLockAspectRatio(e.target.checked)} />
-                                <Lock size={14} className={lockAspectRatio ? "text-[#E5322D]" : "text-gray-400"} /> Lock Ratio
+                            <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-gray-800">
+                              <label className="flex items-center gap-2 cursor-pointer hover:text-[#E5322D]">
+                                <input type="checkbox" checked={lockAspectRatio} onChange={(e) => setLockAspectRatio(e.target.checked)} className="accent-[#E5322D] w-4 h-4" />
+                                <Lock size={16} className={lockAspectRatio ? "text-[#E5322D]" : "text-gray-600"} /> Lock Ratio
                               </label>
-                              <label className="flex items-center gap-1 cursor-pointer">
-                                <input type="checkbox" checked={fitToPage} onChange={(e) => setFitToPage(e.target.checked)} />
-                                <Layers size={14} className={fitToPage ? "text-[#E5322D]" : "text-gray-400"} /> Fit to A4
+                              <label className="flex items-center gap-2 cursor-pointer hover:text-[#E5322D]">
+                                <input type="checkbox" checked={fitToPage} onChange={(e) => setFitToPage(e.target.checked)} className="accent-[#E5322D] w-4 h-4" />
+                                <Layers size={16} className={fitToPage ? "text-[#E5322D]" : "text-gray-600"} /> Fit to A4
                               </label>
-                              <label className="flex items-center gap-1 cursor-pointer">
-                                <PaintBucket size={14} className="text-gray-500" />
-                                <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="w-6 h-6 border-0 p-0 rounded cursor-pointer" />
-                                <span className="ml-1">BG Color</span>
+                              <label className="flex items-center gap-2 cursor-pointer hover:text-[#E5322D]">
+                                <PaintBucket size={16} className="text-gray-600" />
+                                <span>BG Color</span>
+                                <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="w-6 h-6 border border-gray-300 p-0 rounded cursor-pointer bg-white" />
                               </label>
                             </div>
                             <div>
-                              <label className="block text-xs font-semibold text-gray-600 mb-1">Output Format</label>
-                              <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="w-full bg-white border rounded-md p-2 text-sm">
+                              <label className="block text-sm font-semibold text-gray-800 mb-1">Output Format</label>
+                              <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D]">
                                 <option value="pdf">PDF (Compressed via Backend)</option>
                                 <option value="jpg">JPG Image</option>
                                 <option value="png">PNG Image</option>
@@ -328,25 +281,24 @@ export default function CompressPdf() {
                           </div>
                         )}
 
-                        {/* --- PDF SPECIFIC CONTROLS --- */}
+                        {/* PDF SETTINGS (High Contrast Enabled) */}
                         {fileType === 'pdf' && (
                           <div className="pt-3 border-t border-gray-200 space-y-3">
-                             <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer">
-                                <input type="checkbox" checked={removeMetadata} onChange={() => setRemoveMetadata(!removeMetadata)} />
+                             <label className="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
+                                <input type="checkbox" checked={removeMetadata} onChange={() => setRemoveMetadata(!removeMetadata)} className="accent-[#E5322D] w-4 h-4" />
                                 Remove Metadata (Author/Date)
                              </label>
                              <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Page Range (Optional)</label>
-                                <input type="text" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="e.g. 1-10 or 2,5,7" className="w-full bg-white border rounded-md p-2 text-sm" />
+                                <label className="block text-sm font-medium text-gray-800 mb-1">Page Range (Optional)</label>
+                                <input type="text" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="e.g. 1-10 or 2,5,7" className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D]" />
                              </div>
 
-                             {/* PDF Background Color Overlay */}
-                             <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer">
-                                <PaintBucket size={16} className="text-gray-500" />
+                             <label className="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
+                                <PaintBucket size={16} className="text-gray-600" />
                                 <span>PDF Background Color</span>
-                                <input type="color" value={pdfBgColor} onChange={(e) => setPdfBgColor(e.target.value)} className="w-6 h-6 border-0 p-0 rounded cursor-pointer ml-1" />
+                                <input type="color" value={pdfBgColor} onChange={(e) => setPdfBgColor(e.target.value)} className="w-6 h-6 border border-gray-300 p-0 rounded cursor-pointer bg-white ml-1" />
                              </label>
-                             <p className="text-[10px] text-gray-400 mt-1">⚠️ Note: If background is dark, black text might hide unless "Grayscale" is enabled.</p>
+                             <p className="text-xs text-gray-500 mt-1">Note: If background is dark, black text might hide unless "Grayscale" is enabled.</p>
                           </div>
                         )}
                       </div>
