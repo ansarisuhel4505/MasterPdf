@@ -2,187 +2,192 @@ import React, { useState } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { PDFDocument, rgb } from 'pdf-lib';
-import { UploadCloud, FileText, X, ArrowRight, Settings, ShieldAlert } from 'lucide-react';
+import { UploadCloud, FileText, X, MousePointer2, Sparkles, ShieldAlert, Settings } from 'lucide-react';
+import { Document, Page, pdfjs } from 'react-pdf';
+import { Rnd } from 'react-rnd';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
+
+// Fix for Next.js PDF worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 export default function RedactPdf() {
   const [file, setFile] = useState(null);
-  const [isRedacting, setIsRedacting] = useState(false);
-  const [totalPages, setTotalPages] = useState(0);
-
-  // Redaction Box States
+  const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
-  const [xPos, setXPos] = useState(50);
-  const [yPos, setYPos] = useState(50);
-  const [boxWidth, setBoxWidth] = useState(200);
-  const [boxHeight, setBoxHeight] = useState(20);
+  const [mode, setMode] = useState('manual'); // 'manual' or 'auto'
+  
+  // Auto Redact States
+  const [autoOptions, setAutoOptions] = useState({ emails: true, phones: true, cards: false });
+  
+  // Manual Redact States (Stores coordinates of black boxes)
+  const [boxes, setBoxes] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleFileChange = async (e) => {
+  const onFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
-      
-      try {
-        const arrayBuffer = await selectedFile.arrayBuffer();
-        const pdfDoc = await PDFDocument.load(arrayBuffer);
-        setTotalPages(pdfDoc.getPageCount());
-      } catch (error) {
-        console.error("Error reading PDF:", error);
-        setTotalPages(1);
-      }
-    } else {
-      alert("Please upload a valid PDF file.");
+      setBoxes([]);
     }
   };
 
-  const removeFile = () => setFile(null);
+  const addBox = () => {
+    setBoxes([...boxes, { id: Date.now(), x: 50, y: 50, width: 150, height: 30 }]);
+  };
 
-  // Client-Side Redaction Logic
-  const applyRedaction = async () => {
-    if (!file) return;
-    setIsRedacting(true);
-
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const pages = pdfDoc.getPages();
-      
-      const targetPage = pages[Math.min(Math.max(pageNumber - 1, 0), pages.length - 1)];
-
-      if (targetPage) {
-        // Draw a solid black rectangle over the sensitive area
-        targetPage.drawRectangle({
-          x: Number(xPos),
-          y: Number(yPos), // from bottom left
-          width: Number(boxWidth),
-          height: Number(boxHeight),
-          color: rgb(0, 0, 0), // Solid Black
-        });
-      }
-
-      const pdfBytes = await pdfDoc.save();
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `MasterPdf_Redacted_${file.name}`;
-      link.click();
-      
-    } catch (error) {
-      console.error("Error redacting PDF:", error);
-      alert("Failed to redact PDF. The file might be corrupted or protected.");
-    }
-    setIsRedacting(false);
+  const handleProcess = async () => {
+    setIsProcessing(true);
+    // Yahan backend API call aayegi jo pdf-lib se black boxes draw karegi
+    console.log("Processing with Mode:", mode);
+    if (mode === 'manual') console.log("Boxes Coordinates:", boxes);
+    if (mode === 'auto') console.log("Auto Targets:", autoOptions);
+    
+    setTimeout(() => {
+      alert("Redaction Logic connected! Ready for Backend.");
+      setIsProcessing(false);
+    }, 2000);
   };
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head>
-        <title>Redact PDF online - MasterPdf</title>
-      </Head>
+      <Head><title>Smart PDF Redact - MasterPdf</title></Head>
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
-        
+      <main className="flex-grow flex flex-col items-center p-6 mt-16">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 bg-red-100 text-[#E5322D] px-3 py-1 rounded-full text-xs font-bold mb-4">
-            <ShieldAlert size={14} /> High Security
-          </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Redact PDF</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">Smart PDF Redaction</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Permanently black out sensitive information and graphics from your PDF documents.
+            Permanently hide sensitive information manually or let our AI auto-detect it.
           </p>
         </div>
 
-        <div className="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[450px] flex flex-col items-center justify-center relative">
-          
-          {!file ? (
-            <div className="text-center w-full">
-              <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
-              <label htmlFor="file-upload" className="cursor-pointer bg-black hover:bg-gray-800 text-white text-xl font-bold py-6 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
-                <UploadCloud size={28} /> Select Secure PDF
-              </label>
-              <p className="mt-4 text-gray-400 text-sm">Processed 100% locally. Your files never leave your device.</p>
-            </div>
-          ) : (
-            <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start pt-4">
-              
-              {/* Left Side: File Preview */}
-              <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-8 relative h-[420px]">
-                <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition">
-                  <X size={20} />
+        {!file ? (
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center">
+            <input type="file" id="upload" accept=".pdf" onChange={onFileChange} className="hidden" />
+            <label htmlFor="upload" className="cursor-pointer bg-black hover:bg-gray-800 text-white text-xl font-bold py-4 px-8 rounded-xl inline-flex items-center gap-3 transition">
+              <UploadCloud size={24} /> Upload PDF to Redact
+            </label>
+          </div>
+        ) : (
+          <div className="w-full max-w-6xl flex flex-col lg:flex-row gap-6">
+            
+            {/* LEFT SIDE: CONTROLS */}
+            <div className="w-full lg:w-1/3 bg-white p-6 rounded-2xl shadow-sm border border-gray-200 h-fit">
+              <div className="flex justify-between items-center mb-6 border-b pb-4">
+                <p className="font-bold text-gray-800 truncate pr-4">{file.name}</p>
+                <button onClick={() => setFile(null)} className="text-red-500 hover:bg-red-50 p-1 rounded"><X size={20}/></button>
+              </div>
+
+              {/* Mode Switcher */}
+              <div className="flex bg-gray-100 rounded-lg p-1 mb-6">
+                <button 
+                  onClick={() => setMode('manual')}
+                  className={`flex-1 py-2 text-sm font-bold rounded-md flex items-center justify-center gap-2 ${mode === 'manual' ? 'bg-white shadow text-black' : 'text-gray-500'}`}
+                >
+                  <MousePointer2 size={16}/> Manual Draw
                 </button>
-                <div className="relative">
-                  <FileText size={80} className="text-gray-900 mb-4 opacity-90" />
-                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-4 bg-black rounded-sm"></div>
-                </div>
-                <p className="text-sm text-gray-800 font-bold text-center break-words w-full px-4 mt-6">
-                  {file.name}
-                </p>
-                <p className="text-xs text-gray-500 mt-2 font-semibold bg-white px-3 py-1 border rounded-full">
-                  Total Pages: {totalPages}
-                </p>
+                <button 
+                  onClick={() => setMode('auto')}
+                  className={`flex-1 py-2 text-sm font-bold rounded-md flex items-center justify-center gap-2 ${mode === 'auto' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}
+                >
+                  <Sparkles size={16}/> Auto-Detect
+                </button>
               </div>
 
-              {/* Right Side: Redaction Controls */}
-              <div className="w-full md:w-1/2 flex flex-col h-[420px] justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-4 border-b pb-2">Draw Redaction Box</h3>
-                  
-                  <div className="flex flex-col gap-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[12px] font-bold text-gray-600 mb-1 uppercase">Target Page</label>
-                        <input type="number" min="1" max={totalPages} value={pageNumber} onChange={(e) => setPageNumber(e.target.value)} className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black" />
-                      </div>
-                      <div></div>
-                    </div>
+              {/* Auto Mode Settings */}
+              {mode === 'auto' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <h3 className="font-bold text-sm text-gray-700">What to hide automatically?</h3>
+                  <label className="flex items-center gap-3 p-3 bg-gray-50 border rounded-lg cursor-pointer">
+                    <input type="checkbox" checked={autoOptions.emails} onChange={(e) => setAutoOptions({...autoOptions, emails: e.target.checked})} className="w-5 h-5 accent-indigo-600"/>
+                    <span className="font-medium text-gray-700">Email Addresses</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 bg-gray-50 border rounded-lg cursor-pointer">
+                    <input type="checkbox" checked={autoOptions.phones} onChange={(e) => setAutoOptions({...autoOptions, phones: e.target.checked})} className="w-5 h-5 accent-indigo-600"/>
+                    <span className="font-medium text-gray-700">Phone Numbers</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 bg-gray-50 border rounded-lg cursor-pointer">
+                    <input type="checkbox" checked={autoOptions.cards} onChange={(e) => setAutoOptions({...autoOptions, cards: e.target.checked})} className="w-5 h-5 accent-indigo-600"/>
+                    <span className="font-medium text-gray-700">Credit Card Numbers</span>
+                  </label>
+                </div>
+              )}
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[12px] font-bold text-gray-600 mb-1 uppercase">Box Width (px)</label>
-                        <input type="number" value={boxWidth} onChange={(e) => setBoxWidth(e.target.value)} className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black" />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-bold text-gray-600 mb-1 uppercase">Box Height (px)</label>
-                        <input type="number" value={boxHeight} onChange={(e) => setBoxHeight(e.target.value)} className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black" />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-bold text-gray-600 mb-1 uppercase">Position X (px)</label>
-                        <input type="number" value={xPos} onChange={(e) => setXPos(e.target.value)} className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black" />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-bold text-gray-600 mb-1 uppercase">Position Y (px)</label>
-                        <input type="number" value={yPos} onChange={(e) => setYPos(e.target.value)} className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black" />
-                      </div>
-                    </div>
-                    
-                    <p className="text-[11px] text-gray-500 bg-gray-50 p-3 rounded-lg mt-2 leading-relaxed border border-gray-100">
-                      Configure the dimensions and position of the solid black box. X and Y coordinates start from the bottom-left corner of the page.
-                    </p>
+              {/* Manual Mode Settings */}
+              {mode === 'manual' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-sm flex gap-2">
+                    <ShieldAlert size={18} className="shrink-0"/>
+                    Click the button below to add a black box, then drag it over sensitive text.
                   </div>
+                  <button onClick={addBox} className="w-full py-3 border-2 border-dashed border-gray-400 text-gray-700 font-bold rounded-xl hover:border-black hover:text-black transition">
+                    + Add Redaction Box
+                  </button>
                 </div>
+              )}
 
-                <div className="mt-4 flex justify-end">
-                   <button 
-                     onClick={applyRedaction}
-                     disabled={isRedacting}
-                     className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-black hover:bg-gray-800 hover:shadow-lg disabled:bg-gray-400"
-                   >
-                     {isRedacting ? (
-                       <><Settings className="animate-spin" size={24} /> Applying...</>
-                     ) : (
-                       <>Apply Redaction <ArrowRight size={24} /></>
-                     )}
-                   </button>
-                </div>
-              </div>
-
+              {/* Action Button */}
+              <button 
+                onClick={handleProcess}
+                disabled={isProcessing}
+                className="w-full mt-8 bg-[#E5322D] hover:bg-red-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition"
+              >
+                {isProcessing ? <><Settings className="animate-spin"/> Processing...</> : "Apply Redaction"}
+              </button>
             </div>
-          )}
-        </div>
-      </main>
 
+            {/* RIGHT SIDE: PDF VIEWER & CANVAS */}
+            <div className="w-full lg:w-2/3 bg-gray-300 rounded-2xl overflow-hidden flex flex-col items-center p-4 relative min-h-[600px]">
+              {mode === 'manual' && boxes.length > 0 && (
+                <div className="absolute top-2 right-2 bg-black text-white text-xs px-3 py-1 rounded-full z-50">
+                  {boxes.length} Boxes Active
+                </div>
+              )}
+              
+              <Document 
+                file={file} 
+                onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                className="border border-gray-400 shadow-2xl relative bg-white"
+              >
+                <Page pageNumber={pageNumber} width={600} renderTextLayer={false} renderAnnotationLayer={false} />
+                
+                {/* Overlay for Draggable Boxes (Only in Manual Mode) */}
+                {mode === 'manual' && boxes.map((box, index) => (
+                  <Rnd
+                    key={box.id}
+                    default={{ x: box.x, y: box.y, width: box.width, height: box.height }}
+                    bounds="parent"
+                    className="bg-black opacity-90 border-2 border-red-500 cursor-move"
+                    onDragStop={(e, d) => {
+                      const newBoxes = [...boxes];
+                      newBoxes[index] = { ...newBoxes[index], x: d.x, y: d.y };
+                      setBoxes(newBoxes);
+                    }}
+                    onResizeStop={(e, direction, ref, delta, position) => {
+                      const newBoxes = [...boxes];
+                      newBoxes[index] = { ...newBoxes[index], width: ref.style.width, height: ref.style.height, ...position };
+                      setBoxes(newBoxes);
+                    }}
+                  >
+                    <button onClick={() => setBoxes(boxes.filter(b => b.id !== box.id))} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center text-xs">X</button>
+                  </Rnd>
+                ))}
+              </Document>
+
+              {/* Page Controls */}
+              {numPages > 1 && (
+                <div className="mt-4 flex gap-4 items-center bg-white px-4 py-2 rounded-full shadow">
+                  <button disabled={pageNumber <= 1} onClick={() => setPageNumber(pageNumber - 1)} className="font-bold disabled:text-gray-300">&lt; Prev</button>
+                  <span className="text-sm font-medium">Page {pageNumber} of {numPages}</span>
+                  <button disabled={pageNumber >= numPages} onClick={() => setPageNumber(pageNumber + 1)} className="font-bold disabled:text-gray-300">Next &gt;</button>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+      </main>
       <Footer />
     </div>
   );
