@@ -2,42 +2,50 @@ import React from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { Settings, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
+// 1. Import all the necessary icons from lucide-react
+import { 
+  CheckCircle2, Merge, Scissors, Minimize2, FileText, Presentation, 
+  FileSpreadsheet, PenTool, ImageIcon, FileSignature, Type, RotateCw, 
+  Globe, Unlock, Lock, Layers, FileDigit, Wrench, ListOrdered, 
+  Scan, ScanText, SplitSquareHorizontal, Shield, Crop, FormInput, 
+  MessageSquare, Languages, FileCode2
+} from 'lucide-react';
 
 export default function Home() {
+  // 2. Add the 'icon' property to each object in the array
   const allTools = [
-    { title: 'Merge PDF', desc: 'Combine PDFs in the order you want with the easiest PDF merger available.', color: 'text-red-500' },
-    { title: 'Split PDF', desc: 'Separate one page or a whole set for easy conversion into independent PDF files.', color: 'text-orange-500' },
-    { title: 'Compress PDF', desc: 'Reduce file size while optimizing for maximal PDF quality.', color: 'text-green-600' },
-    { title: 'PDF to Word', desc: 'Easily convert your PDF files into easy to edit DOC and DOCX documents.', color: 'text-blue-600' },
-    { title: 'PDF to PowerPoint', desc: 'Turn your PDF files into easy to edit PPT and PPTX slideshows.', color: 'text-orange-600' },
-    { title: 'PDF to Excel', desc: 'Pull data straight from PDFs into Excel spreadsheets in a few short seconds.', color: 'text-green-500' },
-    { title: 'Word to PDF', desc: 'Make DOC and DOCX files easy to read by converting them to PDF.', color: 'text-blue-500' },
-    { title: 'PowerPoint to PDF', desc: 'Make PPT and PPTX slideshows easy to view by converting them to PDF.', color: 'text-orange-400' },
-    { title: 'Excel to PDF', desc: 'Make EXCEL spreadsheets easy to read by converting them to PDF.', color: 'text-green-400' },
-    { title: 'Edit PDF', desc: 'Add text, images, shapes or freehand annotations to a PDF document.', color: 'text-red-400' },
-    { title: 'PDF to JPG', desc: 'Convert each PDF page into a JPG or extract all images contained in a PDF.', color: 'text-yellow-500' },
-    { title: 'JPG to PDF', desc: 'Convert JPG images to PDF in seconds. Easily adjust orientation and margins.', color: 'text-yellow-600' },
-    { title: 'Sign PDF', desc: 'Sign yourself or request electronic signatures from others.', color: 'text-blue-700' },
-    { title: 'Watermark', desc: 'Stamp an image or text over your PDF in seconds. Choose typography, transparency.', color: 'text-pink-600' },
-    { title: 'Rotate PDF', desc: 'Rotate your PDFs the way you need them. You can even rotate multiple PDFs.', color: 'text-purple-600' },
-    { title: 'HTML to PDF', desc: 'Convert webpages in HTML to PDF. Copy and paste the URL of the page.', color: 'text-blue-400' },
-    { title: 'Unlock PDF', desc: 'Remove PDF password security, giving you the freedom to use your PDFs.', color: 'text-gray-500' },
-    { title: 'Protect PDF', desc: 'Protect PDF files with a password. Encrypt PDF documents to prevent access.', color: 'text-blue-800' },
-    { title: 'Organize PDF', desc: 'Sort pages of your PDF file however you like. Delete PDF pages or add pages.', color: 'text-orange-700' },
-    { title: 'PDF to PDF/A', desc: 'Transform your PDF to PDF/A, the ISO-standardized version of PDF.', color: 'text-teal-600' },
-    { title: 'Repair PDF', desc: 'Repair a damaged PDF and recover data from corrupt PDF. Fix PDF files.', color: 'text-green-700' },
-    { title: 'Page numbers', desc: 'Add page numbers into PDFs with ease. Choose your positions, dimensions.', color: 'text-red-600' },
-    { title: 'Scan to PDF', desc: 'Capture document scans from your mobile device and send them instantly.', color: 'text-orange-500' },
-    { title: 'OCR PDF', desc: 'Easily convert scanned PDF into searchable and selectable documents.', color: 'text-blue-600' },
-    { title: 'Compare PDF', desc: 'Show a side-by-side document comparison and easily spot changes.', color: 'text-indigo-500' },
-    { title: 'Redact PDF', desc: 'Redact text and graphics to permanently remove sensitive information.', color: 'text-gray-800' },
-    { title: 'Crop PDF', desc: 'Crop margins of PDF documents or select specific areas, then apply.', color: 'text-pink-500' },
-    { title: 'PDF Forms', desc: 'Detect form fields automatically, create interactive fillable PDFs.', color: 'text-purple-500' },
-    { title: 'AI Summarizer', desc: 'Quickly generate concise summaries from articles, paragraphs, and essays.', color: 'text-indigo-600', badge: 'New!' },
-    { title: 'Translate PDF', desc: 'Easily translate PDF files powered by AI. Keep fonts, layout intact.', color: 'text-blue-500', badge: 'New!' },
-    { title: 'PDF to Markdown', desc: 'Easily turn PDFs into Markdown files. Perfect for notes, docs, and LLMs.', color: 'text-gray-700', badge: 'New!' },
+    { title: 'Merge PDF', desc: 'Combine PDFs in the order you want with the easiest PDF merger available.', color: 'text-red-500', icon: Merge },
+    { title: 'Split PDF', desc: 'Separate one page or a whole set for easy conversion into independent PDF files.', color: 'text-orange-500', icon: Scissors },
+    { title: 'Compress PDF', desc: 'Reduce file size while optimizing for maximal PDF quality.', color: 'text-green-600', icon: Minimize2 },
+    { title: 'PDF to Word', desc: 'Easily convert your PDF files into easy to edit DOC and DOCX documents.', color: 'text-blue-600', icon: FileText },
+    { title: 'PDF to PowerPoint', desc: 'Turn your PDF files into easy to edit PPT and PPTX slideshows.', color: 'text-orange-600', icon: Presentation },
+    { title: 'PDF to Excel', desc: 'Pull data straight from PDFs into Excel spreadsheets in a few short seconds.', color: 'text-green-500', icon: FileSpreadsheet },
+    { title: 'Word to PDF', desc: 'Make DOC and DOCX files easy to read by converting them to PDF.', color: 'text-blue-500', icon: FileText },
+    { title: 'PowerPoint to PDF', desc: 'Make PPT and PPTX slideshows easy to view by converting them to PDF.', color: 'text-orange-400', icon: Presentation },
+    { title: 'Excel to PDF', desc: 'Make EXCEL spreadsheets easy to read by converting them to PDF.', color: 'text-green-400', icon: FileSpreadsheet },
+    { title: 'Edit PDF', desc: 'Add text, images, shapes or freehand annotations to a PDF document.', color: 'text-red-400', icon: PenTool },
+    { title: 'PDF to JPG', desc: 'Convert each PDF page into a JPG or extract all images contained in a PDF.', color: 'text-yellow-500', icon: ImageIcon },
+    { title: 'JPG to PDF', desc: 'Convert JPG images to PDF in seconds. Easily adjust orientation and margins.', color: 'text-yellow-600', icon: ImageIcon },
+    { title: 'Sign PDF', desc: 'Sign yourself or request electronic signatures from others.', color: 'text-blue-700', icon: FileSignature },
+    { title: 'Watermark', desc: 'Stamp an image or text over your PDF in seconds. Choose typography, transparency.', color: 'text-pink-600', icon: Type },
+    { title: 'Rotate PDF', desc: 'Rotate your PDFs the way you need them. You can even rotate multiple PDFs.', color: 'text-purple-600', icon: RotateCw },
+    { title: 'HTML to PDF', desc: 'Convert webpages in HTML to PDF. Copy and paste the URL of the page.', color: 'text-blue-400', icon: Globe },
+    { title: 'Unlock PDF', desc: 'Remove PDF password security, giving you the freedom to use your PDFs.', color: 'text-gray-500', icon: Unlock },
+    { title: 'Protect PDF', desc: 'Protect PDF files with a password. Encrypt PDF documents to prevent access.', color: 'text-blue-800', icon: Lock },
+    { title: 'Organize PDF', desc: 'Sort pages of your PDF file however you like. Delete PDF pages or add pages.', color: 'text-orange-700', icon: Layers },
+    { title: 'PDF to PDF/A', desc: 'Transform your PDF to PDF/A, the ISO-standardized version of PDF.', color: 'text-teal-600', icon: FileDigit },
+    { title: 'Repair PDF', desc: 'Repair a damaged PDF and recover data from corrupt PDF. Fix PDF files.', color: 'text-green-700', icon: Wrench },
+    { title: 'Page numbers', desc: 'Add page numbers into PDFs with ease. Choose your positions, dimensions.', color: 'text-red-600', icon: ListOrdered },
+    { title: 'Scan to PDF', desc: 'Capture document scans from your mobile device and send them instantly.', color: 'text-orange-500', icon: Scan },
+    { title: 'OCR PDF', desc: 'Easily convert scanned PDF into searchable and selectable documents.', color: 'text-blue-600', icon: ScanText },
+    { title: 'Compare PDF', desc: 'Show a side-by-side document comparison and easily spot changes.', color: 'text-indigo-500', icon: SplitSquareHorizontal },
+    { title: 'Redact PDF', desc: 'Redact text and graphics to permanently remove sensitive information.', color: 'text-gray-800', icon: Shield },
+    { title: 'Crop PDF', desc: 'Crop margins of PDF documents or select specific areas, then apply.', color: 'text-pink-500', icon: Crop },
+    { title: 'PDF Forms', desc: 'Detect form fields automatically, create interactive fillable PDFs.', color: 'text-purple-500', icon: FormInput },
+    { title: 'AI Summarizer', desc: 'Quickly generate concise summaries from articles, paragraphs, and essays.', color: 'text-indigo-600', badge: 'New!', icon: MessageSquare },
+    { title: 'Translate PDF', desc: 'Easily translate PDF files powered by AI. Keep fonts, layout intact.', color: 'text-blue-500', badge: 'New!', icon: Languages },
+    { title: 'PDF to Markdown', desc: 'Easily turn PDFs into Markdown files. Perfect for notes, docs, and LLMs.', color: 'text-gray-700', badge: 'New!', icon: FileCode2 },
   ];
 
   const tabs = ['All', 'Workflows', 'Organize PDF', 'Optimize PDF', 'Convert PDF', 'Edit PDF', 'PDF Security', 'PDF Intelligence'];
@@ -66,25 +74,30 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 xl:gap-5 mb-20">
-          {allTools.map((tool, index) => (
-            <Link href={`/${tool.title.toLowerCase().replace(/ /g, '-')}`} key={index}>
-              <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md border border-gray-100 h-full cursor-pointer relative group transition-all duration-200">
-                {tool.badge && (
-                  <span className="absolute top-4 right-4 bg-teal-100 text-teal-700 text-xs font-bold px-2 py-1 rounded-md">
-                    {tool.badge}
-                  </span>
-                )}
-                <div className={`w-10 h-10 mb-4 flex items-center justify-center ${tool.color}`}>
-                  <Settings size={36} strokeWidth={1.5} />
+          {allTools.map((tool, index) => {
+            // 3. Extract the specific icon component for this iteration
+            const ToolIcon = tool.icon; 
+            return (
+              <Link href={`/${tool.title.toLowerCase().replace(/ /g, '-')}`} key={index}>
+                <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md border border-gray-100 h-full cursor-pointer relative group transition-all duration-200">
+                  {tool.badge && (
+                    <span className="absolute top-4 right-4 bg-teal-100 text-teal-700 text-xs font-bold px-2 py-1 rounded-md">
+                      {tool.badge}
+                    </span>
+                  )}
+                  <div className={`w-10 h-10 mb-4 flex items-center justify-center ${tool.color}`}>
+                    {/* Render the dynamic icon instead of the hardcoded Settings icon */}
+                    <ToolIcon size={36} strokeWidth={1.5} /> 
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-[#E5322D] transition-colors">{tool.title}</h3>
+                  <p className="text-[13px] text-gray-500 leading-relaxed">{tool.desc}</p>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-[#E5322D] transition-colors">{tool.title}</h3>
-                <p className="text-[13px] text-gray-500 leading-relaxed">{tool.desc}</p>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            )
+          })}
         </div>
 
-        {/* Promo Features Section - ADDED text-gray-900 HERE TO FIX BLURRINESS */}
+        {/* Promo Features Section */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
           <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center md:text-left">
             <h3 className="text-xl font-bold text-gray-900 mb-3">Work offline with Desktop</h3>
