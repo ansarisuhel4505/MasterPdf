@@ -43,11 +43,9 @@ export default function RedactPdf() {
     setBoxes([...boxes, { id: Date.now(), x: 50, y: 50, width: 150, height: 25, pageIndex: pageNumber - 1 }]);
   };
 
-  // 🔥 THE GOD-LEVEL MULTI-LAYER SCANNER 🔥
   const runAutoScanner = () => {
     const textLayer = document.querySelector('.react-pdf__Page__textContent');
     
-    // ERROR FIX 1: Prevent scanning before text is ready
     if (!textLayer || textLayer.childElementCount === 0) {
       return alert("⏳ PDF text is still loading. Please wait 1-2 seconds and click 'Scan' again.");
     }
@@ -82,8 +80,8 @@ export default function RedactPdf() {
       // 4. TECH, WEB & CRYPTO (ADVANCED)
       if (autoOptions.ip && /\b(?:\d{1,3}\.){3}\d{1,3}\b/.test(text)) isSensitive = true;
       if (autoOptions.mac && /\b(?:[0-9A-Fa-f]{2}[:-]){5}(?:[0-9A-Fa-f]{2})\b/.test(text)) isSensitive = true;
-      if (autoOptions.apikeys && /\b(AKIA[0-9A-Z]{16}|eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*)\b/.test(text)) isSensitive = true; // AWS & JWT
-      if (autoOptions.crypto && /\b(0x[a-fA-F0-9]{40}|(?:bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39})\b/.test(text)) isSensitive = true; // ETH & BTC
+      if (autoOptions.apikeys && /\b(AKIA[0-9A-Z]{16}|eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*)\b/.test(text)) isSensitive = true; 
+      if (autoOptions.crypto && /\b(0x[a-fA-F0-9]{40}|(?:bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39})\b/.test(text)) isSensitive = true; 
 
       if (isSensitive) {
         const layerRect = textLayer.getBoundingClientRect();
@@ -113,9 +111,7 @@ export default function RedactPdf() {
     
     setIsProcessing(true);
     try {
-      // ERROR FIX 2: Sanitize file name to prevent Vercel Blob upload crashes
       const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-      
       const blob = await upload(safeFileName, file, { access: 'public', handleUploadUrl: '/api/upload' });
       
       const formattedBoxes = boxes.map(b => ({
@@ -139,6 +135,9 @@ export default function RedactPdf() {
   };
 
   const toggleOption = (key) => setAutoOptions({ ...autoOptions, [key]: !autoOptions[key] });
+
+  // Custom styling for checkbox labels to prevent white/blurry text
+  const labelClass = "flex items-center gap-2 p-2 bg-white border border-gray-300 shadow-sm rounded-md cursor-pointer text-xs font-bold text-gray-800 hover:bg-gray-50 transition-colors";
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
@@ -187,32 +186,32 @@ export default function RedactPdf() {
                   <div>
                     <h3 className="font-bold text-[11px] text-gray-400 uppercase tracking-wider mb-3">Identity & Personal</h3>
                     <div className="grid grid-cols-2 gap-2">
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.emails} onChange={() => toggleOption('emails')} className="accent-indigo-600"/> Emails</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.phones} onChange={() => toggleOption('phones')} className="accent-indigo-600"/> Phones</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.aadhar} onChange={() => toggleOption('aadhar')} className="accent-indigo-600"/> Aadhar Card</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.pan} onChange={() => toggleOption('pan')} className="accent-indigo-600"/> PAN Card</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.passport} onChange={() => toggleOption('passport')} className="accent-indigo-600"/> Passport</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.dl} onChange={() => toggleOption('dl')} className="accent-indigo-600"/> Driving Lic.</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.emails} onChange={() => toggleOption('emails')} className="accent-indigo-600"/> Emails</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.phones} onChange={() => toggleOption('phones')} className="accent-indigo-600"/> Phones</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.aadhar} onChange={() => toggleOption('aadhar')} className="accent-indigo-600"/> Aadhar Card</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.pan} onChange={() => toggleOption('pan')} className="accent-indigo-600"/> PAN Card</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.passport} onChange={() => toggleOption('passport')} className="accent-indigo-600"/> Passport</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.dl} onChange={() => toggleOption('dl')} className="accent-indigo-600"/> Driving Lic.</label>
                     </div>
                   </div>
 
                   <div>
                     <h3 className="font-bold text-[11px] text-gray-400 uppercase tracking-wider mb-3">Financial & Business</h3>
                     <div className="grid grid-cols-2 gap-2">
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.cards} onChange={() => toggleOption('cards')} className="accent-indigo-600"/> Credit Cards</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.bankAccounts} onChange={() => toggleOption('bankAccounts')} className="accent-indigo-600"/> Bank A/C No.</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.ifsc} onChange={() => toggleOption('ifsc')} className="accent-indigo-600"/> IFSC Code</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.gstin} onChange={() => toggleOption('gstin')} className="accent-indigo-600"/> GSTIN</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.cards} onChange={() => toggleOption('cards')} className="accent-indigo-600"/> Credit Cards</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.bankAccounts} onChange={() => toggleOption('bankAccounts')} className="accent-indigo-600"/> Bank A/C No.</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.ifsc} onChange={() => toggleOption('ifsc')} className="accent-indigo-600"/> IFSC Code</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.gstin} onChange={() => toggleOption('gstin')} className="accent-indigo-600"/> GSTIN</label>
                     </div>
                   </div>
 
                   <div>
                     <h3 className="font-bold text-[11px] text-gray-400 uppercase tracking-wider mb-3">Tech, Web & Crypto</h3>
                     <div className="grid grid-cols-2 gap-2">
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.apikeys} onChange={() => toggleOption('apikeys')} className="accent-indigo-600"/> API/JWT Keys</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.crypto} onChange={() => toggleOption('crypto')} className="accent-indigo-600"/> Crypto Wallets</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.ip} onChange={() => toggleOption('ip')} className="accent-indigo-600"/> IP Address</label>
-                      <label className="flex items-center gap-2 p-2 bg-gray-50 border rounded-md cursor-pointer text-xs font-semibold"><input type="checkbox" checked={autoOptions.mac} onChange={() => toggleOption('mac')} className="accent-indigo-600"/> MAC Address</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.apikeys} onChange={() => toggleOption('apikeys')} className="accent-indigo-600"/> API/JWT Keys</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.crypto} onChange={() => toggleOption('crypto')} className="accent-indigo-600"/> Crypto Wallets</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.ip} onChange={() => toggleOption('ip')} className="accent-indigo-600"/> IP Address</label>
+                      <label className={labelClass}><input type="checkbox" checked={autoOptions.mac} onChange={() => toggleOption('mac')} className="accent-indigo-600"/> MAC Address</label>
                     </div>
                   </div>
 
