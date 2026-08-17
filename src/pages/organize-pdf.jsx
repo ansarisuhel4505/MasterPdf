@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
-import dynamic from 'next/dynamic'; // 🛑 Dynamic Import ऐड किया
+import dynamic from 'next/dynamic';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument } from 'pdf-lib';
@@ -10,7 +10,7 @@ import {
   Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus
 } from 'lucide-react';
 
-// 🛑 Fixed: Dynamic Imports with ssr: false (Next.js के लिए बेहद जरूरी)
+// Dynamic import with SSR disabled (Next.js के लिए अनिवार्य)
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
@@ -24,16 +24,10 @@ export default function OrganizePdf() {
   const [renderError, setRenderError] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]); 
 
-  // 🛑 Fixed: Worker को सीधे Hardcoded URL से लोड करें
+  // 🛑 MASTER FIX: अब CDN की जगह "लोकल वर्कर" को सेट कर रहा है
   useEffect(() => {
-    // यह URL pdfjs-dist के वर्जन 4.7.76 को लोड करेगा (CDN डाउनटाइम खत्म)
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.js`;
-    
-    // अगर वर्कर लोड होने में फेल हो जाए, तो लोकल फॉलबैक की कोशिश करें
-    // (Vercel पर यह सिर्फ क्लाइंट पर चलता है, कोई बिल्ड एरर नहीं)
-    if (typeof window !== 'undefined' && !pdfjs.GlobalWorkerOptions.workerSrc) {
-       pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'; 
-    }
+    // वर्कर को public फोल्डर से लोड करें (आपको एक फाइल कॉपी करनी होगी, नीचे बताया है)
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
   }, []);
 
   const pushHistory = (newPages) => {
@@ -174,12 +168,10 @@ export default function OrganizePdf() {
     const newPages = [...pages];
     const lastSelectedIndex = newPages.map((p, i) => p.selected ? i : -1).reduce((max, curr) => Math.max(max, curr), -1);
     const insertIndex = lastSelectedIndex !== -1 ? lastSelectedIndex + 1 : newPages.length;
-    
     newPages.splice(insertIndex, 0, { id: `blank-${Date()}`, type: 'blank', rotation: 0, selected: false });
     pushHistory(newPages);
   };
 
-  // PRO: Insert Images or Other PDFs
   const handleInsertFile = async (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
@@ -188,7 +180,6 @@ export default function OrganizePdf() {
       const arrayBuffer = await selectedFile.arrayBuffer();
       let pagesToInsert = [];
       
-      // 1. Insert PDF
       if (selectedFile.type === 'application/pdf') {
         const insertPdf = await PDFDocument.load(arrayBuffer);
         const totalInsertPages = insertPdf.getPageCount();
@@ -206,11 +197,9 @@ export default function OrganizePdf() {
           });
         }
       } 
-      // 2. Insert Image
       else if (selectedFile.type === 'image/png' || selectedFile.type === 'image/jpeg') {
         const uniqueId = `upload-${Date.now()}`;
         setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'image', mimeType: selectedFile.type }]);
-        
         pagesToInsert.push({ 
           id: uniqueId, 
           type: 'upload', 
@@ -227,7 +216,6 @@ export default function OrganizePdf() {
       const newPages = [...pages];
       const lastSelectedIndex = newPages.map((p, i) => p.selected ? i : -1).reduce((max, curr) => Math.max(max, curr), -1);
       const insertIndex = lastSelectedIndex !== -1 ? lastSelectedIndex + 1 : newPages.length;
-      
       newPages.splice(insertIndex, 0, ...pagesToInsert);
       pushHistory(newPages);
 
@@ -313,7 +301,7 @@ export default function OrganizePdf() {
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head>
-        <title>Organize PDF Pages - Drag & Drop Editor | MasterPdf</title>
+        <title>Organize PDF Pages - MasterPdf</title>
       </Head>
       <Navbar />
 
@@ -326,7 +314,6 @@ export default function OrganizePdf() {
         </div>
 
         <div className="w-full max-w-6xl bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
-          
           {!file ? (
             <div className="min-h-[450px] flex flex-col items-center justify-center p-10 bg-gray-50/50 transition-colors">
               <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
@@ -342,50 +329,38 @@ export default function OrganizePdf() {
             </div>
           ) : (
             <div className="flex flex-col h-full relative">
-              
               {/* Toolbar */}
               <div className="bg-gray-50 border-b border-gray-200 p-4 flex flex-wrap items-center gap-2 sticky top-[72px] z-10 shadow-sm">
                 <div className="flex items-center gap-2 mr-4 pr-4 border-r border-gray-300">
                   <span className="text-sm font-semibold text-gray-700">{pages.length} Pages</span>
                   <span className="text-xs text-gray-500">({pages.filter(p => p.selected).length} selected)</span>
                 </div>
-                
                 <button onClick={undo} disabled={history.length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 text-sm text-gray-600">
                   <Undo2 size={18} /> Undo
                 </button>
-                
                 <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
-                
                 <button onClick={selectAll} className="text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">Select All</button>
                 <button onClick={deselectAll} className="text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">Deselect</button>
-
                 <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
-
                 <button onClick={deleteSelected} disabled={pages.filter(p => p.selected).length === 0} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed" title="Delete Selected">
                   <Trash2 size={18} />
                 </button>
-                
                 <button onClick={() => rotateSelected(-90)} disabled={pages.filter(p => p.selected).length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600" title="Rotate Left 90°">
                   <RotateCcw size={18} />
                 </button>
                 <button onClick={() => rotateSelected(90)} disabled={pages.filter(p => p.selected).length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600" title="Rotate Right 90°">
                   <RotateCw size={18} />
                 </button>
-
                 <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
-
                 <button onClick={extractSelected} disabled={pages.filter(p => p.selected && p.type === 'source').length === 0} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600">
                   <FileOutput size={18} /> Extract
                 </button>
-                
-                {/* Insert Files Button */}
                 <div className="relative">
                    <input type="file" id="insert-upload" accept=".pdf,.jpg,.jpeg,.png" onChange={handleInsertFile} className="hidden" />
                    <label htmlFor="insert-upload" className="flex items-center gap-1 text-sm cursor-pointer hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">
                      <FilePlus size={18} /> Insert File
                    </label>
                 </div>
-
                 <button onClick={insertBlankPage} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">
                   <Layers size={18} /> Insert Blank
                 </button>
@@ -394,19 +369,39 @@ export default function OrganizePdf() {
                 </button>
               </div>
 
-              {/* Thumbnail Grid */}
+              {/* 🔥 SUPER FIX: Thumbnail vs Text Fallback UI */}
               <div className="p-6 bg-white max-h-[65vh] overflow-y-auto custom-scrollbar">
+                {/* अगर Thumbnail एरर आता है, तो यह Text Mode चालू होगा */}
                 {renderError ? (
-                  <div className="col-span-full text-center py-10 text-red-600">
-                    <div className="bg-red-50 p-6 rounded-xl border border-red-200 inline-block">
-                      <p className="font-bold text-lg mb-2">⚠️ Preview Failed</p>
-                      <p className="text-sm text-gray-700 max-w-md">
-                        Thumbnails couldn't load. <strong>Don't worry!</strong> You can still use the <strong>Insert/Blank/Reverse</strong> tools. Refresh the page to retry.
-                      </p>
+                  <div className="w-full">
+                    <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mb-4 text-yellow-800 text-sm flex items-center gap-2">
+                      <span className="font-bold">⚠️ Preview Failed!</span> 
+                      <span>Don't worry, you can still manage pages using this Text-Mode.</span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {pages.map((pageData, index) => (
+                        <div 
+                          key={index}
+                          onClick={(e) => handlePageClick(index, e)}
+                          className={`flex items-center justify-between px-4 py-3 border-2 rounded-lg cursor-pointer transition-all bg-white ${
+                            pageData.selected ? 'border-[#E5322D] bg-red-50' : 'border-gray-300 hover:border-gray-400'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-sm text-gray-700">Page {index + 1}</span>
+                            {pageData.type === 'blank' && <span className="text-xs text-gray-400 border px-2 py-0.5 rounded-full">Blank</span>}
+                            {pageData.type === 'upload' && <span className="text-xs text-green-500 border border-green-300 px-2 py-0.5 rounded-full bg-green-50">Inserted</span>}
+                          </div>
+                          <div className="flex gap-1">
+                             <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="p-1 hover:bg-gray-200 rounded-md text-gray-600"><ArrowUp size={16}/></button>
+                             <button onClick={(e) => { e.stopPropagation(); movePage(index, 'down'); }} className="p-1 hover:bg-gray-200 rounded-md text-gray-600"><ArrowDown size={16}/></button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ) : (
-                  // ✅ FIX: Document Loaded. अब लैपटॉप और मोबाइल दोनों पर काम करेगा
+                  /* अगर सब ठीक है तो Visual Grid दिखेगा */
                   <Document 
                     file={file} 
                     loading={<div className="col-span-full text-center py-10 text-gray-500">Loading page previews...</div>}
@@ -427,7 +422,6 @@ export default function OrganizePdf() {
                           }`}
                         >
                           <div className="shadow-sm rounded bg-gray-50 overflow-hidden flex items-center justify-center w-full h-auto min-h-[140px] border border-gray-100">
-                            {/* Source Pages */}
                             {pageData.type === 'source' && (
                               <Page 
                                 pageNumber={pageData.sourceIndex + 1} 
@@ -437,15 +431,12 @@ export default function OrganizePdf() {
                                 scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.8 : 1} 
                               />
                             )}
-                            {/* Blank और Inserted Pages */}
-                            {pageData.type === 'blank' && <div className="text-gray-400 text-xs">Blank Page</div>}
+                            {pageData.type === 'blank' && <div className="text-gray-400 text-xs bg-gray-100 h-full w-full flex items-center justify-center">Blank Page</div>}
                             {pageData.type === 'upload' && <div className="text-gray-400 text-xs flex flex-col items-center"><FilePlus size={30} className="mb-2"/> Inserted</div>}
                           </div>
-
                           <div className="absolute bottom-8 left-0 right-0 text-center text-xs font-mono bg-black/60 text-white w-fit mx-auto px-3 py-0.5 rounded-full">
                             {index + 1}
                           </div>
-
                           {pageData.selected && (
                             <div className="md:hidden absolute -top-3 flex gap-2 bg-white shadow-md border rounded-full p-1 px-2 z-20">
                                <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowUp size={14} /></button>
