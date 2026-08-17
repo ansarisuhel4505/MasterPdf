@@ -3,7 +3,6 @@ import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument, degrees } from 'pdf-lib';
-// 🔥 FIX: Removed 'next/dynamic' and imported statically like redact-pdf 🔥
 import { Document, Page, pdfjs } from 'react-pdf';
 import { 
   UploadCloud, Trash2, ArrowUp, ArrowDown, RotateCcw, RotateCw, 
@@ -164,7 +163,7 @@ export default function OrganizePdf() {
     const newPages = [...pages];
     const lastSelectedIndex = newPages.map((p, i) => p.selected ? i : -1).reduce((max, curr) => Math.max(max, curr), -1);
     const insertIndex = lastSelectedIndex !== -1 ? lastSelectedIndex + 1 : newPages.length;
-    newPages.splice(insertIndex, 0, { id: `blank-${Date()}`, type: 'blank', rotation: 0, selected: false });
+    newPages.splice(insertIndex, 0, { id: `blank-${Date.now()}`, type: 'blank', rotation: 0, selected: false });
     pushHistory(newPages);
   };
 
@@ -174,11 +173,13 @@ export default function OrganizePdf() {
     try {
       const arrayBuffer = await selectedFile.arrayBuffer();
       let pagesToInsert = [];
+      const uniqueId = `upload-${Date.now()}`;
+      
       if (selectedFile.type === 'application/pdf') {
         const insertPdf = await PDFDocument.load(arrayBuffer);
         const totalInsertPages = insertPdf.getPageCount();
-        const uniqueId = `upload-${Date.now()}`;
         setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'pdf' }]);
+        
         for (let i = 0; i < totalInsertPages; i++) {
           pagesToInsert.push({ 
             id: `${uniqueId}-${i}`, 
@@ -190,13 +191,15 @@ export default function OrganizePdf() {
           });
         }
       } else if (selectedFile.type === 'image/png' || selectedFile.type === 'image/jpeg') {
-        const uniqueId = `upload-${Date.now()}`;
-        setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'image', mimeType: selectedFile.type }]);
+        // 🔥 FIX: Generate Image Preview URL for Frontend 🔥
+        const previewUrl = URL.createObjectURL(selectedFile);
+        setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'image', mimeType: selectedFile.type, previewUrl }]);
         pagesToInsert.push({ id: uniqueId, type: 'upload', uploadId: uniqueId, uploadPageIndex: 0, rotation: 0, selected: false });
       } else {
         alert("Only PDF, JPG, or PNG files can be inserted.");
         return;
       }
+      
       const newPages = [...pages];
       const lastSelectedIndex = newPages.map((p, i) => p.selected ? i : -1).reduce((max, curr) => Math.max(max, curr), -1);
       const insertIndex = lastSelectedIndex !== -1 ? lastSelectedIndex + 1 : newPages.length;
@@ -233,37 +236,42 @@ export default function OrganizePdf() {
       for (let i = 0; i < pages.length; i++) {
         const pageData = pages[i];
         
-        // 1. Original PDF Pages
         if (pageData.type === 'source') {
+          // Original page retains original dimensions automatically
           const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageData.sourceIndex]);
-          copiedPage.setRotation(degrees(pageData.rotation)); // 🔥 FIXED HERE
+          copiedPage.setRotation(degrees(pageData.rotation));
           newPdf.addPage(copiedPage);
         } 
-        // 2. Blank Pages
         else if (pageData.type === 'blank') {
+          // Blank A4 Page
           const blankPage = newPdf.addPage([595.28, 841.89]); 
-          blankPage.setRotation(degrees(pageData.rotation)); // 🔥 FIXED HERE
+          blankPage.setRotation(degrees(pageData.rotation));
         } 
-        // 3. Uploaded Images or New PDFs
         else if (pageData.type === 'upload') {
           const uploaded = uploadedFiles.find(f => f.id === pageData.uploadId);
           if (!uploaded) continue;
           
           if (uploaded.type === 'pdf') {
+            // Uploaded PDF retains original dimensions automatically
             const insertPdf = await PDFDocument.load(uploaded.bytes);
             const [copiedPage] = await newPdf.copyPages(insertPdf, [pageData.uploadPageIndex]);
-            copiedPage.setRotation(degrees(pageData.rotation)); // 🔥 FIXED HERE
+            copiedPage.setRotation(degrees(pageData.rotation));
             newPdf.addPage(copiedPage);
           } else if (uploaded.type === 'image') {
-            let image;
-            if (uploaded.mimeType === 'image/png') {
-              image = await newPdf.embedPng(uploaded.bytes);
-            } else {
-              image = await newPdf.embedJpg(uploaded.bytes);
-            }
-            const page = newPdf.addPage([image.width, image.height]);
-            page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
-            page.setRotation(degrees(pageData.rotation)); // 🔥 FIXED HERE
+            // 🔥 FIX: Scale Image to perfectly fit inside an A4 Page 🔥
+            let image = uploaded.mimeType === 'image/png' ? await newPdf.embedPng(uploaded.bytes) : await newPdf.embedJpg(uploaded.bytes);
+            const page = newPdf.addPage([595.28, 841.89]); // Base A4 Page
+            
+            // Smart scaling to maintain aspect ratio with a little margin
+            const scaledImage = image.scaleToFit(595.28 - 40, 841.89 - 40); 
+            
+            page.drawImage(image, { 
+              x: page.getWidth() / 2 - scaledImage.width / 2, 
+              y: page.getHeight() / 2 - scaledImage.height / 2, 
+              width: scaledImage.width, 
+              height: scaledImage.height 
+            });
+            page.setRotation(degrees(pageData.rotation));
           }
         }
       }
@@ -277,11 +285,12 @@ export default function OrganizePdf() {
       
     } catch (error) {
       console.error("Error generating PDF:", error);
-      alert("Failed to organize PDF. Error: " + error.message); // Smart error reporting
+      alert("Failed to organize PDF.");
     } finally {
       setIsProcessing(false);
     }
   };
+
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head><title>Organize PDF Pages - MasterPdf</title></Head>
@@ -333,13 +342,8 @@ export default function OrganizePdf() {
                   <div className="w-full flex flex-col items-center justify-center py-12 text-center">
                     <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-sm">
                       <div className="mb-3 text-red-500 font-bold text-lg">⚠️ Worker Blocked</div>
-                      <p className="text-sm text-gray-700 mb-4">
-                        Please click the button below to force a clean reload.
-                      </p>
-                      <button 
-                        onClick={() => window.location.reload()}
-                        className="flex items-center gap-2 bg-[#E5322D] text-white py-2 px-6 rounded-lg mx-auto hover:bg-red-700 transition font-bold"
-                      >
+                      <p className="text-sm text-gray-700 mb-4">Please click the button below to force a clean reload.</p>
+                      <button onClick={() => window.location.reload()} className="flex items-center gap-2 bg-[#E5322D] text-white py-2 px-6 rounded-lg mx-auto hover:bg-red-700 transition font-bold">
                         <RefreshCw size={18} /> Force Reload & Fix
                       </button>
                     </div>
@@ -351,6 +355,7 @@ export default function OrganizePdf() {
                     onLoadError={(err) => { console.error("React-PDF Load Error:", err); setRenderError(true); }}
                     onSourceError={(err) => { console.error("Source Error:", err); setRenderError(true); }}
                   >
+                    {/* 🔥 FIX: aspect-[1/1.414] forces perfect uniform A4 layout alignment 🔥 */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
                       {pages.map((pageData, index) => (
                         <div 
@@ -362,22 +367,30 @@ export default function OrganizePdf() {
                           onClick={(e) => handlePageClick(index, e)}
                           className={`relative group flex flex-col items-center rounded-lg p-2 transition-all cursor-pointer border-2 ${pageData.selected ? 'border-[#E5322D] bg-red-50 ring-2 ring-red-100' : 'border-transparent hover:border-gray-300 hover:bg-gray-50'}`}
                         >
-                          <div className="shadow-sm rounded bg-gray-50 overflow-hidden flex items-center justify-center w-full h-auto min-h-[140px] border border-gray-100">
+                          <div className="shadow-sm rounded bg-white overflow-hidden flex items-center justify-center w-full aspect-[1/1.414] border border-gray-200 relative">
                             {pageData.type === 'source' && (
                               <Page 
                                 pageNumber={pageData.sourceIndex + 1} 
-                                width={140} 
+                                width={130} 
                                 renderTextLayer={false} 
                                 renderAnnotationLayer={false}
-                                scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.8 : 1} 
+                                scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.7 : 1} 
                               />
                             )}
-                            {pageData.type === 'blank' && <div className="text-gray-400 text-xs bg-gray-100 h-full w-full flex items-center justify-center">Blank Page</div>}
-                            {pageData.type === 'upload' && <div className="text-gray-400 text-xs flex flex-col items-center"><FilePlus size={30} className="mb-2"/> Inserted</div>}
+                            {pageData.type === 'blank' && (
+                               <div className="text-gray-300 font-bold tracking-widest uppercase text-xs w-full h-full flex items-center justify-center bg-white">Blank</div>
+                            )}
+                            {pageData.type === 'upload' && (() => {
+                               const uploaded = uploadedFiles.find(f => f.id === pageData.uploadId);
+                               if (uploaded?.type === 'image') return <img src={uploaded.previewUrl} alt="Uploaded" className="max-w-full max-h-full object-contain p-2" />;
+                               return <div className="text-blue-500 font-medium bg-blue-50 w-full h-full flex flex-col items-center justify-center"><FilePlus size={28} className="mb-2"/> PDF</div>;
+                            })()}
                           </div>
-                          <div className="absolute bottom-8 left-0 right-0 text-center text-xs font-mono bg-black/60 text-white w-fit mx-auto px-3 py-0.5 rounded-full">
+                          
+                          <div className="absolute bottom-8 left-0 right-0 text-center text-xs font-mono bg-black/60 text-white w-fit mx-auto px-3 py-0.5 rounded-full z-10">
                             {index + 1}
                           </div>
+                          
                           {pageData.selected && (
                             <div className="md:hidden absolute -top-3 flex gap-2 bg-white shadow-md border rounded-full p-1 px-2 z-20">
                                <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowUp size={14} /></button>
