@@ -9,10 +9,11 @@ import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
 // Fix for Next.js PDF worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 export default function RedactPdf() {
   const [file, setFile] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null); // 🔥 YEH NAYI LINE ADD KI HAI
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [mode, setMode] = useState('manual'); // 'manual' or 'auto'
@@ -28,6 +29,7 @@ export default function RedactPdf() {
     const selectedFile = e.target.files[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
+      setPdfUrl(URL.createObjectURL(selectedFile)); // 🔥 YEH LINE PDF SCREEN PAR LAYEGI
       setBoxes([]);
     }
   };
@@ -146,7 +148,7 @@ export default function RedactPdf() {
               )}
               
               <Document 
-                file={file} 
+                file={pdfUrl} // 🔥 YAHAN 'file' KO HATA KAR 'pdfUrl' LIKH DIYA HAI
                 onLoadSuccess={({ numPages }) => setNumPages(numPages)}
                 className="border border-gray-400 shadow-2xl relative bg-white"
               >
