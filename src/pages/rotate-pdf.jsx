@@ -3,28 +3,25 @@ import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument, degrees } from 'pdf-lib';
-// 🔥 FIX 1: Removed 'next/dynamic' and imported statically 🔥
 import { Document, Page, pdfjs } from 'react-pdf';
 import JSZip from 'jszip';
 import { 
-  UploadCloud, FileText, X, RotateCw, RotateCcw, Settings, 
-  ArrowRight, Layers, FileOutput
+  UploadCloud, X, RotateCw, RotateCcw, Settings, 
+  ArrowRight
 } from 'lucide-react';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// 🔥 FIX 2: Version 9 .mjs worker setup (Removed from useEffect) 🔥
+// 🔥 100% WORKING WORKER FOR VERSION 9 🔥
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function RotatePdf() {
   const [files, setFiles] = useState([]); 
   const [fileUrls, setFileUrls] = useState([]); 
-  const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [pages, setPages] = useState([]); 
   const [pdfDoc, setPdfDoc] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [customDegrees, setCustomDegrees] = useState('');
   const [rangeInput, setRangeInput] = useState('');
   const [renderError, setRenderError] = useState(false);
 
@@ -39,9 +36,7 @@ export default function RotatePdf() {
     }
 
     setFiles(validPdfs);
-    // Object URL is much safer and faster for preview
     setFileUrls(validPdfs.map(f => URL.createObjectURL(f)));
-    setCurrentFileIndex(0);
     setIsLoading(true);
     setRenderError(false);
 
@@ -70,7 +65,6 @@ export default function RotatePdf() {
     setFileUrls([]);
     setPages([]);
     setPdfDoc(null);
-    setCustomDegrees('');
     setRangeInput('');
     setRenderError(false);
   };
@@ -130,7 +124,9 @@ export default function RotatePdf() {
 
     pagesToRotate.forEach((i) => {
       if (i >= 0 && i < newPages.length) {
+        // PDF Rule: Rotation is ALWAYS a multiple of 90 (0, 90, 180, 270)
         newPages[i].rotation = (newPages[i].rotation + deg) % 360;
+        if (newPages[i].rotation < 0) newPages[i].rotation += 360; // Handle negative degrees
       }
     });
     setPages(newPages);
@@ -230,7 +226,7 @@ export default function RotatePdf() {
                   <Document 
                     file={fileUrls[0]} 
                     loading={<div className="text-center py-10 text-gray-500">Loading previews...</div>}
-                    onLoadError={(err) => { console.error("Load Error:", err); setRenderError(true); }}
+                    onLoadError={() => setRenderError(true)}
                   >
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                       {pages.map((pageData, index) => (
@@ -283,7 +279,7 @@ export default function RotatePdf() {
                       <button onClick={() => applyRotationToPages(90, 'even')} className="px-3 py-1.5 bg-white border hover:bg-red-50 hover:border-[#E5322D] rounded-md transition text-gray-800">Even</button>
                     </div>
 
-                    <div className="flex items-end gap-2 pt-2 border-t border-gray-200">
+                    <div className="flex items-end gap-2 pt-2 border-t border-gray-200 mt-2">
                       <div className="flex-1">
                         <label className="block text-xs font-semibold text-gray-700 mb-1">Custom Range (e.g. 1-5, 7)</label>
                         <input 
@@ -292,30 +288,9 @@ export default function RotatePdf() {
                           className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E5322D]"
                         />
                       </div>
-                      <button onClick={() => applyRotationToPages(90, 'range')} className="px-4 py-2 bg-[#E5322D] text-white font-bold rounded-md hover:bg-red-700 transition">Go</button>
+                      <button onClick={() => applyRotationToPages(90, 'range')} className="px-4 py-2 bg-[#E5322D] text-white font-bold rounded-md hover:bg-red-700 transition">Rotate Right (90°)</button>
                     </div>
-                  </div>
-
-                  <div className="bg-gray-50 border border-gray-100 p-4 rounded-xl space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <label className="block text-xs font-semibold text-gray-700 mb-1">Custom Angle (0-360)</label>
-                        <input 
-                          type="number" min="0" max="360" value={customDegrees} onChange={(e) => setCustomDegrees(e.target.value)}
-                          placeholder="e.g. 45"
-                          className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E5322D]"
-                        />
-                      </div>
-                      <button 
-                        onClick={() => {
-                          const deg = parseInt(customDegrees);
-                          if (isNaN(deg) || deg < 0 || deg > 360) return alert("Enter a valid angle (0 to 360)");
-                          applyRotationToPages(deg, 'selected');
-                        }}
-                        className="px-4 py-2 bg-gray-800 text-white font-bold rounded-md hover:bg-gray-900 transition"
-                      >Apply</button>
-                    </div>
-                    <p className="text-xs text-gray-500">Tip: Hold Shift or Ctrl to select multiple pages, then apply the angle.</p>
+                    <p className="text-xs text-gray-500 pt-1">Tip: Use Range to select pages, then it will rotate them Right by 90°.</p>
                   </div>
                 </div>
 
