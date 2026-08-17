@@ -9,16 +9,13 @@ import JSZip from 'jszip';
 import { 
   UploadCloud, FileText, X, CheckSquare, ArrowRight, Settings, 
   Lock, RefreshCw, Download, Layers, Signature, FileOutput,
-  Trash2, Upload, AlertTriangle, Sparkles  // 🛑 मिसिंग इंपोर्ट (Sparkles) यहाँ ऐड कर दिया गया है
+  Trash2, Upload, AlertTriangle, Sparkles 
 } from 'lucide-react';
 
-// 📄 Next.js SSR ब्लॉक करें
 const Document = dynamic(() => import('react-pdf').then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then(m => m.Page), { ssr: false });
 
-// 🛡️ PDF Worker Setup (Vercel के लिए 100% सुरक्षित)
 export default function PdfForms() {
-  // ========== CORE STATES ==========
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -28,11 +25,9 @@ export default function PdfForms() {
   const [totalPages, setTotalPages] = useState(0);
   const [renderError, setRenderError] = useState(false);
 
-  // ========== MODE STATE ==========
-  const [activeTab, setActiveTab] = useState('fill'); // 'fill' | 'overlay' | 'pro' | 'batch' | 'export'
+  const [activeTab, setActiveTab] = useState('fill'); 
 
-  // ========== OVERLAY STATES ==========
-  const [overlayMode, setOverlayMode] = useState('text'); // 'text' | 'signature'
+  const [overlayMode, setOverlayMode] = useState('text'); 
   const [overlayText, setOverlayText] = useState('');
   const [overlayPage, setOverlayPage] = useState(1);
   const [overlayColor, setOverlayColor] = useState('#000000');
@@ -40,23 +35,19 @@ export default function PdfForms() {
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
   const signatureCanvasRef = useRef(null);
 
-  // ========== PRO SETTINGS ==========
   const [password, setPassword] = useState('');
   const [flattenForm, setFlattenForm] = useState(true);
   const [validateRequired, setValidateRequired] = useState(false);
   const [metadataAuthor, setMetadataAuthor] = useState('');
   const [metadataTitle, setMetadataTitle] = useState('');
 
-  // ========== BATCH PROCESSING ==========
   const [csvFile, setCsvFile] = useState(null);
   const [csvData, setCsvData] = useState([]);
 
-  // 🛡️ Setup Worker
   useEffect(() => {
     pdfjs.GlobalWorkerOptions.workerSrc = '//unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js';
   }, []);
 
-  // ================== 1. FILE UPLOAD & DETECTION ==================
   const handleFileChange = async (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile || selectedFile.type !== 'application/pdf') {
@@ -75,7 +66,6 @@ export default function PdfForms() {
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       setTotalPages(pdfDoc.getPageCount());
 
-      // Form Fields Detect
       const form = pdfDoc.getForm();
       const fields = form.getFields();
       const extractedFields = fields.map(f => {
@@ -112,7 +102,6 @@ export default function PdfForms() {
     setSignatureDataUrl(null);
   };
 
-  // ================== 2. FILL MODE HANDLERS ==================
   const handleInputChange = (name, value, type) => {
     setFormData(prev => ({
       ...prev,
@@ -120,7 +109,6 @@ export default function PdfForms() {
     }));
   };
 
-  // ================== 3. OVERLAY MODE (Text & Signature) ==================
   const handleDrawSignature = () => {
     if (!signatureCanvasRef.current) return;
     const canvas = signatureCanvasRef.current;
@@ -130,9 +118,30 @@ export default function PdfForms() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     let isDrawing = false;
-    canvas.onmousedown = canvas.ontouchstart = (e) => { isDrawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
-    canvas.onmousemove = canvas.ontouchmove = (e) => { if (!isDrawing) return; ctx.lineTo(e.offsetX, e.offsetY); ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.stroke(); };
-    canvas.onmouseup = canvas.ontouchend = () => { isDrawing = false; setSignatureDataUrl(canvas.toDataURL()); };
+    canvas.onmousedown = canvas.ontouchstart = (e) => { 
+      isDrawing = true; 
+      ctx.beginPath(); 
+      // Handle both mouse and touch events
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const rect = canvas.getBoundingClientRect();
+      ctx.moveTo(clientX - rect.left, clientY - rect.top); 
+    };
+    canvas.onmousemove = canvas.ontouchmove = (e) => { 
+      if (!isDrawing) return; 
+      // Handle both mouse and touch events
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const rect = canvas.getBoundingClientRect();
+      ctx.lineTo(clientX - rect.left, clientY - rect.top); 
+      ctx.strokeStyle='#000'; 
+      ctx.lineWidth=2; 
+      ctx.stroke(); 
+    };
+    canvas.onmouseup = canvas.ontouchend = () => { 
+      isDrawing = false; 
+      setSignatureDataUrl(canvas.toDataURL()); 
+    };
   };
 
   const clearSignature = () => {
@@ -142,7 +151,6 @@ export default function PdfForms() {
     setSignatureDataUrl(null);
   };
 
-  // ================== 4. BATCH MODE (CSV Upload) ==================
   const handleCsvUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -156,7 +164,8 @@ export default function PdfForms() {
       const rows = lines.slice(1).map(line => {
         const values = line.split(',').map(v => v.trim());
         const obj = {};
-        headers.forEach((h, i) => obj[h] = values[i] || '';
+        // 🔥 FIX: Added missing closing bracket here
+        headers.forEach((h, i) => { obj[h] = values[i] || ''; });
         return obj;
       });
       setCsvData(rows);
@@ -164,7 +173,6 @@ export default function PdfForms() {
     reader.readAsText(file);
   };
 
-  // ================== MAIN PROCESS (Merge all features) ==================
   const processPdf = async (mode = 'single') => {
     if (!file) return alert("Please upload a base PDF form.");
     setIsProcessing(true);
@@ -172,7 +180,6 @@ export default function PdfForms() {
       const arrayBuffer = await file.arrayBuffer();
       const baseDoc = await PDFDocument.load(arrayBuffer);
       
-      // A. Apply Form Field Data
       const form = baseDoc.getForm();
       formFields.forEach(field => {
         if (field.type === 'text') {
@@ -192,7 +199,6 @@ export default function PdfForms() {
         }
       });
 
-      // B. Validation (Required fields)
       if (validateRequired) {
         let missing = [];
         formFields.forEach(f => {
@@ -205,7 +211,6 @@ export default function PdfForms() {
         }
       }
 
-      // C. Overlay Text / Signature on specific page
       if (activeTab === 'overlay') {
         const page = baseDoc.getPage(overlayPage - 1);
         const { width, height } = page.getSize();
@@ -213,8 +218,8 @@ export default function PdfForms() {
 
         if (overlayMode === 'text' && overlayText.trim()) {
           page.drawText(overlayText, {
-            x: width * 0.1, // Left align
-            y: height * 0.5, // Middle vertically
+            x: width * 0.1, 
+            y: height * 0.5, 
             size: overlaySize,
             font: font,
             color: { r: parseInt(overlayColor.slice(1,3),16)/255, g: parseInt(overlayColor.slice(3,5),16)/255, b: parseInt(overlayColor.slice(5,7),16)/255 },
@@ -225,31 +230,20 @@ export default function PdfForms() {
           page.drawImage(pngImage, {
             x: width * 0.1,
             y: height * 0.5,
-            width: 150, // Fixed signature size
+            width: 150, 
             height: 75,
           });
         }
       }
 
-      // D. Flatten Form (Convert fields to static text)
-      if (flattenForm && mode !== 'batch') {
-        // Note: pdf-lib flatten actually works on some versions,
-        // but we'll simply copy contents to keep it safe.
-      }
-
-      // E. Set Custom Metadata
       if (metadataAuthor) baseDoc.setAuthor(metadataAuthor);
       if (metadataTitle) baseDoc.setTitle(metadataTitle);
 
-      // F. Apply Password Protection
       let finalBytes = await baseDoc.save();
       if (password) {
         finalBytes = await baseDoc.save({ password: password, userPassword: password });
       }
 
-      // ===========================
-      // BATCH PROCESSING MODE
-      // ===========================
       if (mode === 'batch' && csvData.length > 0) {
         const zip = new JSZip();
         for (let rowIdx = 0; rowIdx < csvData.length; rowIdx++) {
@@ -257,7 +251,6 @@ export default function PdfForms() {
           const docCopy = await PDFDocument.load(arrayBuffer);
           const formCopy = docCopy.getForm();
 
-          // Map CSV headers to PDF fields
           formFields.forEach(field => {
             const val = row[field.name];
             if (!val) return;
@@ -270,7 +263,6 @@ export default function PdfForms() {
             }
           });
           
-          // Password protect each file if set
           const bytes = password ? await docCopy.save({ password }) : await docCopy.save();
           zip.file(`Filled_Form_${rowIdx+1}.pdf`, bytes);
         }
@@ -283,9 +275,6 @@ export default function PdfForms() {
         return;
       }
 
-      // ===========================
-      // SINGLE FILE DOWNLOAD
-      // ===========================
       const blob = new Blob([finalBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -332,7 +321,6 @@ export default function PdfForms() {
           ) : (
             <div className="flex flex-col h-full">
               
-              {/* ========== TOP TABS (Pro Features) ========== */}
               <div className="bg-gray-50 border-b border-gray-200 p-2 flex flex-wrap gap-1 overflow-x-auto sticky top-[72px] z-20 shadow-sm">
                 {['fill', 'overlay', 'pro', 'batch', 'export'].map((tab) => (
                   <button
@@ -354,7 +342,6 @@ export default function PdfForms() {
 
               <div className="flex flex-col md:flex-row h-full relative p-6 gap-8">
                 
-                {/* LEFT SIDE: Preview */}
                 <div className="w-full md:w-1/2 min-h-[400px] bg-gray-50 border border-gray-200 rounded-xl p-4 overflow-y-auto max-h-[600px] relative">
                   <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm z-20"><X size={20} /></button>
                   
@@ -371,7 +358,7 @@ export default function PdfForms() {
                         pageNumber={1} 
                         width={400} 
                         renderTextLayer={false} 
-                        renderAnnotationLayer={true} // Show interactive fields on preview
+                        renderAnnotationLayer={true}
                       />
                     </Document>
                   )}
@@ -380,10 +367,8 @@ export default function PdfForms() {
                   </div>
                 </div>
 
-                {/* RIGHT SIDE: Active Tab Panel (No Blur) */}
                 <div className="w-full md:w-1/2 flex flex-col justify-between gap-4">
                   
-                  {/* 1. FILL FORM MODE */}
                   {activeTab === 'fill' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                       <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
@@ -415,7 +400,6 @@ export default function PdfForms() {
                     </div>
                   )}
 
-                  {/* 2. OVERLAY MODE */}
                   {activeTab === 'overlay' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                       <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
@@ -442,7 +426,7 @@ export default function PdfForms() {
                         {overlayMode === 'signature' && (
                           <div className="space-y-2">
                             <div className="border border-gray-300 bg-white rounded-lg p-1">
-                              <canvas ref={signatureCanvasRef} width={400} height={150} onMouseDown={handleDrawSignature} className="w-full h-[150px] touch-none cursor-crosshair rounded bg-white" />
+                              <canvas ref={signatureCanvasRef} width={400} height={150} onMouseDown={handleDrawSignature} onTouchStart={handleDrawSignature} className="w-full h-[150px] touch-none cursor-crosshair rounded bg-white" />
                             </div>
                             <button onClick={clearSignature} className="flex items-center gap-1 text-xs font-bold text-gray-700 hover:text-red-500"><Trash2 size={14} /> Clear</button>
                           </div>
@@ -457,7 +441,6 @@ export default function PdfForms() {
                     </div>
                   )}
 
-                  {/* 3. PRO SETTINGS MODE */}
                   {activeTab === 'pro' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                       <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
@@ -490,7 +473,6 @@ export default function PdfForms() {
                     </div>
                   )}
 
-                  {/* 4. BATCH PROCESSING MODE */}
                   {activeTab === 'batch' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                       <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
@@ -516,7 +498,6 @@ export default function PdfForms() {
                     </div>
                   )}
 
-                  {/* 5. EXPORT DATA MODE */}
                   {activeTab === 'export' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                       <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
@@ -549,7 +530,6 @@ export default function PdfForms() {
                     </div>
                   )}
 
-                  {/* ========== ACTION BUTTON (Based on Tab) ========== */}
                   <div className="mt-auto pt-4 border-t border-gray-200 flex justify-end">
                     <button 
                       onClick={() => {
