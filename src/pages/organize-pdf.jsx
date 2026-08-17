@@ -191,9 +191,23 @@ export default function OrganizePdf() {
           });
         }
       } else if (selectedFile.type === 'image/png' || selectedFile.type === 'image/jpeg') {
-        // 🔥 FIX: Generate Image Preview URL for Frontend 🔥
         const previewUrl = URL.createObjectURL(selectedFile);
-        setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'image', mimeType: selectedFile.type, previewUrl }]);
+        
+        // 🔥 FIX 2: EXIF Orientation Cleaner (Permanently straightens mobile photos) 🔥
+        const cleanImageBuffer = await new Promise((resolve) => {
+          const img = new window.Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob(blob => blob.arrayBuffer().then(resolve), 'image/jpeg', 1.0);
+          };
+          img.src = previewUrl;
+        });
+
+        setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: cleanImageBuffer, type: 'image', mimeType: 'image/jpeg', previewUrl }]);
         pagesToInsert.push({ id: uniqueId, type: 'upload', uploadId: uniqueId, uploadPageIndex: 0, rotation: 0, selected: false });
       } else {
         alert("Only PDF, JPG, or PNG files can be inserted.");
@@ -237,13 +251,11 @@ export default function OrganizePdf() {
         const pageData = pages[i];
         
         if (pageData.type === 'source') {
-          // Original page retains original dimensions automatically
           const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageData.sourceIndex]);
           copiedPage.setRotation(degrees(pageData.rotation));
           newPdf.addPage(copiedPage);
         } 
         else if (pageData.type === 'blank') {
-          // Blank A4 Page
           const blankPage = newPdf.addPage([595.28, 841.89]); 
           blankPage.setRotation(degrees(pageData.rotation));
         } 
@@ -252,18 +264,18 @@ export default function OrganizePdf() {
           if (!uploaded) continue;
           
           if (uploaded.type === 'pdf') {
-            // Uploaded PDF retains original dimensions automatically
             const insertPdf = await PDFDocument.load(uploaded.bytes);
             const [copiedPage] = await newPdf.copyPages(insertPdf, [pageData.uploadPageIndex]);
             copiedPage.setRotation(degrees(pageData.rotation));
             newPdf.addPage(copiedPage);
           } else if (uploaded.type === 'image') {
-            // 🔥 FIX: Scale Image to perfectly fit inside an A4 Page 🔥
             let image = uploaded.mimeType === 'image/png' ? await newPdf.embedPng(uploaded.bytes) : await newPdf.embedJpg(uploaded.bytes);
-            const page = newPdf.addPage([595.28, 841.89]); // Base A4 Page
             
-            // Smart scaling to maintain aspect ratio with a little margin
-            const scaledImage = image.scaleToFit(595.28 - 40, 841.89 - 40); 
+            // 🔥 FIX 3: Smart Landscape vs Portrait Page sizing 🔥
+            const isLandscape = image.width > image.height;
+            const page = newPdf.addPage(isLandscape ? [841.89, 595.28] : [595.28, 841.89]); 
+            
+            const scaledImage = image.scaleToFit(page.getWidth() - 40, page.getHeight() - 40); 
             
             page.drawImage(image, { 
               x: page.getWidth() / 2 - scaledImage.width / 2, 
@@ -285,7 +297,7 @@ export default function OrganizePdf() {
       
     } catch (error) {
       console.error("Error generating PDF:", error);
-      alert("Failed to organize PDF.");
+      alert("Failed to organize PDF. " + error.message);
     } finally {
       setIsProcessing(false);
     }
@@ -349,26 +361,25 @@ export default function OrganizePdf() {
                     </div>
                   </div>
                 ) : (
-                  <Document 
-                    file={pdfUrl} 
-                    loading={<div className="col-span-full text-center py-10 text-gray-500">Loading page previews...</div>}
-                    onLoadError={(err) => { console.error("React-PDF Load Error:", err); setRenderError(true); }}
-                    onSourceError={(err) => { console.error("Source Error:", err); setRenderError(true); }}
-                  >
-                    {/* 🔥 FIX: aspect-[1/1.414] forces perfect uniform A4 layout alignment 🔥 */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-                      {pages.map((pageData, index) => (
-                        <div 
-                          key={index} 
-                          draggable={pageData.type === 'source'}
-                          onDragStart={(e) => pageData.type === 'source' && onDragStart(e, index)}
-                          onDragOver={onDragOver}
-                          onDrop={(e) => onDrop(e, index)}
-                          onClick={(e) => handlePageClick(index, e)}
-                          className={`relative group flex flex-col items-center rounded-lg p-2 transition-all cursor-pointer border-2 ${pageData.selected ? 'border-[#E5322D] bg-red-50 ring-2 ring-red-100' : 'border-transparent hover:border-gray-300 hover:bg-gray-50'}`}
-                        >
-                          <div className="shadow-sm rounded bg-white overflow-hidden flex items-center justify-center w-full aspect-[1/1.414] border border-gray-200 relative">
-                            {pageData.type === 'source' && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
+                    {/* Source Document for Original Pages */}
+                    <Document file={pdfUrl} onLoadError={() => setRenderError(true)} className="hidden" />
+                    
+                    {pages.map((pageData, index) => (
+                      <div 
+                        key={index} 
+                        draggable={pageData.type === 'source'}
+                        onDragStart={(e) => pageData.type === 'source' && onDragStart(e, index)}
+                        onDragOver={onDragOver}
+                        onDrop={(e) => onDrop(e, index)}
+                        onClick={(e) => handlePageClick(index, e)}
+                        className={`relative group flex flex-col items-center rounded-lg p-2 transition-all cursor-pointer border-2 ${pageData.selected ? 'border-[#E5322D] bg-red-50 ring-2 ring-red-100' : 'border-transparent hover:border-gray-300 hover:bg-gray-50'}`}
+                      >
+                        <div className="shadow-sm rounded bg-white overflow-hidden flex items-center justify-center w-full aspect-[1/1.414] border border-gray-200 relative">
+                          
+                          {/* 1. Show Original PDF Pages */}
+                          {pageData.type === 'source' && (
+                            <Document file={pdfUrl}>
                               <Page 
                                 pageNumber={pageData.sourceIndex + 1} 
                                 width={130} 
@@ -376,31 +387,52 @@ export default function OrganizePdf() {
                                 renderAnnotationLayer={false}
                                 scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.7 : 1} 
                               />
-                            )}
-                            {pageData.type === 'blank' && (
-                               <div className="text-gray-300 font-bold tracking-widest uppercase text-xs w-full h-full flex items-center justify-center bg-white">Blank</div>
-                            )}
-                            {pageData.type === 'upload' && (() => {
-                               const uploaded = uploadedFiles.find(f => f.id === pageData.uploadId);
-                               if (uploaded?.type === 'image') return <img src={uploaded.previewUrl} alt="Uploaded" className="max-w-full max-h-full object-contain p-2" />;
-                               return <div className="text-blue-500 font-medium bg-blue-50 w-full h-full flex flex-col items-center justify-center"><FilePlus size={28} className="mb-2"/> PDF</div>;
-                            })()}
-                          </div>
-                          
-                          <div className="absolute bottom-8 left-0 right-0 text-center text-xs font-mono bg-black/60 text-white w-fit mx-auto px-3 py-0.5 rounded-full z-10">
-                            {index + 1}
-                          </div>
-                          
-                          {pageData.selected && (
-                            <div className="md:hidden absolute -top-3 flex gap-2 bg-white shadow-md border rounded-full p-1 px-2 z-20">
-                               <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowUp size={14} /></button>
-                               <button onClick={(e) => { e.stopPropagation(); movePage(index, 'down'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowDown size={14} /></button>
-                            </div>
+                            </Document>
                           )}
+                          
+                          {/* 2. Show Blank Page */}
+                          {pageData.type === 'blank' && (
+                             <div className="text-gray-300 font-bold tracking-widest uppercase text-xs w-full h-full flex items-center justify-center bg-white">Blank</div>
+                          )}
+                          
+                          {/* 🔥 FIX 1: Show Previews for Inserted PDF/Images 🔥 */}
+                          {pageData.type === 'upload' && (() => {
+                             const uploaded = uploadedFiles.find(f => f.id === pageData.uploadId);
+                             if (!uploaded) return null;
+                             
+                             if (uploaded.type === 'image') {
+                               return <img src={uploaded.previewUrl} alt="Uploaded" className="max-w-full max-h-full object-contain p-2" />;
+                             }
+                             
+                             if (uploaded.type === 'pdf') {
+                               return (
+                                 <Document file={uploaded.bytes}>
+                                   <Page 
+                                     pageNumber={pageData.uploadPageIndex + 1} 
+                                     width={130} 
+                                     renderTextLayer={false} 
+                                     renderAnnotationLayer={false}
+                                     scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.7 : 1} 
+                                   />
+                                 </Document>
+                               );
+                             }
+                          })()}
                         </div>
-                      ))}
-                    </div>
-                  </Document>
+                        
+                        <div className="absolute bottom-8 left-0 right-0 text-center text-xs font-mono bg-black/60 text-white w-fit mx-auto px-3 py-0.5 rounded-full z-10">
+                          {index + 1}
+                        </div>
+                        
+                        {pageData.selected && (
+                          <div className="md:hidden absolute -top-3 flex gap-2 bg-white shadow-md border rounded-full p-1 px-2 z-20">
+                             <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowUp size={14} /></button>
+                             <button onClick={(e) => { e.stopPropagation(); movePage(index, 'down'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowDown size={14} /></button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 
