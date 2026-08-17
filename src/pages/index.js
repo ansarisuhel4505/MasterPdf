@@ -6,7 +6,6 @@ import { Settings, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Home() {
-  // Exact tools array mapped from your 7 screenshots
   const allTools = [
     { title: 'Merge PDF', desc: 'Combine PDFs in the order you want with the easiest PDF merger available.', color: 'text-red-500' },
     { title: 'Split PDF', desc: 'Separate one page or a whole set for easy conversion into independent PDF files.', color: 'text-orange-500' },
@@ -48,9 +47,7 @@ export default function Home() {
       <Head><title>MasterPdf | Online PDF tools for PDF lovers</title></Head>
       <Navbar />
 
-            <main className="max-w-[1400px] mx-auto px-4 pt-28 pb-12">
-    
-        {/* Header Text */}
+      <main className="max-w-[1400px] mx-auto px-4 pt-28 pb-12">
         <div className="text-center mb-10">
           <h1 className="text-4xl md:text-[42px] font-bold text-gray-900 mb-4 tracking-tight">
             Every tool you need to work with PDFs in one place
@@ -60,7 +57,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Navigation Tabs */}
         <div className="flex flex-wrap justify-center gap-2 mb-10">
           {tabs.map((tab, idx) => (
             <button key={idx} className={`px-4 py-2 rounded-full text-sm font-semibold transition ${idx === 0 ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 shadow-sm'}`}>
@@ -69,7 +65,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Tools Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 xl:gap-5 mb-20">
           {allTools.map((tool, index) => (
             <Link href={`/${tool.title.toLowerCase().replace(/ /g, '-')}`} key={index}>
@@ -80,7 +75,7 @@ export default function Home() {
                   </span>
                 )}
                 <div className={`w-10 h-10 mb-4 flex items-center justify-center ${tool.color}`}>
-                  <Settings size={36} strokeWidth={1.5} /> {/* Using generic settings icon placeholder */}
+                  <Settings size={36} strokeWidth={1.5} />
                 </div>
                 <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-[#E5322D] transition-colors">{tool.title}</h3>
                 <p className="text-[13px] text-gray-500 leading-relaxed">{tool.desc}</p>
@@ -89,26 +84,25 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Promo Features Section */}
+        {/* Promo Features Section - ADDED text-gray-900 HERE TO FIX BLURRINESS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
           <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center md:text-left">
-            <h3 className="text-xl font-bold mb-3">Work offline with Desktop</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">Work offline with Desktop</h3>
             <p className="text-gray-500 mb-6 text-sm">Batch edit and manage documents locally, with no internet and no limits.</p>
-            <span className="inline-block text-xl">↗</span>
+            <span className="inline-block text-xl text-gray-400">↗</span>
           </div>
           <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center md:text-left">
-            <h3 className="text-xl font-bold mb-3">On-the-go with Mobile</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">On-the-go with Mobile</h3>
             <p className="text-gray-500 mb-6 text-sm">Your favorite tools, right in your pocket. Keep working on your projects anytime, anywhere.</p>
             <span className="inline-block text-xl text-red-500">↗</span>
           </div>
           <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center md:text-left">
-            <h3 className="text-xl font-bold mb-3">Built for business</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">Built for business</h3>
             <p className="text-gray-500 mb-6 text-sm">Automate document management, onboard teams easily, and scale with flexible plans.</p>
-            <span className="inline-block text-xl">↗</span>
+            <span className="inline-block text-xl text-gray-400">↗</span>
           </div>
         </div>
 
-        {/* Premium Banner */}
         <div className="bg-[#FFF4E5] rounded-2xl p-10 flex flex-col md:flex-row items-center justify-between mb-10 overflow-hidden relative">
           <div className="z-10 w-full md:w-1/2">
             <h2 className="text-4xl font-bold text-gray-900 mb-6">Get more with Premium</h2>
@@ -119,7 +113,6 @@ export default function Home() {
             </ul>
             <button className="bg-[#FFB822] hover:bg-[#F2A900] text-gray-900 font-bold px-8 py-3 rounded-md transition">Get Premium</button>
           </div>
-          {/* Aesthetic graphics placeholder for right side */}
           <div className="hidden md:block w-1/2 absolute right-0 top-0 h-full bg-cover bg-right opacity-30" style={{backgroundImage: "url('https://www.ilovepdf.com/img/ilovepdf/premium/premium-home-banner.svg')"}}></div>
         </div>
       </main>
