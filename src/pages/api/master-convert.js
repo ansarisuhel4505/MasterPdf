@@ -10,7 +10,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Yahan 'boxes' aur 'mode' add kiya hai Redact feature ke liye
   const { action, fileUrl, password, boxes, mode } = req.body;
 
   if (!fileUrl) {
@@ -25,13 +24,11 @@ export default async function handler(req, res) {
     // ==========================================
     if (action === 'redact-pdf') {
       try {
-        // 1. PDF ko read karo
         const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const pages = pdfDoc.getPages();
 
         if (mode === 'manual' && boxes && boxes.length > 0) {
-          // Frontend se aayi exact location par black box draw karo
           boxes.forEach((box) => {
             const page = pages[box.pageIndex || 0]; 
             const { height: pageHeight } = page.getSize();
@@ -52,10 +49,8 @@ export default async function handler(req, res) {
           });
         }
 
-        // 2. Modified PDF save karo
         const modifiedPdfBytes = await pdfDoc.save();
         
-        // 3. Nayi PDF ko Vercel Blob par upload karke link lo
         const blob = await put(`redacted-document-${Date.now()}.pdf`, modifiedPdfBytes, {
           access: 'public',
           contentType: 'application/pdf'
@@ -82,9 +77,24 @@ export default async function handler(req, res) {
     else if (action === 'pdf-to-pdfa') result = await convertapi.convert('pdfa', { File: fileUrl }, 'pdf');
     else if (action === 'compress-pdf') result = await convertapi.convert('compress', { File: fileUrl }, 'pdf');
     else if (action === 'repair-pdf') result = await convertapi.convert('repair', { File: fileUrl }, 'pdf');
-    else if (action === 'html-to-pdf') result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     else if (action === 'ocr-pdf') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+    
+    // 🔥 FIX: SMART HTML TO PDF HANDLER 🔥
+    else if (action === 'html-to-pdf') {
+      if (fileUrl.startsWith('http')) {
+        // Agar proper link aaya hai toh web to pdf use karo
+        result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
+      } else {
+        // Agar raw HTML aaya hai, toh pehle usko Vercel par temporary host karo
+        const tempBlob = await put(`temp-html-${Date.now()}.html`, fileUrl, {
+          access: 'public',
+          contentType: 'text/html'
+        });
+        // Ab us temporary link ko HTML file man kar PDF me badal do
+        result = await convertapi.convert('pdf', { File: tempBlob.url }, 'html');
+      }
+    }
 
     // ==========================================
     // 🟡 CATEGORY 2: SECURITY TOOLS
