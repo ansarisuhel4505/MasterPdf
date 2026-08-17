@@ -5,19 +5,20 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { pdfjs } from 'react-pdf';
+import JSZip from 'jszip';
 import { 
   UploadCloud, FileText, X, RotateCw, RotateCcw, Settings, 
-  ArrowRight, RefreshCw, Type, Layers
+  ArrowRight, Layers, FileOutput
 } from 'lucide-react';
 
-// 🛑 SSR को ब्लॉक करना (Next.js build error से बचने के लिए)
+// 🛑 Dynamic Import (Next.js SSR ब्लॉक करने के लिए)
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-// 🛑 100% Working CDN Worker
 export default function RotatePdf() {
-  const [file, setFile] = useState(null);
-  const [fileUrl, setFileUrl] = useState(null);
+  const [files, setFiles] = useState([]); // अब फाइलों का एक Array होगा
+  const [fileUrls, setFileUrls] = useState([]); // preview के लिए URLs
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [pages, setPages] = useState([]); 
   const [pdfDoc, setPdfDoc] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -26,31 +27,36 @@ export default function RotatePdf() {
   const [rangeInput, setRangeInput] = useState('');
   const [renderError, setRenderError] = useState(false);
 
-  // Worker load (react-pdf के लिए)
+  // 🛑 वर्कर को सबसे सुरक्षित URL से लोड करें (Vercel पर 100% काम करता है)
   useEffect(() => {
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js';
+    pdfjs.GlobalWorkerOptions.workerSrc = '//unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js';
   }, []);
 
-  // File Upload Handler
+  // कई फाइल्स अपलोड करने का हैंडलर
   const handleFileChange = async (e) => {
-    const selectedFile = e.target.files[0];
-    if (!selectedFile || selectedFile.type !== 'application/pdf') {
-      alert("Please upload a valid PDF file.");
+    const selectedFiles = Array.from(e.target.files);
+    if (!selectedFiles.length) return;
+
+    // सिर्फ PDF चेक करें
+    const validPdfs = selectedFiles.filter(f => f.type === 'application/pdf');
+    if (validPdfs.length === 0) {
+      alert("Please upload at least one valid PDF file.");
       return;
     }
 
-    setFile(selectedFile);
-    setFileUrl(URL.createObjectURL(selectedFile));
+    setFiles(validPdfs);
+    setFileUrls(validPdfs.map(f => URL.createObjectURL(f)));
+    setCurrentFileIndex(0);
     setIsLoading(true);
     setRenderError(false);
 
     try {
-      const arrayBuffer = await selectedFile.arrayBuffer();
+      // पहली फाइल लोड करें (थंबनेल के लिए)
+      const arrayBuffer = await validPdfs[0].arrayBuffer();
       const loadedPdf = await PDFDocument.load(arrayBuffer);
       setPdfDoc(loadedPdf);
       
       const totalPages = loadedPdf.getPageCount();
-      // स्टेट बनाना: { index, rotation (current angle), selected }
       const initialPages = Array.from({ length: totalPages }, (_, i) => ({
         index: i,
         rotation: 0,
@@ -59,15 +65,15 @@ export default function RotatePdf() {
       setPages(initialPages);
     } catch (error) {
       console.error("Error loading PDF:", error);
-      alert("Corrupted or invalid PDF file.");
+      alert("Corrupted or invalid first PDF file.");
     } finally {
       setIsLoading(false);
     }
   };
 
   const removeFile = () => {
-    setFile(null);
-    setFileUrl(null);
+    setFiles([]);
+    setFileUrls([]);
     setPages([]);
     setPdfDoc(null);
     setCustomDegrees('');
@@ -75,7 +81,7 @@ export default function RotatePdf() {
     setRenderError(false);
   };
 
-  // --- PRO SELECTION LOGIC (Shift+Click & Ctrl+Click) ---
+  // --- SELECTION LOGIC ---
   const handlePageClick = (index, event) => {
     const newPages = [...pages];
     if (event.ctrlKey || event.metaKey) {
@@ -100,7 +106,7 @@ export default function RotatePdf() {
     }
   };
 
-  // --- APPLY ROTATION TO STATE (UI UPDATE) ---
+  // --- APPLY ROTATION TO STATE ---
   const applyRotationToPages = (deg, target = 'selected') => {
     const newPages = [...pages];
     let pagesToRotate = [];
@@ -122,12 +128,11 @@ export default function RotatePdf() {
         }
       }
     } else {
-      // default: selected
       newPages.forEach((p, i) => { if (p.selected) pagesToRotate.push(i); });
     }
 
     if (pagesToRotate.length === 0) {
-      alert("No pages selected for rotation. Select pages or use 'All Pages'.");
+      alert("No pages selected for rotation.");
       return;
     }
 
@@ -139,30 +144,54 @@ export default function RotatePdf() {
     setPages(newPages);
   };
 
-  // --- MAIN PROCESS: DOWNLOAD THE ROTATED PDF ---
+  // --- MAIN PROCESS: मल्टीपल फाइल्स को प्रोसेस करें और ZIP करें ---
   const processPdf = async () => {
-    if (!pdfDoc) return;
+    if (files.length === 0) return;
     setIsProcessing(true);
 
     try {
-      // स्टेट के अनुसार असली PDF को अपडेट करें
-      for (let i = 0; i < pages.length; i++) {
-        const pageData = pages[i];
-        const page = pdfDoc.getPage(i);
-        // pdf-lib के साथ नया ऐंगल सेट करें
-        page.setRotation(degrees(pageData.rotation));
+      const zip = new JSZip();
+
+      // सारी अपलोड की गई फाइल्स पर लूप चलाएं
+      for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+        const file = files[fileIndex];
+        const arrayBuffer = await file.arrayBuffer();
+        const currentPdfDoc = await PDFDocument.load(arrayBuffer);
+
+        // रोटेशन अप्लाई करें
+        for (let i = 0; i < currentPdfDoc.getPageCount(); i++) {
+          const page = currentPdfDoc.getPage(i);
+          // अगर सिर्फ 1 फाइल है तो यूज़र द्वारा चुना गया रोटेशन लगेगा
+          // अगर मल्टीपल फाइल्स हैं, तो सब पर यही रोटेशन लगेगा
+          if (pages[i]) { 
+             page.setRotation(degrees(pages[i].rotation));
+          }
+        }
+
+        const pdfBytes = await currentPdfDoc.save();
+        const fileName = `Rotated_${file.name}`;
+        zip.file(fileName, pdfBytes);
       }
 
-      const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `MasterPdf_Rotated_${file.name}`;
-      link.click();
+      // अगर सिर्फ 1 फाइल थी, तो सीधे डाउनलोड करें
+      if (files.length === 1) {
+        const singleBlob = await zip.file(Object.keys(zip.files)[0]).async('blob');
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(singleBlob);
+        link.download = Object.keys(zip.files)[0];
+        link.click();
+      } else {
+        // अगर 1 से ज्यादा फाइलें हैं, तो ZIP डाउनलोड कराएं
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(zipBlob);
+        link.download = `MasterPdf_Rotated_Batch.zip`;
+        link.click();
+      }
       
     } catch (error) {
       console.error("Error rotating PDF:", error);
-      alert("Failed to rotate PDF.");
+      alert("Failed to process one or more files.");
     }
     setIsProcessing(false);
   };
@@ -175,18 +204,19 @@ export default function RotatePdf() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Rotate PDF</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Select specific pages using Shift/Ctrl to rotate at custom angles (15°, 45°, 127°) or standard 90°/180°.
+            Select specific pages using Shift/Ctrl. <strong className="text-[#E5322D]">Supports Batch Upload!</strong> Upload multiple PDFs and download all as a ZIP.
           </p>
         </div>
 
         <div className="w-full max-w-6xl bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
-          {!file ? (
+          {files.length === 0 ? (
             <div className="min-h-[450px] flex flex-col items-center justify-center p-10 bg-gray-50/50 transition-colors">
-              <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
+              {/* 🔥 अब इसमें `multiple` ऐड कर दिया गया है */}
+              <input type="file" id="file-upload" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
               <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1 border-4 border-dashed border-red-200/50 hover:border-red-100">
-                <UploadCloud size={28} /> Select PDF file
+                <UploadCloud size={28} /> Select PDFs (Multiple allowed)
               </label>
-              <p className="mt-4 text-gray-400 text-sm">or drop PDF here</p>
+              <p className="mt-4 text-gray-400 text-sm">Hold Shift/Ctrl to select multiple PDFs</p>
             </div>
           ) : isLoading ? (
             <div className="min-h-[450px] flex flex-col items-center justify-center bg-gray-50">
@@ -196,20 +226,26 @@ export default function RotatePdf() {
           ) : (
             <div className="flex flex-col md:flex-row h-full relative p-6 gap-8">
               
-              {/* LEFT SIDE: Thumbnail Grid (Live Preview) */}
+              {/* LEFT SIDE: Thumbnail Grid */}
               <div className="w-full md:w-1/2 min-h-[400px] bg-gray-50 border border-gray-200 rounded-xl p-4 overflow-y-auto max-h-[600px] relative">
                 <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition z-20"><X size={20} /></button>
-                
+                <div className="mb-4 flex justify-between items-center">
+                  <span className="text-sm font-bold text-gray-800">
+                    {files.length} File{files.length > 1 ? 's' : ''} Loaded
+                  </span>
+                </div>
+
                 {renderError ? (
                   <div className="w-full flex flex-col items-center justify-center py-12 text-center">
                     <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-sm">
                       <p className="text-sm text-gray-700 mb-4">Preview failed to load. Click below to retry.</p>
-                      <button onClick={() => window.location.reload()} className="flex items-center gap-2 bg-[#E5322D] text-white py-2 px-6 rounded-lg hover:bg-red-700 transition font-bold"><RefreshCw size={18} /> Reload & Fix</button>
+                      <button onClick={() => window.location.reload()} className="flex items-center gap-2 bg-[#E5322D] text-white py-2 px-6 rounded-lg hover:bg-red-700 transition font-bold"><Settings size={18} className="animate-spin"/> Reload & Fix</button>
                     </div>
                   </div>
                 ) : (
+                  // 🔥 अब सिर्फ पहली फाइल का प्रीव्यू दिखेगा (UI साफ रखने के लिए)
                   <Document 
-                    file={fileUrl} 
+                    file={fileUrls[0]} 
                     loading={<div className="text-center py-10 text-gray-500">Loading previews...</div>}
                     onLoadError={() => setRenderError(true)}
                   >
@@ -222,7 +258,6 @@ export default function RotatePdf() {
                             pageData.selected ? 'border-[#E5322D] bg-red-50 ring-2 ring-red-100' : 'border-transparent hover:border-gray-300 hover:bg-gray-50'
                           }`}
                         >
-                          {/* 🔥 LIVE ROTATION PREVIEW 🔥 */}
                           <div className="shadow-sm rounded bg-white overflow-hidden flex items-center justify-center w-full h-auto min-h-[120px] border border-gray-100">
                             <Page 
                               pageNumber={index + 1} 
@@ -230,7 +265,7 @@ export default function RotatePdf() {
                               renderTextLayer={false} 
                               renderAnnotationLayer={false}
                               scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.7 : 1} 
-                              rotate={pageData.rotation} // Live rotation props!
+                              rotate={pageData.rotation} // लाइव रोटेशन
                             />
                           </div>
                           <div className="mt-1 text-center text-xs font-bold text-gray-700 bg-black/10 px-2 py-0.5 rounded-full w-fit">
@@ -245,7 +280,6 @@ export default function RotatePdf() {
 
               {/* RIGHT SIDE: Pro Controls (No blur text) */}
               <div className="w-full md:w-1/2 flex flex-col justify-between">
-                
                 <div className="space-y-5">
                   <h3 className="text-xl font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
                     <RotateCw size={20} className="text-[#E5322D]" /> Rotation Controls
@@ -258,7 +292,7 @@ export default function RotatePdf() {
                     <button onClick={() => applyRotationToPages(180, 'all')} className="flex items-center justify-center gap-2 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-lg transition"><RotateCw size={20} className="rotate-180"/> 180°</button>
                   </div>
 
-                  {/* Apply To Selectors (Range selection) */}
+                  {/* Apply To Selectors */}
                   <div className="bg-gray-50 border border-gray-100 p-4 rounded-xl space-y-3">
                     <p className="font-bold text-gray-800 text-sm">Apply Rotation To:</p>
                     <div className="flex flex-wrap gap-2 text-sm font-medium">
@@ -281,7 +315,7 @@ export default function RotatePdf() {
                     </div>
                   </div>
 
-                  {/* 🔥 PRO FEATURE: CUSTOM DEGREES INPUT 🔥 */}
+                  {/* Custom Degrees */}
                   <div className="bg-gray-50 border border-gray-100 p-4 rounded-xl space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="flex-1">
@@ -301,9 +335,8 @@ export default function RotatePdf() {
                         className="px-4 py-2 bg-gray-800 text-white font-bold rounded-md hover:bg-gray-900 transition"
                       >Apply</button>
                     </div>
-                    <p className="text-xs text-gray-500">Tip: Hold Shift or Ctrl to select multiple pages from the grid, then apply the angle.</p>
+                    <p className="text-xs text-gray-500">Tip: Hold Shift or Ctrl to select multiple pages, then apply the angle.</p>
                   </div>
-
                 </div>
 
                 {/* Download Action Button */}
@@ -314,9 +347,9 @@ export default function RotatePdf() {
                     className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
                     {isProcessing ? (
-                      <><Settings className="animate-spin" size={24} /> Processing...</>
+                      <><Settings className="animate-spin" size={24} /> Processing {files.length} Files...</>
                     ) : (
-                      <>Download Rotated PDF <ArrowRight size={24} /></>
+                      <>{files.length > 1 ? `Download All (ZIP)` : 'Download Rotated PDF'} <ArrowRight size={24} /></>
                     )}
                   </button>
                 </div>
