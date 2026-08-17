@@ -10,6 +10,7 @@ import {
   Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus
 } from 'lucide-react';
 
+// SSR को ब्लॉक करना (Next.js के लिए जरूरी)
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
@@ -23,9 +24,10 @@ export default function OrganizePdf() {
   const [renderError, setRenderError] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]); 
 
+  // 🛑 100% FINAL FIX: बिना node_modules के सीधे CDN से लोड करें
   useEffect(() => {
-    // लोकल वर्कर फाइल को पॉइंट करना
-    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+    // react-pdf@9.1.0 के लिए pdf.js वर्जन 4.4.168 है
+    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js';
   }, []);
 
   const pushHistory = (newPages) => {
@@ -366,7 +368,6 @@ export default function OrganizePdf() {
                 </button>
               </div>
 
-              {/* Grid/Text Mode */}
               <div className="p-6 bg-white max-h-[65vh] overflow-y-auto custom-scrollbar">
                 {renderError ? (
                   <div className="w-full">
