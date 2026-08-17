@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "prebuild": "cp node_modules/pdfjs-dist/build/pdf.worker.min.js public/ || true"
+    "prebuild": "mkdir -p public && cp node_modules/pdfjs-dist/build/pdf.worker.min.js public/ 2>/dev/null || true"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.7.6",
