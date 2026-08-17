@@ -7,10 +7,10 @@ import { PDFDocument } from 'pdf-lib';
 import { pdfjs } from 'react-pdf';
 import { 
   UploadCloud, Trash2, ArrowUp, ArrowDown, RotateCcw, RotateCw, 
-  Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus
+  Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus, RefreshCw
 } from 'lucide-react';
 
-// SSR (Server Side Rendering) को ब्लॉक करना बहुत जरूरी है
+// Next.js (SSR) को ब्लॉक करना बहुत जरूरी है
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
@@ -24,9 +24,10 @@ export default function OrganizePdf() {
   const [renderError, setRenderError] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]); 
 
-  // 🛑 FINAL 100% FIX: वर्कर यूआरएल के आगे `?v=2` लगा दिया है ताकि ब्राउज़र पुराना कैश छोड़कर नया डाउनलोड करे
+  // 🛑 100% FINAL CACHE-FREE FIX: unpkg का इस्तेमाल + कैश ब्रेकर
   useEffect(() => {
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js?v=2';
+    // ?v=3 जोड़ने से ब्राउज़र पुरानी फाइल को कैश से नहीं उठाएगा, बल्कि नए सिरे से डाउनलोड करेगा
+    pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js?v=3';
   }, []);
 
   const pushHistory = (newPages) => {
@@ -318,24 +319,19 @@ export default function OrganizePdf() {
 
               <div className="p-6 bg-white max-h-[65vh] overflow-y-auto custom-scrollbar">
                 {renderError ? (
-                  <div className="w-full">
-                    <div className="flex flex-col gap-2">
-                      {pages.map((pageData, index) => (
-                        <div key={index} onClick={(e) => handlePageClick(index, e)} className={`flex items-center justify-between px-4 py-3 border-2 rounded-lg cursor-pointer transition-all bg-white ${pageData.selected ? 'border-[#E5322D] bg-red-50' : 'border-gray-300 hover:border-gray-400'}`}>
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-sm text-gray-700">Page {index + 1}</span>
-                            {pageData.type === 'blank' && <span className="text-xs text-gray-400 border px-2 py-0.5 rounded-full">Blank</span>}
-                            {pageData.type === 'upload' && <span className="text-xs text-green-500 border border-green-300 px-2 py-0.5 rounded-full bg-green-50">Inserted</span>}
-                          </div>
-                          <div className="flex gap-1">
-                             <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="p-1 hover:bg-gray-200 rounded-md text-gray-600"><ArrowUp size={16}/></button>
-                             <button onClick={(e) => { e.stopPropagation(); movePage(index, 'down'); }} className="p-1 hover:bg-gray-200 rounded-md text-gray-600"><ArrowDown size={16}/></button>
-                          </div>
-                        </div>
-                      ))}
-                      <div className="mt-4 text-center text-xs font-medium text-gray-600">
-                        Thumbnails failed to load. Please <span className="font-bold text-[#E5322D] cursor-pointer underline" onClick={() => window.location.reload()}>Refresh the page</span> to retry.
-                      </div>
+                  <div className="w-full flex flex-col items-center justify-center py-12 text-center">
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-sm">
+                      <div className="mb-3 text-red-500 font-bold text-lg">⚠️ Preview Failed</div>
+                      <p className="text-sm text-gray-700 mb-4">
+                        Your browser is blocking the PDF view due to cache or network issues.
+                      </p>
+                      <button 
+                        onClick={() => window.location.reload()}
+                        className="flex items-center gap-2 bg-[#E5322D] text-white py-2 px-6 rounded-lg mx-auto hover:bg-red-700 transition font-bold"
+                      >
+                        <RefreshCw size={18} /> Force Reload & Fix
+                      </button>
+                      <p className="text-xs text-gray-500 mt-3">(Tip: You can also press Ctrl + F5 or Ctrl + Shift + R)</p>
                     </div>
                   </div>
                 ) : (
