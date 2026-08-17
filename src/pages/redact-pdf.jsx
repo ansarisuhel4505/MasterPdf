@@ -254,7 +254,7 @@ export default function RedactPdf() {
               )}
               
               <Document file={pdfUrl} onLoadSuccess={({ numPages }) => setNumPages(numPages)} className="border border-gray-400 shadow-2xl relative bg-white">
-                <Page pageNumber={pageNumber} width={700} renderTextLayer={true} renderAnnotationLayer={false} />
+                <Page pageNumber={pageNumber} width={700} scale={2} renderTextLayer={true} renderAnnotationLayer={false} />
                 
                 {boxes.filter(b => b.pageIndex === pageNumber - 1).map((box, index) => (
                   <Rnd
