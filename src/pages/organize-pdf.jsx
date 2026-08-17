@@ -10,7 +10,6 @@ import {
   Layers, FileOutput, Undo2, X, Settings, ChevronDown, FilePlus
 } from 'lucide-react';
 
-// SSR को ब्लॉक करना (Next.js के लिए जरूरी)
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
@@ -24,8 +23,8 @@ export default function OrganizePdf() {
   const [renderError, setRenderError] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]); 
 
-  // 🛑 FINAL FIX: Local Worker को लोड करना (अब बिना CDN के Vercel पर काम करेगा)
   useEffect(() => {
+    // लोकल वर्कर फाइल को पॉइंट करना
     pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
   }, []);
 
@@ -328,7 +327,6 @@ export default function OrganizePdf() {
             </div>
           ) : (
             <div className="flex flex-col h-full relative">
-              {/* Toolbar */}
               <div className="bg-gray-50 border-b border-gray-200 p-4 flex flex-wrap items-center gap-2 sticky top-[72px] z-10 shadow-sm">
                 <div className="flex items-center gap-2 mr-4 pr-4 border-r border-gray-300">
                   <span className="text-sm font-semibold text-gray-700">{pages.length} Pages</span>
@@ -368,14 +366,10 @@ export default function OrganizePdf() {
                 </button>
               </div>
 
-              {/* 🟢 SMART FALLBACK: अगर थंबनेल एरर देता है तो Text Mode चालू होगा */}
+              {/* Grid/Text Mode */}
               <div className="p-6 bg-white max-h-[65vh] overflow-y-auto custom-scrollbar">
                 {renderError ? (
                   <div className="w-full">
-                    <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mb-4 text-yellow-800 text-sm flex items-center gap-2">
-                      <span className="font-bold">⚠️ Preview Failed!</span> 
-                      <span>You can still manage pages using this Text-Mode.</span>
-                    </div>
                     <div className="flex flex-col gap-2">
                       {pages.map((pageData, index) => (
                         <div 
@@ -399,7 +393,6 @@ export default function OrganizePdf() {
                     </div>
                   </div>
                 ) : (
-                  /* अगर सब ठीक है तो Visual Grid दिखेगा */
                   <Document 
                     file={file} 
                     loading={<div className="col-span-full text-center py-10 text-gray-500">Loading page previews...</div>}
