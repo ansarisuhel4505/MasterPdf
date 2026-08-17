@@ -1,13 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { SignInButton, SignUpButton, UserButton, useAuth } from '@clerk/nextjs';
-import { Menu, X } from 'lucide-react';
+import { 
+  Menu, X, ChevronDown, 
+  Merge, Scissors, Minimize2, FileText, Presentation, 
+  FileSpreadsheet, PenTool, ImageIcon, FileSignature, Type, RotateCw, 
+  Globe, Unlock, Lock, Layers, FileDigit, Wrench, ListOrdered, 
+  Scan, ScanText, SplitSquareHorizontal, Shield, Crop, FormInput, 
+  MessageSquare, Languages, FileCode2, FileMinus, FileOutput
+} from 'lucide-react';
 
 export default function Navbar() {
   const { isSignedIn } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState(null); // 'convert' ya 'allTools' ya null
 
-  // Jab sidebar khule toh background (body) ka scroll lock karne ke liye
   useEffect(() => {
     if (isSidebarOpen) {
       document.body.style.overflow = 'hidden';
@@ -20,12 +27,11 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200 shadow-sm fixed w-full top-0 z-40">
+      <nav className="flex items-center justify-between px-6 bg-white border-b border-gray-200 shadow-sm fixed w-full top-0 z-40 h-[72px]">
         
         {/* Left side: Logo & Menu Button */}
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-6 h-full">
           
-          {/* Yeh original Menu icon hai (Left Side) */}
           <button 
             onClick={() => setIsSidebarOpen(true)} 
             className={`md:hidden text-gray-700 hover:text-gray-900 transition-transform duration-500 ease-in-out ${isSidebarOpen ? 'rotate-180 opacity-0' : 'rotate-0 opacity-100'}`}
@@ -45,16 +51,69 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop Links */}
-          <div className="hidden md:flex items-center gap-6 ml-6 font-semibold text-sm text-gray-700">
-            <Link href="/merge-pdf"><span className="hover:text-[#E5322D] cursor-pointer transition-colors duration-200">MERGE PDF</span></Link>
-            <Link href="/split-pdf"><span className="hover:text-[#E5322D] cursor-pointer transition-colors duration-200">SPLIT PDF</span></Link>
-            <Link href="/compress-pdf"><span className="hover:text-[#E5322D] cursor-pointer transition-colors duration-200">COMPRESS PDF</span></Link>
-            <Link href="/pdf-to-word"><span className="hover:text-[#E5322D] cursor-pointer transition-colors duration-200">CONVERT PDF</span></Link>
-            <Link href="/tools"><span className="hover:text-[#E5322D] cursor-pointer transition-colors duration-200">ALL PDF TOOLS</span></Link>
+          <div className="hidden md:flex items-center h-full ml-6 font-semibold text-sm text-gray-700">
+            <Link href="/merge-pdf" className="px-3 h-full flex items-center hover:text-[#E5322D] cursor-pointer transition-colors duration-200">
+              MERGE PDF
+            </Link>
+            <Link href="/split-pdf" className="px-3 h-full flex items-center hover:text-[#E5322D] cursor-pointer transition-colors duration-200">
+              SPLIT PDF
+            </Link>
+            <Link href="/compress-pdf" className="px-3 h-full flex items-center hover:text-[#E5322D] cursor-pointer transition-colors duration-200">
+              COMPRESS PDF
+            </Link>
+
+            {/* CONVERT PDF DROPDOWN */}
+            <div 
+              className="relative h-full flex items-center"
+              onMouseEnter={() => setActiveDropdown('convert')}
+              onMouseLeave={() => setActiveDropdown(null)}
+            >
+              <Link href="/pdf-to-word" className={`px-3 h-full flex items-center gap-1 cursor-pointer transition-colors duration-200 ${activeDropdown === 'convert' ? 'text-[#E5322D]' : 'hover:text-[#E5322D]'}`}>
+                CONVERT PDF <ChevronDown size={16} className={`transition-transform duration-200 ${activeDropdown === 'convert' ? 'rotate-180' : ''}`} />
+              </Link>
+
+              {activeDropdown === 'convert' && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.1)] border border-gray-100 rounded-b-xl p-8 w-[600px] flex gap-12 z-50 cursor-default">
+                  {/* Convert TO PDF Column */}
+                  <div className="flex-1">
+                    <h4 className="text-gray-400 font-bold text-xs tracking-wider mb-4">CONVERT TO PDF</h4>
+                    <ul className="space-y-1">
+                      <li><Link href="/jpg-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><ImageIcon size={20} className="text-yellow-500"/> JPG to PDF</Link></li>
+                      <li><Link href="/word-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><FileText size={20} className="text-blue-500"/> WORD to PDF</Link></li>
+                      <li><Link href="/powerpoint-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><Presentation size={20} className="text-orange-400"/> POWERPOINT to PDF</Link></li>
+                      <li><Link href="/excel-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><FileSpreadsheet size={20} className="text-green-400"/> EXCEL to PDF</Link></li>
+                      <li><Link href="/html-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><Globe size={20} className="text-blue-400"/> HTML to PDF</Link></li>
+                    </ul>
+                  </div>
+                  {/* Convert FROM PDF Column */}
+                  <div className="flex-1">
+                    <h4 className="text-gray-400 font-bold text-xs tracking-wider mb-4">CONVERT FROM PDF</h4>
+                    <ul className="space-y-1">
+                      <li><Link href="/pdf-to-jpg" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><ImageIcon size={20} className="text-yellow-600"/> PDF to JPG</Link></li>
+                      <li><Link href="/pdf-to-word" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><FileText size={20} className="text-blue-600"/> PDF to WORD</Link></li>
+                      <li><Link href="/pdf-to-powerpoint" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><Presentation size={20} className="text-orange-600"/> PDF to POWERPOINT</Link></li>
+                      <li><Link href="/pdf-to-excel" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><FileSpreadsheet size={20} className="text-green-500"/> PDF to EXCEL</Link></li>
+                      <li><Link href="/pdf-to-pdfa" className="flex items-center gap-3 text-[14px] text-gray-800 font-medium hover:bg-gray-50 p-2 rounded-lg transition-colors"><FileDigit size={20} className="text-teal-600"/> PDF to PDF/A</Link></li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ALL PDF TOOLS MEGA MENU */}
+            <div 
+              className="relative h-full flex items-center"
+              onMouseEnter={() => setActiveDropdown('allTools')}
+              onMouseLeave={() => setActiveDropdown(null)}
+            >
+              <Link href="/tools" className={`px-3 h-full flex items-center gap-1 cursor-pointer transition-colors duration-200 ${activeDropdown === 'allTools' ? 'text-[#E5322D]' : 'hover:text-[#E5322D]'}`}>
+                ALL PDF TOOLS <ChevronDown size={16} className={`transition-transform duration-200 ${activeDropdown === 'allTools' ? 'rotate-180' : ''}`} />
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* Right side: Auth Buttons (Desktop) */}
+        {/* Right side: Auth Buttons */}
         <div className="flex items-center gap-4">
           {!isSignedIn ? (
             <>
@@ -75,60 +134,126 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* --- NAYA MOBILE SIDEBAR (RIGHT SIDE SLIDE) --- */}
-      
-      {/* 1. Black Transparent Overlay (Background dull karne ke liye) */}
+      {/* ALL PDF TOOLS MEGA MENU (Rendered outside to span full width) */}
+      <div 
+        className={`fixed top-[72px] left-0 w-full bg-[#F5F5F7] shadow-[0_15px_30px_rgba(0,0,0,0.1)] border-t border-gray-200 z-30 transition-all duration-300 origin-top overflow-hidden ${activeDropdown === 'allTools' ? 'opacity-100 max-h-[800px] visible' : 'opacity-0 max-h-0 invisible'}`}
+        onMouseEnter={() => setActiveDropdown('allTools')}
+        onMouseLeave={() => setActiveDropdown(null)}
+      >
+        <div className="max-w-[1400px] mx-auto p-10 grid grid-cols-6 gap-6 cursor-default">
+          {/* Col 1 */}
+          <div>
+            <h4 className="text-gray-500 font-bold text-xs tracking-wider mb-4">ORGANIZE PDF</h4>
+            <ul className="space-y-1">
+              <li><Link href="/merge-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Merge size={18} className="text-red-500"/> Merge PDF</Link></li>
+              <li><Link href="/split-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Scissors size={18} className="text-orange-500"/> Split PDF</Link></li>
+              <li><Link href="/remove-pages" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileMinus size={18} className="text-red-400"/> Remove pages</Link></li>
+              <li><Link href="/extract-pages" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileOutput size={18} className="text-orange-400"/> Extract pages</Link></li>
+              <li><Link href="/organize-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Layers size={18} className="text-orange-700"/> Organize PDF</Link></li>
+              <li><Link href="/scan-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Scan size={18} className="text-orange-500"/> Scan to PDF</Link></li>
+            </ul>
+
+            <h4 className="text-gray-500 font-bold text-xs tracking-wider mt-8 mb-4">PDF INTELLIGENCE</h4>
+            <ul className="space-y-1">
+              <li><Link href="/ai-summarizer" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><MessageSquare size={18} className="text-indigo-600"/> AI Summarizer</Link></li>
+              <li><Link href="/translate-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Languages size={18} className="text-blue-500"/> Translate PDF</Link></li>
+              <li><Link href="/pdf-to-markdown" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileCode2 size={18} className="text-gray-700"/> PDF to Markdown</Link></li>
+            </ul>
+          </div>
+
+          {/* Col 2 */}
+          <div>
+            <h4 className="text-gray-500 font-bold text-xs tracking-wider mb-4">OPTIMIZE PDF</h4>
+            <ul className="space-y-1">
+              <li><Link href="/compress-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Minimize2 size={18} className="text-green-600"/> Compress PDF</Link></li>
+              <li><Link href="/repair-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Wrench size={18} className="text-green-700"/> Repair PDF</Link></li>
+              <li><Link href="/ocr-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><ScanText size={18} className="text-blue-600"/> OCR PDF</Link></li>
+            </ul>
+          </div>
+
+          {/* Col 3 */}
+          <div>
+            <h4 className="text-gray-500 font-bold text-xs tracking-wider mb-4">CONVERT TO PDF</h4>
+            <ul className="space-y-1">
+              <li><Link href="/jpg-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><ImageIcon size={18} className="text-yellow-500"/> JPG to PDF</Link></li>
+              <li><Link href="/word-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileText size={18} className="text-blue-500"/> WORD to PDF</Link></li>
+              <li><Link href="/powerpoint-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Presentation size={18} className="text-orange-400"/> POWERPOINT to PDF</Link></li>
+              <li><Link href="/excel-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileSpreadsheet size={18} className="text-green-400"/> EXCEL to PDF</Link></li>
+              <li><Link href="/html-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Globe size={18} className="text-blue-400"/> HTML to PDF</Link></li>
+            </ul>
+          </div>
+
+          {/* Col 4 */}
+          <div>
+            <h4 className="text-gray-500 font-bold text-xs tracking-wider mb-4">CONVERT FROM PDF</h4>
+            <ul className="space-y-1">
+              <li><Link href="/pdf-to-jpg" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><ImageIcon size={18} className="text-yellow-600"/> PDF to JPG</Link></li>
+              <li><Link href="/pdf-to-word" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileText size={18} className="text-blue-600"/> PDF to WORD</Link></li>
+              <li><Link href="/pdf-to-powerpoint" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Presentation size={18} className="text-orange-600"/> PDF to POWERPOINT</Link></li>
+              <li><Link href="/pdf-to-excel" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileSpreadsheet size={18} className="text-green-500"/> PDF to EXCEL</Link></li>
+              <li><Link href="/pdf-to-pdfa" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileDigit size={18} className="text-teal-600"/> PDF to PDF/A</Link></li>
+            </ul>
+          </div>
+
+          {/* Col 5 */}
+          <div>
+            <h4 className="text-gray-500 font-bold text-xs tracking-wider mb-4">EDIT PDF</h4>
+            <ul className="space-y-1">
+              <li><Link href="/rotate-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><RotateCw size={18} className="text-purple-600"/> Rotate PDF</Link></li>
+              <li><Link href="/add-page-numbers" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><ListOrdered size={18} className="text-red-600"/> Add page numbers</Link></li>
+              <li><Link href="/add-watermark" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Type size={18} className="text-pink-600"/> Add watermark</Link></li>
+              <li><Link href="/crop-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Crop size={18} className="text-pink-500"/> Crop PDF</Link></li>
+              <li><Link href="/edit-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><PenTool size={18} className="text-red-400"/> Edit PDF</Link></li>
+              <li><Link href="/pdf-forms" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FormInput size={18} className="text-purple-500"/> PDF Forms</Link></li>
+            </ul>
+          </div>
+
+          {/* Col 6 */}
+          <div>
+            <h4 className="text-gray-500 font-bold text-xs tracking-wider mb-4">PDF SECURITY</h4>
+            <ul className="space-y-1">
+              <li><Link href="/unlock-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Unlock size={18} className="text-gray-500"/> Unlock PDF</Link></li>
+              <li><Link href="/protect-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Lock size={18} className="text-blue-800"/> Protect PDF</Link></li>
+              <li><Link href="/sign-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileSignature size={18} className="text-blue-700"/> Sign PDF</Link></li>
+              <li><Link href="/redact-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Shield size={18} className="text-gray-800"/> Redact PDF</Link></li>
+              <li><Link href="/compare-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><SplitSquareHorizontal size={18} className="text-indigo-500"/> Compare PDF</Link></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* --- MOBILE SIDEBAR --- */}
       <div 
         className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-50 transition-opacity duration-500 md:hidden ${isSidebarOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}
         onClick={closeSidebar}
       />
-
-      {/* 2. Main Sidebar Panel (Jitna content, utna width aur Right se slide) */}
       <div 
         className={`fixed top-0 right-0 h-[100dvh] w-3/4 max-w-[280px] bg-[#F8F9FA] shadow-[-15px_0_30px_rgba(0,0,0,0.15)] z-50 flex flex-col transform transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] md:hidden ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
-        {/* Sidebar Header & Rotated Close Icon (Right Side) */}
         <div className="flex items-center justify-between p-5 bg-white border-b border-gray-200 shadow-sm">
           <span className="font-bold text-gray-800 tracking-wider text-sm">MENU</span>
           <button 
             onClick={closeSidebar} 
             className="text-gray-500 hover:text-[#E5322D] p-1 rounded-full hover:bg-red-50 transition-colors"
           >
-            {/* Rotate animation jab sidebar khulta hai */}
             <X size={26} className={`transform transition-all duration-700 ease-in-out ${isSidebarOpen ? 'rotate-90' : '-rotate-90'}`} />
           </button>
         </div>
 
-        {/* Sidebar Links (Bottom Space & Scroll Manage Kiya Hai) */}
         <div className="flex flex-col gap-2 p-4 flex-1 overflow-y-auto pb-10">
-          <Link href="/merge-pdf" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">
-            MERGE PDF
-          </Link>
-          <Link href="/split-pdf" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">
-            SPLIT PDF
-          </Link>
-          <Link href="/compress-pdf" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">
-            COMPRESS PDF
-          </Link>
-          <Link href="/pdf-to-word" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">
-            CONVERT PDF
-          </Link>
-          <Link href="/tools" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">
-            ALL PDF TOOLS
-          </Link>
+          <Link href="/merge-pdf" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">MERGE PDF</Link>
+          <Link href="/split-pdf" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">SPLIT PDF</Link>
+          <Link href="/compress-pdf" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">COMPRESS PDF</Link>
+          <Link href="/pdf-to-word" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">CONVERT PDF</Link>
+          <Link href="/tools" onClick={closeSidebar} className="p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all font-semibold text-gray-700 hover:text-[#E5322D]">ALL PDF TOOLS</Link>
 
-          {/* Auth Buttons in Sidebar */}
           {!isSignedIn && (
             <div className="flex flex-col gap-3 mt-6 pt-6 border-t border-gray-200 px-2">
               <SignInButton mode="modal">
-                <button className="w-full text-center text-gray-700 font-bold bg-white border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition-shadow">
-                  Login
-                </button>
+                <button className="w-full text-center text-gray-700 font-bold bg-white border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition-shadow">Login</button>
               </SignInButton>
               <SignUpButton mode="modal">
-                <button className="w-full text-center bg-[#E5322D] text-white font-bold py-3 rounded-lg hover:bg-red-700 shadow-md transition-shadow">
-                  Sign up
-                </button>
+                <button className="w-full text-center bg-[#E5322D] text-white font-bold py-3 rounded-lg hover:bg-red-700 shadow-md transition-shadow">Sign up</button>
               </SignUpButton>
             </div>
           )}
