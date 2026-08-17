@@ -80,23 +80,19 @@ export default async function handler(req, res) {
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     else if (action === 'ocr-pdf') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     
-    // 🔥 FIX: RAW HTML CODE FORMATTING PRESERVER 🔥
+    // 🔥 FIX: 5001 ERROR PROOF HTML/CODE TO PDF 🔥
     else if (action === 'html-to-pdf') {
       if (fileUrl.startsWith('http')) {
+        // Agar proper website ka link hai
         result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
       } else {
-        // Raw Code ko <pre> tag mein dalo taaki line-by-line formatting ekdum perfect rahe!
-        const escapedCode = fileUrl.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const prettyHtml = `
-          <!DOCTYPE html>
-          <html>
-            <body style="background-color: #f8f9fa; padding: 20px;">
-              <pre style="font-family: monospace; font-size: 14px; white-space: pre-wrap; word-wrap: break-word;">${escapedCode}</pre>
-            </body>
-          </html>
-        `;
-        const tempBlob = await put(`code-${Date.now()}.html`, prettyHtml, { access: 'public', contentType: 'text/html' });
-        result = await convertapi.convert('pdf', { Url: tempBlob.url }, 'web');
+        // Raw Code ko as a .txt file Vercel par dalo (No HTML rendering block)
+        const tempBlob = await put(`source-code-${Date.now()}.txt`, fileUrl, {
+          access: 'public',
+          contentType: 'text/plain'
+        });
+        // 'web' ki jagah 'txt' API use karo
+        result = await convertapi.convert('pdf', { File: tempBlob.url }, 'txt');
       }
     }
 
