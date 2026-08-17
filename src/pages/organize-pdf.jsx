@@ -1,17 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument } from 'pdf-lib';
 import { Document, Page, pdfjs } from 'react-pdf';
+// 🚀 PRO FIX: अपने प्रोजेक्ट में इंस्टॉल हुए pdfjs-dist के वर्कर को सीधे इंपोर्ट करें
+import worker from 'pdfjs-dist/build/pdf.worker.mjs';
 import { 
   UploadCloud, Trash2, ArrowUp, ArrowDown, RotateCcw, RotateCw, 
   Layers, FileOutput, Undo2, X, Settings, ChevronDown
 } from 'lucide-react';
 
-// 🛑 FIX: Stable, Hardcoded PDF.js Worker URL (Desktop के लिए जरूरी)
-// इसे CDN से लोड करें ताकि लैपटॉप पर भी सही से काम करे
-pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.js';
+// Worker को सेट करें (इससे CORS और Browser Blocking बिल्कुल खत्म हो जाएगा)
+pdfjs.GlobalWorkerOptions.workerSrc = worker;
 
 export default function OrganizePdf() {
   const [file, setFile] = useState(null);
@@ -20,6 +21,7 @@ export default function OrganizePdf() {
   const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [renderError, setRenderError] = useState(false); // Preview load hone par error handle karega
 
   // Undo को ट्रैक करने के लिए (Max 20 steps)
   const pushHistory = (newPages) => {
@@ -46,6 +48,7 @@ export default function OrganizePdf() {
     setPages([]);
     setPdfDoc(null);
     setHistory([]);
+    setRenderError(false); // Reset error state
 
     try {
       const arrayBuffer = await selectedFile.arrayBuffer();
@@ -72,6 +75,7 @@ export default function OrganizePdf() {
     setPages([]);
     setPdfDoc(null);
     setHistory([]);
+    setRenderError(false);
   };
 
   // === DRAG & DROP (Desktop) ===
@@ -154,10 +158,9 @@ export default function OrganizePdf() {
     }
   };
 
-  // 🛑 FIX: Insert Blank Page को इन्सर्ट करने का सही तरीका
+  // Insert Blank Page सही लोकेशन पर (अगर पेज सेलेक्टेड है तो उसके बाद, वरना अंत में)
   const insertBlankPage = () => {
     const newPages = [...pages];
-    // सेलेक्टेड पेज को ढूंढें, अगर कोई सेलेक्ट है तो उसके ठीक बाद डालें, वरना अंत में डालें
     const lastSelectedIndex = newPages.map((p, i) => p.selected ? i : -1).reduce((max, curr) => Math.max(max, curr), -1);
     const insertIndex = lastSelectedIndex !== -1 ? lastSelectedIndex + 1 : newPages.length;
     
@@ -241,7 +244,7 @@ export default function OrganizePdf() {
               <p className="mt-4 text-gray-400 text-sm">or drop your PDF file here</p>
             </div>
           ) : isLoading ? (
-            // LOADING STATE (पेज लोड होने तक रहेगा)
+            // LOADING STATE
             <div className="min-h-[450px] flex flex-col items-center justify-center bg-gray-50">
               <Settings size={48} className="animate-spin text-[#E5322D] mb-4" />
               <p className="text-gray-600 font-medium">Analyzing and loading pages...</p>
@@ -292,54 +295,74 @@ export default function OrganizePdf() {
                 </button>
               </div>
 
-              {/* Thumbnail Grid (जो अब लैपटॉप पर सही से दिखेगा) */}
+              {/* 🛑 FIXED: Thumbnail Grid with Worker and Error Handling */}
               <div className="p-6 bg-white max-h-[65vh] overflow-y-auto custom-scrollbar">
-                <Document 
-                  file={file} 
-                  loading={<div className="col-span-full text-center py-10 text-gray-500">Rendering previews...</div>}
-                  onLoadError={(error) => console.error("React-PDF Load Error:", error)}
-                  onSourceError={(error) => console.error("Source Error:", error)}
-                >
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-                    {pages.map((pageData, index) => (
-                      <div 
-                        key={index} 
-                        draggable={true}
-                        onDragStart={(e) => onDragStart(e, index)}
-                        onDragOver={onDragOver}
-                        onDrop={(e) => onDrop(e, index)}
-                        onClick={(e) => handlePageClick(index, e)}
-                        className={`relative group flex flex-col items-center rounded-lg p-2 transition-all cursor-pointer border-2 ${
-                          pageData.selected ? 'border-[#E5322D] bg-red-50 ring-2 ring-red-100' : 'border-transparent hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        {/* Page Render */}
-                        <div className="shadow-sm rounded bg-gray-50 overflow-hidden flex items-center justify-center w-full h-auto min-h-[140px] border border-gray-100">
-                          <Page 
-                            pageNumber={pageData.originalIndex + 1} 
-                            width={140} 
-                            renderTextLayer={false} 
-                            renderAnnotationLayer={false}
-                            scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.8 : 1} 
-                          />
-                        </div>
-
-                        {/* Page Number Overlay */}
-                        <div className="absolute bottom-8 left-0 right-0 text-center text-xs font-mono bg-black/60 text-white w-fit mx-auto px-3 py-0.5 rounded-full">
-                          {pageData.originalIndex + 1}
-                        </div>
-
-                        {/* Mobile Only: Quick Move arrows (on select) */}
-                        {pageData.selected && (
-                          <div className="md:hidden absolute -top-3 flex gap-2 bg-white shadow-md border rounded-full p-1 px-2 z-20">
-                             <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowUp size={14} /></button>
-                             <button onClick={(e) => { e.stopPropagation(); movePage(index, 'down'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowDown size={14} /></button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                {renderError ? (
+                  // Error State - अगर react-pdf प्रीव्यू लोड करने में फेल हो जाता है
+                  <div className="col-span-full text-center py-10 text-red-600">
+                    <div className="bg-red-50 p-6 rounded-xl border border-red-200 inline-block">
+                      <p className="font-bold text-lg mb-2">⚠️ Preview Failed</p>
+                      <p className="text-sm text-gray-700 max-w-md">
+                        We couldn't render the visual thumbnails due to a browser security block. 
+                        Don't worry! The tool is still fully functional. You can still <strong>use the hidden operations</strong> based on page numbers, or <strong>refresh the page</strong> to try again.
+                      </p>
+                    </div>
                   </div>
-                </Document>
+                ) : (
+                  // Rendering the actual PDF pages
+                  <Document 
+                    file={file} 
+                    loading={<div className="col-span-full text-center py-10 text-gray-500">Loading page previews...</div>}
+                    onLoadError={(err) => {
+                      console.error("React-PDF Load Error:", err);
+                      setRenderError(true); // अगर लोड नहीं होता तो Error UI दिखाएं
+                    }}
+                    onSourceError={(err) => {
+                      console.error("Source Error:", err);
+                      setRenderError(true);
+                    }}
+                  >
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
+                      {pages.map((pageData, index) => (
+                        <div 
+                          key={index} 
+                          draggable={true}
+                          onDragStart={(e) => onDragStart(e, index)}
+                          onDragOver={onDragOver}
+                          onDrop={(e) => onDrop(e, index)}
+                          onClick={(e) => handlePageClick(index, e)}
+                          className={`relative group flex flex-col items-center rounded-lg p-2 transition-all cursor-pointer border-2 ${
+                            pageData.selected ? 'border-[#E5322D] bg-red-50 ring-2 ring-red-100' : 'border-transparent hover:border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {/* Page Render */}
+                          <div className="shadow-sm rounded bg-gray-50 overflow-hidden flex items-center justify-center w-full h-auto min-h-[140px] border border-gray-100">
+                            <Page 
+                              pageNumber={pageData.originalIndex + 1} 
+                              width={140} 
+                              renderTextLayer={false} 
+                              renderAnnotationLayer={false}
+                              scale={pageData.rotation === 90 || pageData.rotation === 270 ? 0.8 : 1} 
+                            />
+                          </div>
+
+                          {/* Page Number Overlay */}
+                          <div className="absolute bottom-8 left-0 right-0 text-center text-xs font-mono bg-black/60 text-white w-fit mx-auto px-3 py-0.5 rounded-full">
+                            {pageData.originalIndex + 1}
+                          </div>
+
+                          {/* Mobile Only: Quick Move arrows */}
+                          {pageData.selected && (
+                            <div className="md:hidden absolute -top-3 flex gap-2 bg-white shadow-md border rounded-full p-1 px-2 z-20">
+                               <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowUp size={14} /></button>
+                               <button onClick={(e) => { e.stopPropagation(); movePage(index, 'down'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowDown size={14} /></button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </Document>
+                )}
               </div>
 
               {/* Download Action Footer */}
