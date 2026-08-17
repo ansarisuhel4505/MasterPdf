@@ -13,6 +13,7 @@
     "@google/generative-ai": "^0.21.0",
     "@vercel/blob": "^0.23.0",
     "convertapi": "^1.15.0",
+    "tesseract.js": "^5.0.0",
     "form-data": "^4.0.6",
     "jszip": "^3.10.1",
     "lucide-react": "^1.31.0",
