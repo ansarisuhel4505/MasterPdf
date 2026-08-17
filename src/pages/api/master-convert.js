@@ -1,6 +1,6 @@
 const convertapi = require('convertapi')(process.env.CONVERT_API_SECRET);
 
-// Vercel Timeout Fix (Allows function to run longer without cutting off)
+// Vercel Timeout Fix
 export const maxDuration = 60;
 
 export default async function handler(req, res) {
@@ -46,60 +46,53 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // 🧠 CATEGORY 3: AI TOOLS (BULLETPROOF FALLBACK LOOP)
+    // 🧠 CATEGORY 3: AI TOOLS (GROQ / LLAMA 3)
     // ==========================================
     else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare') {
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(200).json({ success: false, textResult: "⚠️ Gemini API Key is missing." });
+      if (!process.env.GROQ_API_KEY) {
+        return res.status(200).json({ success: false, textResult: "⚠️ Groq API Key is missing in Vercel settings." });
       }
 
       try {
-        const apiKey = process.env.GEMINI_API_KEY;
+        const apiKey = process.env.GROQ_API_KEY;
 
-        // SMART LOOP: Try different models until one succeeds
-        const callGeminiBulletproof = async (promptText) => {
-          const modelsToTry = ["gemini-1.5-flash", "gemini-pro", "gemini-1.5-pro"];
-          let lastErrorMessage = "";
+        // SMART GROQ FETCHER
+        const callGroqAI = async (promptText) => {
+          const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
+          const aiResponse = await fetch(groqUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: "llama3-8b-8192", // Superfast Llama 3 model
+              messages: [{ role: "user", content: promptText }],
+              temperature: 0.5
+            })
+          });
 
-          for (const model of modelsToTry) {
-            try {
-              const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-              const aiResponse = await fetch(geminiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
-              });
+          const data = await aiResponse.json();
 
-              const data = await aiResponse.json();
-
-              if (aiResponse.ok && data.candidates) {
-                return data.candidates[0].content.parts[0].text; // SUCCESS! Code yahin se wapas chala jayega
-              } else {
-                lastErrorMessage = data.error?.message || "Unknown API error";
-                console.log(`Failed to connect with ${model}:`, lastErrorMessage);
-                // Agar fail hua, toh loop agle model par jump kar jayega
-              }
-            } catch (err) {
-              lastErrorMessage = err.message;
-            }
+          if (aiResponse.ok && data.choices && data.choices.length > 0) {
+            return data.choices[0].message.content; // SUCCESS!
+          } else {
+            throw new Error(data.error?.message || "Unknown Groq API error");
           }
-          
-          // Agar teeno models fail ho gaye
-          throw new Error(lastErrorMessage);
         };
 
         // RUN AI BASED ON ACTION
         if (action === 'ai-summarizer') {
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
           const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-          const resultText = await callGeminiBulletproof(`Summarize this clearly in bullet points:\n\n${extractedText.substring(0, 15000)}`);
+          const resultText = await callGroqAI(`Summarize this clearly in bullet points:\n\n${extractedText.substring(0, 15000)}`);
           return res.status(200).json({ success: true, textResult: resultText });
         }
         else if (action === 'translate-pdf') {
           const targetLang = req.body.targetLanguage || 'English';
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
           const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-          const resultText = await callGeminiBulletproof(`Translate into ${targetLang}:\n\n${extractedText.substring(0, 15000)}`);
+          const resultText = await callGroqAI(`Translate into ${targetLang}:\n\n${extractedText.substring(0, 15000)}`);
           return res.status(200).json({ success: true, textResult: resultText });
         }
         else if (action === 'ai-compare') {
@@ -111,15 +104,15 @@ export default async function handler(req, res) {
           const txtResult2 = await convertapi.convert('txt', { File: fileUrl2 }, 'pdf');
           const text2 = await (await fetch(txtResult2.response.Files[0].Url)).text();
 
-          const resultText = await callGeminiBulletproof(`Compare these documents and list differences:\n\n--- DOC 1 ---\n${text1.substring(0, 7000)}\n\n--- DOC 2 ---\n${text2.substring(0, 7000)}`);
+          const resultText = await callGroqAI(`Compare these documents and list differences:\n\n--- DOC 1 ---\n${text1.substring(0, 7000)}\n\n--- DOC 2 ---\n${text2.substring(0, 7000)}`);
           return res.status(200).json({ success: true, textResult: resultText });
         }
 
       } catch (aiError) {
-        console.error("AI Bulletproof Error:", aiError.message);
+        console.error("Groq AI Error:", aiError.message);
         return res.status(200).json({ 
           success: true, 
-          textResult: `❌ Google API Error: ${aiError.message}\nGoogle servers are completely rejecting your API key right now. Please create a fresh key from a NEW project in Google AI Studio.` 
+          textResult: `❌ AI Error: ${aiError.message}\nPlease check your API limit or key.` 
         });
       }
     }
