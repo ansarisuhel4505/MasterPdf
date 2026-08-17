@@ -6,11 +6,12 @@ import { PDFDocument } from 'pdf-lib';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { 
   UploadCloud, Trash2, ArrowUp, ArrowDown, RotateCcw, RotateCw, 
-  Layers, FileOutput, Undo2, X, Settings, ChevronDown, Move
+  Layers, FileOutput, Undo2, X, Settings, ChevronDown
 } from 'lucide-react';
 
-// PDF.js Worker Setup (Browser पर फास्ट रेंडरिंग के लिए)
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// 🛑 FIX: Stable, Hardcoded PDF.js Worker URL (Desktop के लिए जरूरी)
+// इसे CDN से लोड करें ताकि लैपटॉप पर भी सही से काम करे
+pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.js';
 
 export default function OrganizePdf() {
   const [file, setFile] = useState(null);
@@ -52,7 +53,6 @@ export default function OrganizePdf() {
       setPdfDoc(loadedPdf);
       
       const totalPages = loadedPdf.getPageCount();
-      // हर पेज के लिए State बनाना
       const initialPages = Array.from({ length: totalPages }, (_, i) => ({
         originalIndex: i,
         rotation: 0,
@@ -154,8 +154,14 @@ export default function OrganizePdf() {
     }
   };
 
+  // 🛑 FIX: Insert Blank Page को इन्सर्ट करने का सही तरीका
   const insertBlankPage = () => {
-    const newPages = [...pages, { originalIndex: -1, rotation: 0, selected: false }];
+    const newPages = [...pages];
+    // सेलेक्टेड पेज को ढूंढें, अगर कोई सेलेक्ट है तो उसके ठीक बाद डालें, वरना अंत में डालें
+    const lastSelectedIndex = newPages.map((p, i) => p.selected ? i : -1).reduce((max, curr) => Math.max(max, curr), -1);
+    const insertIndex = lastSelectedIndex !== -1 ? lastSelectedIndex + 1 : newPages.length;
+    
+    newPages.splice(insertIndex, 0, { originalIndex: -1, rotation: 0, selected: false });
     pushHistory(newPages);
   };
 
@@ -184,8 +190,8 @@ export default function OrganizePdf() {
       for (let i = 0; i < pages.length; i++) {
         const pageData = pages[i];
         if (pageData.originalIndex === -1) {
-          // Insert Blank Page
-          const blankPage = newPdf.addPage([595.28, 841.89]); // A4 size
+          // Insert Blank Page (A4 Size)
+          const blankPage = newPdf.addPage([595.28, 841.89]); 
           blankPage.setRotation(pageData.rotation);
         } else {
           const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageData.originalIndex]);
@@ -235,7 +241,7 @@ export default function OrganizePdf() {
               <p className="mt-4 text-gray-400 text-sm">or drop your PDF file here</p>
             </div>
           ) : isLoading ? (
-            // LOADING STATE
+            // LOADING STATE (पेज लोड होने तक रहेगा)
             <div className="min-h-[450px] flex flex-col items-center justify-center bg-gray-50">
               <Settings size={48} className="animate-spin text-[#E5322D] mb-4" />
               <p className="text-gray-600 font-medium">Analyzing and loading pages...</p>
@@ -251,45 +257,50 @@ export default function OrganizePdf() {
                   <span className="text-xs text-gray-500">({pages.filter(p => p.selected).length} selected)</span>
                 </div>
                 
-                <button onClick={undo} disabled={history.length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-50 flex items-center gap-1 text-sm" title="Undo (Ctrl+Z)">
+                <button onClick={undo} disabled={history.length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 text-sm text-gray-600">
                   <Undo2 size={18} /> Undo
                 </button>
                 
                 <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
                 
-                <button onClick={selectAll} className="text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition">Select All</button>
-                <button onClick={deselectAll} className="text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition">Deselect</button>
+                <button onClick={selectAll} className="text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">Select All</button>
+                <button onClick={deselectAll} className="text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">Deselect</button>
 
                 <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
 
-                <button onClick={deleteSelected} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete Selected">
+                <button onClick={deleteSelected} disabled={pages.filter(p => p.selected).length === 0} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed" title="Delete Selected">
                   <Trash2 size={18} />
                 </button>
                 
-                <button onClick={() => rotateSelected(-90)} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition" title="Rotate Left 90°">
+                <button onClick={() => rotateSelected(-90)} disabled={pages.filter(p => p.selected).length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600" title="Rotate Left 90°">
                   <RotateCcw size={18} />
                 </button>
-                <button onClick={() => rotateSelected(90)} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition" title="Rotate Right 90°">
+                <button onClick={() => rotateSelected(90)} disabled={pages.filter(p => p.selected).length === 0} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600" title="Rotate Right 90°">
                   <RotateCw size={18} />
                 </button>
 
                 <div className="h-6 w-[1px] bg-gray-300 mx-1"></div>
 
-                <button onClick={extractSelected} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition">
+                <button onClick={extractSelected} disabled={pages.filter(p => p.selected).length === 0} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-600">
                   <FileOutput size={18} /> Extract
                 </button>
-                <button onClick={insertBlankPage} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition">
+                <button onClick={insertBlankPage} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">
                   <Layers size={18} /> Insert Blank
                 </button>
-                <button onClick={reverseOrder} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition">
+                <button onClick={reverseOrder} className="flex items-center gap-1 text-sm hover:bg-white hover:shadow-sm px-3 py-1.5 rounded-lg transition text-gray-600">
                   <ArrowUp size={16} className="rotate-180" /><ArrowDown size={16} /> Reverse
                 </button>
               </div>
 
-              {/* Thumbnail Grid */}
+              {/* Thumbnail Grid (जो अब लैपटॉप पर सही से दिखेगा) */}
               <div className="p-6 bg-white max-h-[65vh] overflow-y-auto custom-scrollbar">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-                  <Document file={file} loading={<div className="col-span-full text-center py-10 text-gray-500">Generating previews...</div>}>
+                <Document 
+                  file={file} 
+                  loading={<div className="col-span-full text-center py-10 text-gray-500">Rendering previews...</div>}
+                  onLoadError={(error) => console.error("React-PDF Load Error:", error)}
+                  onSourceError={(error) => console.error("Source Error:", error)}
+                >
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
                     {pages.map((pageData, index) => (
                       <div 
                         key={index} 
@@ -303,7 +314,7 @@ export default function OrganizePdf() {
                         }`}
                       >
                         {/* Page Render */}
-                        <div className="shadow-sm rounded bg-gray-50 overflow-hidden flex items-center justify-center w-full h-auto" style={{ minHeight: '140px' }}>
+                        <div className="shadow-sm rounded bg-gray-50 overflow-hidden flex items-center justify-center w-full h-auto min-h-[140px] border border-gray-100">
                           <Page 
                             pageNumber={pageData.originalIndex + 1} 
                             width={140} 
@@ -320,15 +331,15 @@ export default function OrganizePdf() {
 
                         {/* Mobile Only: Quick Move arrows (on select) */}
                         {pageData.selected && (
-                          <div className="md:hidden absolute -top-3 flex gap-2 bg-white shadow-md border rounded-full p-1 px-2">
+                          <div className="md:hidden absolute -top-3 flex gap-2 bg-white shadow-md border rounded-full p-1 px-2 z-20">
                              <button onClick={(e) => { e.stopPropagation(); movePage(index, 'up'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowUp size={14} /></button>
                              <button onClick={(e) => { e.stopPropagation(); movePage(index, 'down'); }} className="text-gray-700 hover:text-[#E5322D]"><ArrowDown size={14} /></button>
                           </div>
                         )}
                       </div>
                     ))}
-                  </Document>
-                </div>
+                  </div>
+                </Document>
               </div>
 
               {/* Download Action Footer */}
@@ -336,7 +347,7 @@ export default function OrganizePdf() {
                 <button 
                   onClick={processPdf}
                   disabled={isProcessing}
-                  className="w-full md:w-auto flex items-center justify-center gap-2 px-12 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400"
+                  className="w-full md:w-auto flex items-center justify-center gap-2 px-12 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   {isProcessing ? (
                     <><Settings className="animate-spin" size={24} /> Generating Organized PDF...</>
