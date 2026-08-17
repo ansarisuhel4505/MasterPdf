@@ -70,7 +70,19 @@ export default async function handler(req, res) {
     // 🟢 CATEGORY 1: NORMAL CONVERSIONS
     // ==========================================
     else if (action === 'pdf-to-word') result = await convertapi.convert('docx', { File: fileUrl }, 'pdf');
-    else if (action === 'pdf-to-excel') result = await convertapi.convert('xlsx', { File: fileUrl }, 'pdf');
+    else if (action === 'pdf-to-excel') {
+      try {
+        result = await convertapi.convert('xlsx', { File: fileUrl }, 'pdf');
+      } catch (excelError) {
+        // Agar PDF mein table nahi mili toh server crash hone se roko aur message bhejo
+        if (excelError.message && excelError.message.includes('tables')) {
+          return res.status(400).json({ 
+            error: "No Tables Found! Excel conversion ke liye PDF mein Data Tables (Rows/Columns) hona zaroori hai." 
+          });
+        }
+        throw excelError; // Koi aur error ho toh usko aage bhej do
+      }
+    }
     else if (action === 'pdf-to-powerpoint') result = await convertapi.convert('pptx', { File: fileUrl }, 'pdf');
     else if (action === 'word-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'docx');
     else if (action === 'excel-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'xlsx');
