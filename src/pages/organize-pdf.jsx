@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, degrees } from 'pdf-lib';
 // 🔥 FIX: Removed 'next/dynamic' and imported statically like redact-pdf 🔥
 import { Document, Page, pdfjs } from 'react-pdf';
 import { 
@@ -229,47 +229,59 @@ export default function OrganizePdf() {
     setIsProcessing(true);
     try {
       const newPdf = await PDFDocument.create();
+      
       for (let i = 0; i < pages.length; i++) {
         const pageData = pages[i];
+        
+        // 1. Original PDF Pages
         if (pageData.type === 'source') {
           const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageData.sourceIndex]);
-          copiedPage.setRotation(pageData.rotation);
+          copiedPage.setRotation(degrees(pageData.rotation)); // 🔥 FIXED HERE
           newPdf.addPage(copiedPage);
-        } else if (pageData.type === 'blank') {
+        } 
+        // 2. Blank Pages
+        else if (pageData.type === 'blank') {
           const blankPage = newPdf.addPage([595.28, 841.89]); 
-          blankPage.setRotation(pageData.rotation);
-        } else if (pageData.type === 'upload') {
+          blankPage.setRotation(degrees(pageData.rotation)); // 🔥 FIXED HERE
+        } 
+        // 3. Uploaded Images or New PDFs
+        else if (pageData.type === 'upload') {
           const uploaded = uploadedFiles.find(f => f.id === pageData.uploadId);
           if (!uploaded) continue;
+          
           if (uploaded.type === 'pdf') {
             const insertPdf = await PDFDocument.load(uploaded.bytes);
             const [copiedPage] = await newPdf.copyPages(insertPdf, [pageData.uploadPageIndex]);
-            copiedPage.setRotation(pageData.rotation);
+            copiedPage.setRotation(degrees(pageData.rotation)); // 🔥 FIXED HERE
             newPdf.addPage(copiedPage);
           } else if (uploaded.type === 'image') {
             let image;
-            if (uploaded.mimeType === 'image/png') image = await newPdf.embedPng(uploaded.bytes);
-            else image = await newPdf.embedJpg(uploaded.bytes);
+            if (uploaded.mimeType === 'image/png') {
+              image = await newPdf.embedPng(uploaded.bytes);
+            } else {
+              image = await newPdf.embedJpg(uploaded.bytes);
+            }
             const page = newPdf.addPage([image.width, image.height]);
             page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
-            page.setRotation(pageData.rotation);
+            page.setRotation(degrees(pageData.rotation)); // 🔥 FIXED HERE
           }
         }
       }
+      
       const pdfBytes = await newPdf.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `MasterPdf_Organized_${file.name}`;
+      link.download = `Organized_${file.name}`;
       link.click();
+      
     } catch (error) {
       console.error("Error generating PDF:", error);
-      alert("Failed to organize PDF.");
+      alert("Failed to organize PDF. Error: " + error.message); // Smart error reporting
     } finally {
       setIsProcessing(false);
     }
   };
-
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head><title>Organize PDF Pages - MasterPdf</title></Head>
