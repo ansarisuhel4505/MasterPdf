@@ -80,19 +80,19 @@ export default async function handler(req, res) {
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     else if (action === 'ocr-pdf') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     
-    // 🔥 FIX: SMART HTML TO PDF HANDLER 🔥
+    // 🔥 FIX: RAW CODE TO PDF HANDLER 🔥
     else if (action === 'html-to-pdf') {
       if (fileUrl.startsWith('http')) {
-        // Agar proper link aaya hai toh web to pdf use karo
+        // Agar proper website ka link hai toh website ka screenshot jaisa PDF banega
         result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
       } else {
-        // Agar raw HTML aaya hai, toh pehle usko Vercel par temporary host karo
-        const tempBlob = await put(`temp-html-${Date.now()}.html`, fileUrl, {
+        // Agar Raw Code hai, toh usko .txt file mein save karo taaki code jaisa hai waisa hi dikhe!
+        const tempBlob = await put(`source-code-${Date.now()}.txt`, fileUrl, {
           access: 'public',
-          contentType: 'text/html'
+          contentType: 'text/plain' // Yahan humne isko plain text bata diya
         });
-        // Ab us temporary link ko HTML file man kar PDF me badal do
-        result = await convertapi.convert('pdf', { File: tempBlob.url }, 'html');
+        // Ab us text file ko PDF mein convert kar do
+        result = await convertapi.convert('pdf', { File: tempBlob.url }, 'txt');
       }
     }
 
