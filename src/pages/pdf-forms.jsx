@@ -5,7 +5,6 @@ import Footer from '../components/Footer';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import dynamic from 'next/dynamic';
 import JSZip from 'jszip';
-import { upload } from '@vercel/blob/client';
 import { 
   UploadCloud, FileText, X, CheckSquare, ArrowRight, Settings, 
   Lock, RefreshCw, Layers, Signature, FileOutput,
@@ -18,6 +17,8 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 const DocumentWithSSR = dynamic(() => import('react-pdf').then(m => m.Document), { ssr: false });
 const PageWithSSR = dynamic(() => import('react-pdf').then(m => m.Page), { ssr: false });
 import { pdfjs } from 'react-pdf';
+
+// 🔥 FIX: Standard Worker Version
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PdfForms() {
@@ -39,7 +40,7 @@ export default function PdfForms() {
   const [overlayPage, setOverlayPage] = useState(1);
   const [overlayColor, setOverlayColor] = useState('#000000');
   const [overlaySize, setOverlaySize] = useState(20);
-  const [overlayPosition, setOverlayPosition] = useState('bottom-right'); // 🔥 NEW: Position Setting
+  const [overlayPosition, setOverlayPosition] = useState('bottom-right');
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
   
   const signatureCanvasRef = useRef(null);
@@ -114,7 +115,6 @@ export default function PdfForms() {
     }));
   };
 
-  // 🔥 100% RESPONSIVE SIGNATURE DRAWING 🔥
   const handlePointerDown = (e) => {
     const canvas = signatureCanvasRef.current;
     if (!canvas) return;
@@ -206,6 +206,18 @@ export default function PdfForms() {
         }
       });
 
+      if (validateRequired) {
+        let missing = [];
+        formFields.forEach(f => {
+          if (f.type !== 'checkbox' && !formData[f.name]?.trim()) missing.push(f.name);
+        });
+        if (missing.length > 0) {
+          alert(`Please fill required fields: ${missing.join(', ')}`);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
       // B. OVERLAY FIX (Perfect Positioning System)
       if (activeTab === 'overlay' || overlayText || signatureDataUrl) {
         const pageIndex = Math.min(Math.max(1, overlayPage), totalPages) - 1;
@@ -236,7 +248,6 @@ export default function PdfForms() {
         } 
         
         if (overlayMode === 'signature' && signatureDataUrl) {
-          // 🔥 FIX: Properly extracting Base64 to prevent crash
           const base64Data = signatureDataUrl.split(',')[1];
           const pngImage = await baseDoc.embedPng(base64Data);
           const { x, y } = getCoords(150, 75);
@@ -288,34 +299,11 @@ export default function PdfForms() {
         return;
       }
 
-      // F. Normal Download & Password Encryption (Vercel Backend)
+      // F. Normal Download (Build crash fixed!)
       if (password && mode !== 'batch') {
-        try {
-          const pdfBlob = new Blob([finalBytes], { type: 'application/pdf' });
-          const pdfFile = new File([pdfBlob], `Protected_${Date.now()}.pdf`, { type: 'application/pdf' });
-          
-          // 🛡️ Frontend cannot encrypt existing PDFs natively, relying on Vercel Backend
-          const uploadBlob = await upload(pdfFile.name, pdfFile, { access: 'public', handleUploadUrl: '/api/upload' });
-          const response = await fetch('/api/master-convert', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'protect-pdf', fileUrl: uploadBlob.url, password })
-          });
-
-          const data = await response.json();
-          if (response.ok && data.downloadUrl) {
-            window.location.href = data.downloadUrl;
-          } else {
-            alert("Vercel Backend missing or failed. Downloading standard Unencrypted PDF.");
-            triggerDownload(finalBytes, file.name);
-          }
-        } catch (error) {
-          alert("Server connection failed. Downloading standard Unencrypted PDF.");
-          triggerDownload(finalBytes, file.name);
-        }
-      } else {
-        triggerDownload(finalBytes, file.name);
+        alert("Notice: Applying an encryption password to an existing PDF requires a backend API server. Generating standard PDF directly to your device.");
       }
+      triggerDownload(finalBytes, file.name);
 
     } catch (error) {
       console.error("Error processing PDF:", error);
@@ -353,7 +341,7 @@ export default function PdfForms() {
             <div className="min-h-[450px] flex flex-col items-center justify-center p-10 bg-gray-50/50">
               <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
               <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl">
-                <UploadCloud size={28} /> Upload Fillable PDF
+                <UploadCloud size={28} /> Upload PDF
               </label>
             </div>
           ) : isLoading ? (
@@ -364,7 +352,6 @@ export default function PdfForms() {
           ) : (
             <div className="flex flex-col h-full">
               
-              {/* 🔥 NEW CENTRALIZED TABS 🔥 */}
               <div className="bg-gray-50 border-b border-gray-200 p-2 flex flex-wrap gap-1 overflow-x-auto sticky top-[72px] z-20 shadow-sm">
                 {['fill', 'overlay', 'batch', 'export'].map((tab) => (
                   <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${activeTab === tab ? 'bg-[#E5322D] text-white shadow-md' : 'text-gray-800 hover:bg-white hover:shadow-sm'}`}>
@@ -415,3 +402,135 @@ export default function PdfForms() {
                           <p className="text-sm">This is a flat PDF. Use the <strong>Overlay</strong> tab to add text and signature manually.</p>
                         </div>
                       ) : (
+                        formFields.map((field, idx) => (
+                          <div key={idx} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            <label className="block text-sm font-bold text-gray-800 mb-1 truncate">{field.name}</label>
+                            {field.type === 'text' && <input type="text" value={formData[field.name] || ''} onChange={(e) => handleInputChange(field.name, e.target.value, 'text')} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Type here..." />}
+                            {field.type === 'checkbox' && <label className="flex items-center gap-2 cursor-pointer font-medium text-gray-800 text-sm"><input type="checkbox" checked={formData[field.name] || false} onChange={() => handleInputChange(field.name, null, 'checkbox')} className="w-5 h-5 text-[#E5322D] rounded border-gray-300 accent-[#E5322D]" /><span>Check/Uncheck</span></label>}
+                            {field.type === 'dropdown' && <input type="text" value={formData[field.name] || ''} onChange={(e) => handleInputChange(field.name, e.target.value, 'text')} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Enter dropdown value" />}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'overlay' && (
+                    <div className="flex-grow overflow-y-auto pr-2 space-y-4">
+                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><Layers size={18} className="text-[#E5322D]" /> Add Text / Signature Overlay</h3>
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                        <div className="flex gap-3">
+                          <button onClick={() => setOverlayMode('text')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${overlayMode === 'text' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 text-gray-800'}`}>Text</button>
+                          <button onClick={() => setOverlayMode('signature')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${overlayMode === 'signature' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 text-gray-800'}`}>Signature</button>
+                        </div>
+                        {overlayMode === 'text' && (
+                          <div className="space-y-2">
+                            <textarea value={overlayText} onChange={(e) => setOverlayText(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Type text to overlay on PDF..." rows={3} />
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-800">
+                              <span>Size:</span>
+                              <input type="range" min="10" max="50" value={overlaySize} onChange={(e) => setOverlaySize(parseInt(e.target.value))} className="accent-[#E5322D]" />
+                              <span>{overlaySize}px</span>
+                              <input type="color" value={overlayColor} onChange={(e) => setOverlayColor(e.target.value)} className="w-6 h-6 border border-gray-300 rounded cursor-pointer" />
+                            </div>
+                          </div>
+                        )}
+                        {overlayMode === 'signature' && (
+                          <div className="space-y-2">
+                            <div className="border border-gray-300 bg-white rounded-lg p-1">
+                              <canvas 
+                                ref={signatureCanvasRef} width={400} height={150} 
+                                onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}
+                                className="w-full h-[150px] touch-none cursor-crosshair rounded bg-white" 
+                              />
+                            </div>
+                            <button onClick={clearSignature} className="flex items-center gap-1 text-xs font-bold text-gray-700 hover:text-red-500"><Trash2 size={14} /> Clear</button>
+                          </div>
+                        )}
+                        
+                        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center text-sm font-semibold text-gray-800 border-t pt-3 mt-3">
+                          <div className="flex items-center gap-2">
+                            <span>Place on Page: </span>
+                            <input type="number" min="1" max={totalPages} value={overlayPage} onChange={(e) => setOverlayPage(parseInt(e.target.value))} className="w-16 bg-white border border-gray-300 text-gray-800 rounded p-1 text-center focus:ring-2 focus:ring-[#E5322D] outline-none" />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span>Position: </span>
+                            <select value={overlayPosition} onChange={(e) => setOverlayPosition(e.target.value)} className="bg-white border border-gray-300 text-gray-800 rounded p-1.5 focus:ring-2 focus:ring-[#E5322D] outline-none">
+                              <option value="bottom-right">Bottom Right (e.g., Signature)</option>
+                              <option value="bottom-left">Bottom Left</option>
+                              <option value="top-right">Top Right</option>
+                              <option value="top-left">Top Left</option>
+                              <option value="center">Center of Page</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'batch' && (
+                    <div className="flex-grow overflow-y-auto pr-2 space-y-4">
+                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><Upload size={18} className="text-[#E5322D]" /> Batch Fill (CSV)</h3>
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                        <p className="text-sm font-medium text-gray-800">Upload a CSV file with headers matching the detected form fields.</p>
+                        <input type="file" accept=".csv" onChange={handleCsvUpload} className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-[#E5322D] file:text-white hover:file:bg-red-700" />
+                        {csvData.length > 0 && (
+                          <div className="mt-2"><p className="text-xs font-bold text-gray-800">{csvData.length} Rows loaded from CSV.</p><div className="max-h-[120px] overflow-y-auto bg-white border border-gray-200 rounded text-xs p-2">{csvData.slice(0, 5).map((row, idx) => (<div key={idx} className="border-b py-1 text-gray-700">{JSON.stringify(row)}</div>))}{csvData.length > 5 && <div className="text-gray-500 mt-1">...and {csvData.length - 5} more</div>}</div></div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'export' && (
+                    <div className="flex-grow overflow-y-auto pr-2 space-y-4">
+                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><FileOutput size={18} className="text-[#E5322D]" /> Finalize & Export</h3>
+                      
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                        <p className="text-sm font-bold text-gray-800 border-b pb-1">1. Document Metadata (Hidden Info)</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-bold text-gray-800 mb-1">Author Name</label>
+                            <input type="text" value={metadataAuthor} onChange={(e) => setMetadataAuthor(e.target.value)} placeholder="e.g. MasterPdf User" className="w-full bg-white border border-gray-300 rounded p-2 text-sm outline-none" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-800 mb-1">Document Title</label>
+                            <input type="text" value={metadataTitle} onChange={(e) => setMetadataTitle(e.target.value)} placeholder="e.g. Final Form" className="w-full bg-white border border-gray-300 rounded p-2 text-sm outline-none" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                        <p className="text-sm font-bold text-gray-800 border-b pb-1">2. Security & Form Lock</p>
+                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer">
+                          <input type="checkbox" checked={flattenForm} onChange={(e) => setFlattenForm(e.target.checked)} className="accent-[#E5322D] w-4 h-4" />
+                          Flatten Form (Make text static / non-editable)
+                        </label>
+                        <div className="pt-2">
+                          <label className="block text-xs font-bold text-gray-800 mb-1">Password Protect</label>
+                          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set PDF password" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm outline-none" />
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                        <p className="text-sm font-bold text-gray-800 border-b pb-1">3. Export Form Data</p>
+                        <div className="flex gap-3">
+                          <button onClick={() => { const json = JSON.stringify(formData, null, 2); const blob = new Blob([json], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.json'; link.click(); }} className="flex-1 px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-gray-900 transition">Export JSON</button>
+                          <button onClick={() => { const headers = Object.keys(formData).join(','); const values = Object.values(formData).join(','); const csv = `${headers}\n${values}`; const blob = new Blob([csv], { type: 'text/csv' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.csv'; link.click(); }} className="flex-1 px-4 py-2 bg-[#E5322D] text-white text-sm font-bold rounded-lg hover:bg-red-700 transition">Export CSV</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-auto pt-4 border-t border-gray-200 flex justify-end">
+                    <button onClick={() => { if (activeTab === 'batch' && csvData.length > 0) processPdf('batch'); else processPdf('single'); }} disabled={isProcessing || (activeTab === 'batch' && csvData.length === 0)} className="w-full md:w-auto flex items-center justify-center gap-2 px-12 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed">
+                      {isProcessing ? <><Settings className="animate-spin" size={24} /> Processing...</> : <>{activeTab === 'batch' ? 'Process Batch & Download ZIP' : 'Download Filled PDF'} <ArrowRight size={24} /></>}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
