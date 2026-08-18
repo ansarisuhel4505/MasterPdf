@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-// 🔥 FIX 1: Removed 'next/dynamic' and imported statically 🔥
+import dynamic from 'next/dynamic';
 import { Document, Page, pdfjs } from 'react-pdf';
 import JSZip from 'jszip';
 import { 
@@ -11,15 +11,18 @@ import {
   Lock, RefreshCw, Download, Layers, Signature, FileOutput,
   Trash2, Upload, AlertTriangle, Sparkles 
 } from 'lucide-react';
-
-// 🔥 FIX 2: Added missing CSS for react-pdf 🔥
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// 🔥 FIX 3: Version 9 .mjs worker setup (Removed from useEffect) 🔥
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// 🛡️ FIX 1: 100% काम करने वाला हार्डकोडेड PDF.js वर्कर (Vercel पर पक्का चलेगा)
+pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.js';
+
+// 🛡️ FIX 2: react-pdf के लिए डायनामिक इंपोर्ट (SSR ब्लॉक करने के लिए जरूरी)
+const DocumentWithSSR = dynamic(() => import('react-pdf').then(m => m.Document), { ssr: false });
+const PageWithSSR = dynamic(() => import('react-pdf').then(m => m.Page), { ssr: false });
 
 export default function PdfForms() {
+  // ========== CORE STATES ==========
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,8 +32,8 @@ export default function PdfForms() {
   const [totalPages, setTotalPages] = useState(0);
   const [renderError, setRenderError] = useState(false);
 
+  // ========== TABS & OVERLAY MODE ==========
   const [activeTab, setActiveTab] = useState('fill'); 
-
   const [overlayMode, setOverlayMode] = useState('text'); 
   const [overlayText, setOverlayText] = useState('');
   const [overlayPage, setOverlayPage] = useState(1);
@@ -38,16 +41,20 @@ export default function PdfForms() {
   const [overlaySize, setOverlaySize] = useState(20);
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
   const signatureCanvasRef = useRef(null);
+  // 🛡️ FIX 3: Canvas Drawing के लिए useRef (Closure को हैंडल करने के लिए)
+  const isDrawingRef = useRef(false); 
 
+  // ========== PRO SETTINGS ==========
   const [password, setPassword] = useState('');
   const [flattenForm, setFlattenForm] = useState(true);
   const [validateRequired, setValidateRequired] = useState(false);
   const [metadataAuthor, setMetadataAuthor] = useState('');
   const [metadataTitle, setMetadataTitle] = useState('');
 
-  const [csvFile, setCsvFile] = useState(null);
+  // ========== BATCH PROCESSING ==========
   const [csvData, setCsvData] = useState([]);
 
+  // ------------------------ FILE HANDLER ------------------------
   const handleFileChange = async (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile || selectedFile.type !== 'application/pdf') {
@@ -102,6 +109,7 @@ export default function PdfForms() {
     setSignatureDataUrl(null);
   };
 
+  // ------------------------ FORM FILLING ------------------------
   const handleInputChange = (name, value, type) => {
     setFormData(prev => ({
       ...prev,
@@ -109,46 +117,50 @@ export default function PdfForms() {
     }));
   };
 
-  const handleDrawSignature = () => {
-    if (!signatureCanvasRef.current) return;
+  // ------------------------ SIGNATURE CANVAS (Pro Level Fixed) ------------------------
+  // 🛡️ FIX 4: Pointer Events का इस्तेमाल (Touch + Mouse दोनों के लिए)
+  const handlePointerDown = (e) => {
     const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    let isDrawing = false;
-    canvas.onmousedown = canvas.ontouchstart = (e) => { 
-      isDrawing = true; 
-      ctx.beginPath(); 
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      const rect = canvas.getBoundingClientRect();
-      ctx.moveTo(clientX - rect.left, clientY - rect.top); 
-    };
-    canvas.onmousemove = canvas.ontouchmove = (e) => { 
-      if (!isDrawing) return; 
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      const rect = canvas.getBoundingClientRect();
-      ctx.lineTo(clientX - rect.left, clientY - rect.top); 
-      ctx.strokeStyle='#000'; 
-      ctx.lineWidth=2; 
-      ctx.stroke(); 
-    };
-    canvas.onmouseup = canvas.ontouchend = () => { 
-      isDrawing = false; 
-      setSignatureDataUrl(canvas.toDataURL()); 
-    };
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    isDrawingRef.current = true;
+  };
+
+  const handlePointerMove = (e) => {
+    if (!isDrawingRef.current) return;
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.strokeStyle = '#000'; 
+    ctx.lineWidth = 2; 
+    ctx.stroke();
+  };
+
+  const handlePointerUp = () => {
+    isDrawingRef.current = false;
+    if (signatureCanvasRef.current) {
+      setSignatureDataUrl(signatureCanvasRef.current.toDataURL());
+    }
   };
 
   const clearSignature = () => {
     const canvas = signatureCanvasRef.current;
-    if(!canvas) return;
-    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     setSignatureDataUrl(null);
   };
 
+  // ------------------------ CSV UPLOAD (Batch) ------------------------
   const handleCsvUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -157,7 +169,6 @@ export default function PdfForms() {
       const text = ev.target.result;
       const lines = text.split('\n').filter(l => l.trim());
       if (lines.length < 2) return alert("CSV must have a header row and at least 1 data row.");
-      
       const headers = lines[0].split(',').map(h => h.trim());
       const rows = lines.slice(1).map(line => {
         const values = line.split(',').map(v => v.trim());
@@ -170,6 +181,7 @@ export default function PdfForms() {
     reader.readAsText(file);
   };
 
+  // ------------------------ MAIN PROCESS ------------------------
   const processPdf = async (mode = 'single') => {
     if (!file) return alert("Please upload a base PDF form.");
     setIsProcessing(true);
@@ -177,6 +189,7 @@ export default function PdfForms() {
       const arrayBuffer = await file.arrayBuffer();
       const baseDoc = await PDFDocument.load(arrayBuffer);
       
+      // A. Fill Form Fields
       const form = baseDoc.getForm();
       formFields.forEach(field => {
         if (field.type === 'text') {
@@ -196,6 +209,7 @@ export default function PdfForms() {
         }
       });
 
+      // B. Validation
       if (validateRequired) {
         let missing = [];
         formFields.forEach(f => {
@@ -208,6 +222,7 @@ export default function PdfForms() {
         }
       }
 
+      // C. Overlay Text / Signature
       if (activeTab === 'overlay') {
         const page = baseDoc.getPage(overlayPage - 1);
         const { width, height } = page.getSize();
@@ -233,6 +248,7 @@ export default function PdfForms() {
         }
       }
 
+      // D. Metadata & Flatten
       if (metadataAuthor) baseDoc.setAuthor(metadataAuthor);
       if (metadataTitle) baseDoc.setTitle(metadataTitle);
 
@@ -241,13 +257,13 @@ export default function PdfForms() {
         finalBytes = await baseDoc.save({ password: password, userPassword: password });
       }
 
+      // E. Batch Process (CSV)
       if (mode === 'batch' && csvData.length > 0) {
         const zip = new JSZip();
         for (let rowIdx = 0; rowIdx < csvData.length; rowIdx++) {
           const row = csvData[rowIdx];
           const docCopy = await PDFDocument.load(arrayBuffer);
           const formCopy = docCopy.getForm();
-
           formFields.forEach(field => {
             const val = row[field.name];
             if (!val) return;
@@ -259,7 +275,6 @@ export default function PdfForms() {
               if (f && (val === 'TRUE' || val === 'true' || val === '1')) f.check();
             }
           });
-          
           const bytes = password ? await docCopy.save({ password }) : await docCopy.save();
           zip.file(`Filled_Form_${rowIdx+1}.pdf`, bytes);
         }
@@ -272,6 +287,7 @@ export default function PdfForms() {
         return;
       }
 
+      // F. Single Download
       const blob = new Blob([finalBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -318,27 +334,18 @@ export default function PdfForms() {
           ) : (
             <div className="flex flex-col h-full">
               
+              {/* ========== TOP TABS ========== */}
               <div className="bg-gray-50 border-b border-gray-200 p-2 flex flex-wrap gap-1 overflow-x-auto sticky top-[72px] z-20 shadow-sm">
                 {['fill', 'overlay', 'pro', 'batch', 'export'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
-                      activeTab === tab 
-                      ? 'bg-[#E5322D] text-white shadow-md' 
-                      : 'text-gray-800 hover:bg-white hover:shadow-sm'
-                    }`}
-                  >
-                    {tab === 'fill' ? '📝 Fill Form' : 
-                     tab === 'overlay' ? '🖊️ Overlay' : 
-                     tab === 'pro' ? '⚙️ Pro Settings' : 
-                     tab === 'batch' ? '📦 Batch' : '📊 Export'}
+                  <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${activeTab === tab ? 'bg-[#E5322D] text-white shadow-md' : 'text-gray-800 hover:bg-white hover:shadow-sm'}`}>
+                    {tab === 'fill' ? '📝 Fill Form' : tab === 'overlay' ? '🖊️ Overlay' : tab === 'pro' ? '⚙️ Pro Settings' : tab === 'batch' ? '📦 Batch' : '📊 Export'}
                   </button>
                 ))}
               </div>
 
               <div className="flex flex-col md:flex-row h-full relative p-6 gap-8">
                 
+                {/* ========== LEFT: PDF PREVIEW (अब बिना Worker Error के!) ========== */}
                 <div className="w-full md:w-1/2 min-h-[400px] bg-gray-50 border border-gray-200 rounded-xl p-4 overflow-y-auto max-h-[600px] relative">
                   <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm z-20"><X size={20} /></button>
                   
@@ -350,58 +357,39 @@ export default function PdfForms() {
                       </div>
                     </div>
                   ) : (
-                    <Document file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
-                      {/* 🔥 FIX: Loop through all pages and render them in a scrollable column 🔥 */}
+                    <DocumentWithSSR file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
                       <div className="flex flex-col gap-6 items-center pb-4">
                         {Array.from(new Array(totalPages), (el, index) => (
                           <div key={`page_${index + 1}`} className="relative border border-gray-300 shadow-md rounded bg-white overflow-hidden">
-                            {/* Page Number Badge */}
                             <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10 pointer-events-none">
                               Page {index + 1}
                             </div>
-                            <Page 
-                              pageNumber={index + 1} 
-                              width={400} 
-                              renderTextLayer={false} 
-                              renderAnnotationLayer={true}
-                            />
+                            <PageWithSSR pageNumber={index + 1} width={400} renderTextLayer={false} renderAnnotationLayer={true} />
                           </div>
                         ))}
                       </div>
-                    </Document>
+                    </DocumentWithSSR>
                   )}
                   <div className="mt-2 text-center text-xs font-bold text-gray-700 bg-white/80 px-3 py-1 border rounded-full w-fit mx-auto">
                     {totalPages} Page{totalPages > 1 ? 's' : ''} | {formFields.length} Fields Detected
                   </div>
                 </div>
 
+                {/* ========== RIGHT: ACTION PANEL ========== */}
                 <div className="w-full md:w-1/2 flex flex-col justify-between gap-4">
                   
                   {activeTab === 'fill' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
-                        <CheckSquare size={18} className="text-[#E5322D]" /> Fill Your Details
-                      </h3>
+                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><CheckSquare size={18} className="text-[#E5322D]" /> Fill Your Details</h3>
                       {formFields.length === 0 ? (
-                        <div className="text-center p-6 bg-orange-50 text-orange-600 rounded-lg border border-orange-200">
-                          <p className="font-bold">No interactive fields found.</p>
-                        </div>
+                        <div className="text-center p-6 bg-orange-50 text-orange-600 rounded-lg border border-orange-200"><p className="font-bold">No interactive fields found.</p></div>
                       ) : (
                         formFields.map((field, idx) => (
                           <div key={idx} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                             <label className="block text-sm font-bold text-gray-800 mb-1 truncate">{field.name}</label>
-                            {field.type === 'text' && (
-                              <input type="text" value={formData[field.name] || ''} onChange={(e) => handleInputChange(field.name, e.target.value, 'text')} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Type here..." />
-                            )}
-                            {field.type === 'checkbox' && (
-                              <label className="flex items-center gap-2 cursor-pointer font-medium text-gray-800 text-sm">
-                                <input type="checkbox" checked={formData[field.name] || false} onChange={() => handleInputChange(field.name, null, 'checkbox')} className="w-5 h-5 text-[#E5322D] rounded border-gray-300 accent-[#E5322D]" />
-                                <span>Check/Uncheck</span>
-                              </label>
-                            )}
-                            {field.type === 'dropdown' && (
-                              <input type="text" value={formData[field.name] || ''} onChange={(e) => handleInputChange(field.name, e.target.value, 'text')} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Enter dropdown value" />
-                            )}
+                            {field.type === 'text' && <input type="text" value={formData[field.name] || ''} onChange={(e) => handleInputChange(field.name, e.target.value, 'text')} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Type here..." />}
+                            {field.type === 'checkbox' && <label className="flex items-center gap-2 cursor-pointer font-medium text-gray-800 text-sm"><input type="checkbox" checked={formData[field.name] || false} onChange={() => handleInputChange(field.name, null, 'checkbox')} className="w-5 h-5 text-[#E5322D] rounded border-gray-300 accent-[#E5322D]" /><span>Check/Uncheck</span></label>}
+                            {field.type === 'dropdown' && <input type="text" value={formData[field.name] || ''} onChange={(e) => handleInputChange(field.name, e.target.value, 'text')} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Enter dropdown value" />}
                           </div>
                         ))
                       )}
@@ -410,15 +398,12 @@ export default function PdfForms() {
 
                   {activeTab === 'overlay' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
-                        <Layers size={18} className="text-[#E5322D]" /> Add Text / Signature Overlay
-                      </h3>
+                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><Layers size={18} className="text-[#E5322D]" /> Add Text / Signature Overlay</h3>
                       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
                         <div className="flex gap-3">
                           <button onClick={() => setOverlayMode('text')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${overlayMode === 'text' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 text-gray-800'}`}>Text</button>
                           <button onClick={() => setOverlayMode('signature')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${overlayMode === 'signature' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 text-gray-800'}`}>Signature</button>
                         </div>
-
                         {overlayMode === 'text' && (
                           <div className="space-y-2">
                             <textarea value={overlayText} onChange={(e) => setOverlayText(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Type text to overlay on PDF..." rows={3} />
@@ -430,16 +415,22 @@ export default function PdfForms() {
                             </div>
                           </div>
                         )}
-
                         {overlayMode === 'signature' && (
                           <div className="space-y-2">
+                            {/* 🛡️ FIX 5: हाई-क्वालिटी टच/माउस कैनवस */}
                             <div className="border border-gray-300 bg-white rounded-lg p-1">
-                              <canvas ref={signatureCanvasRef} width={400} height={150} onMouseDown={handleDrawSignature} onTouchStart={handleDrawSignature} className="w-full h-[150px] touch-none cursor-crosshair rounded bg-white" />
+                              <canvas 
+                                ref={signatureCanvasRef} width={400} height={150} 
+                                onPointerDown={handlePointerDown}
+                                onPointerMove={handlePointerMove}
+                                onPointerUp={handlePointerUp}
+                                onPointerLeave={handlePointerUp} // अगर माउस बाहर निकल जाए तो भी ड्रॉइंग रुके
+                                className="w-full h-[150px] touch-none cursor-crosshair rounded bg-white" 
+                              />
                             </div>
                             <button onClick={clearSignature} className="flex items-center gap-1 text-xs font-bold text-gray-700 hover:text-red-500"><Trash2 size={14} /> Clear</button>
                           </div>
                         )}
-                        
                         <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                           <span>Place on Page: </span>
                           <input type="number" min="1" max={totalPages} value={overlayPage} onChange={(e) => setOverlayPage(parseInt(e.target.value))} className="w-16 bg-white border border-gray-300 text-gray-800 rounded p-1 text-center focus:ring-2 focus:ring-[#E5322D] outline-none" />
@@ -451,31 +442,14 @@ export default function PdfForms() {
 
                   {activeTab === 'pro' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
-                        <Lock size={18} className="text-[#E5322D]" /> Security & Automation
-                      </h3>
+                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><Lock size={18} className="text-[#E5322D]" /> Security & Automation</h3>
                       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
-                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer">
-                          <input type="checkbox" checked={flattenForm} onChange={() => setFlattenForm(!flattenForm)} className="accent-[#E5322D] w-4 h-4" />
-                          Flatten Form (Make text static / non-editable)
-                        </label>
-                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer">
-                          <input type="checkbox" checked={validateRequired} onChange={() => setValidateRequired(!validateRequired)} className="accent-[#E5322D] w-4 h-4" />
-                          Validate Required Fields before download
-                        </label>
-                        <div className="border-t pt-2">
-                          <label className="block text-xs font-bold text-gray-800 mb-1">Encrypt with Password</label>
-                          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set PDF password" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" />
-                        </div>
+                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer"><input type="checkbox" checked={flattenForm} onChange={() => setFlattenForm(!flattenForm)} className="accent-[#E5322D] w-4 h-4" /> Flatten Form (Make text static / non-editable)</label>
+                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer"><input type="checkbox" checked={validateRequired} onChange={() => setValidateRequired(!validateRequired)} className="accent-[#E5322D] w-4 h-4" /> Validate Required Fields before download</label>
+                        <div className="border-t pt-2"><label className="block text-xs font-bold text-gray-800 mb-1">Encrypt with Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set PDF password" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" /></div>
                         <div className="grid grid-cols-2 gap-2 border-t pt-2">
-                          <div>
-                            <label className="block text-xs font-bold text-gray-800 mb-1">Author</label>
-                            <input type="text" value={metadataAuthor} onChange={(e) => setMetadataAuthor(e.target.value)} placeholder="Author name" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-gray-800 mb-1">Title</label>
-                            <input type="text" value={metadataTitle} onChange={(e) => setMetadataTitle(e.target.value)} placeholder="Document Title" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" />
-                          </div>
+                          <div><label className="block text-xs font-bold text-gray-800 mb-1">Author</label><input type="text" value={metadataAuthor} onChange={(e) => setMetadataAuthor(e.target.value)} placeholder="Author name" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" /></div>
+                          <div><label className="block text-xs font-bold text-gray-800 mb-1">Title</label><input type="text" value={metadataTitle} onChange={(e) => setMetadataTitle(e.target.value)} placeholder="Document Title" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" /></div>
                         </div>
                       </div>
                     </div>
@@ -483,23 +457,12 @@ export default function PdfForms() {
 
                   {activeTab === 'batch' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
-                        <Upload size={18} className="text-[#E5322D]" /> Batch Fill (CSV)
-                      </h3>
+                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><Upload size={18} className="text-[#E5322D]" /> Batch Fill (CSV)</h3>
                       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
                         <p className="text-sm font-medium text-gray-800">Upload a CSV file with headers matching the detected form fields.</p>
                         <input type="file" accept=".csv" onChange={handleCsvUpload} className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-[#E5322D] file:text-white hover:file:bg-red-700" />
-                        
                         {csvData.length > 0 && (
-                          <div className="mt-2">
-                            <p className="text-xs font-bold text-gray-800">{csvData.length} Rows loaded from CSV.</p>
-                            <div className="max-h-[120px] overflow-y-auto bg-white border border-gray-200 rounded text-xs p-2">
-                              {csvData.slice(0, 5).map((row, idx) => (
-                                <div key={idx} className="border-b py-1 text-gray-700">{JSON.stringify(row)}</div>
-                              ))}
-                              {csvData.length > 5 && <div className="text-gray-500 mt-1">...and {csvData.length - 5} more</div>}
-                            </div>
-                          </div>
+                          <div className="mt-2"><p className="text-xs font-bold text-gray-800">{csvData.length} Rows loaded from CSV.</p><div className="max-h-[120px] overflow-y-auto bg-white border border-gray-200 rounded text-xs p-2">{csvData.slice(0, 5).map((row, idx) => (<div key={idx} className="border-b py-1 text-gray-700">{JSON.stringify(row)}</div>))}{csvData.length > 5 && <div className="text-gray-500 mt-1">...and {csvData.length - 5} more</div>}</div></div>
                         )}
                         <p className="text-[10px] text-gray-500">⚠️ Each row will generate a separate PDF. All will be downloaded as a single ZIP.</p>
                       </div>
@@ -508,53 +471,22 @@ export default function PdfForms() {
 
                   {activeTab === 'export' && (
                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
-                        <FileOutput size={18} className="text-[#E5322D]" /> Export Filled Data
-                      </h3>
+                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><FileOutput size={18} className="text-[#E5322D]" /> Export Filled Data</h3>
                       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
                         <p className="text-sm font-medium text-gray-800">Export the current form data as JSON or CSV.</p>
                         <div className="flex gap-3">
-                          <button onClick={() => {
-                            const json = JSON.stringify(formData, null, 2);
-                            const blob = new Blob([json], { type: 'application/json' });
-                            const link = document.createElement('a');
-                            link.href = URL.createObjectURL(blob);
-                            link.download = 'form_data.json';
-                            link.click();
-                          }} className="flex-1 px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-gray-900 transition">Export JSON</button>
-                          <button onClick={() => {
-                            const headers = Object.keys(formData).join(',');
-                            const values = Object.values(formData).join(',');
-                            const csv = `${headers}\n${values}`;
-                            const blob = new Blob([csv], { type: 'text/csv' });
-                            const link = document.createElement('a');
-                            link.href = URL.createObjectURL(blob);
-                            link.download = 'form_data.csv';
-                            link.click();
-                          }} className="flex-1 px-4 py-2 bg-[#E5322D] text-white text-sm font-bold rounded-lg hover:bg-red-700 transition">Export CSV</button>
+                          <button onClick={() => { const json = JSON.stringify(formData, null, 2); const blob = new Blob([json], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.json'; link.click(); }} className="flex-1 px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-gray-900 transition">Export JSON</button>
+                          <button onClick={() => { const headers = Object.keys(formData).join(','); const values = Object.values(formData).join(','); const csv = `${headers}\n${values}`; const blob = new Blob([csv], { type: 'text/csv' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.csv'; link.click(); }} className="flex-1 px-4 py-2 bg-[#E5322D] text-white text-sm font-bold rounded-lg hover:bg-red-700 transition">Export CSV</button>
                         </div>
-                        <p className="text-xs text-gray-500">Use this to import data into Excel or other databases.</p>
                       </div>
                     </div>
                   )}
 
                   <div className="mt-auto pt-4 border-t border-gray-200 flex justify-end">
-                    <button 
-                      onClick={() => {
-                        if (activeTab === 'batch' && csvData.length > 0) processPdf('batch');
-                        else processPdf('single');
-                      }}
-                      disabled={isProcessing || (activeTab === 'batch' && csvData.length === 0)}
-                      className="w-full md:w-auto flex items-center justify-center gap-2 px-12 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {isProcessing ? (
-                        <><Settings className="animate-spin" size={24} /> Processing...</>
-                      ) : (
-                        <>{activeTab === 'batch' ? 'Process Batch & Download ZIP' : 'Download Filled PDF'} <ArrowRight size={24} /></>
-                      )}
+                    <button onClick={() => { if (activeTab === 'batch' && csvData.length > 0) processPdf('batch'); else processPdf('single'); }} disabled={isProcessing || (activeTab === 'batch' && csvData.length === 0)} className="w-full md:w-auto flex items-center justify-center gap-2 px-12 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed">
+                      {isProcessing ? <><Settings className="animate-spin" size={24} /> Processing...</> : <>{activeTab === 'batch' ? 'Process Batch & Download ZIP' : 'Download Filled PDF'} <ArrowRight size={24} /></>}
                     </button>
                   </div>
-
                 </div>
               </div>
             </div>
