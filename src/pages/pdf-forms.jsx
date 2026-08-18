@@ -2,19 +2,22 @@ import React, { useState, useRef } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-// 🔥 FIX 1: Imported 'rgb' strictly for colors
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { Document, Page, pdfjs } from 'react-pdf';
+import dynamic from 'next/dynamic';
 import JSZip from 'jszip';
+import { upload } from '@vercel/blob/client';
 import { 
   UploadCloud, FileText, X, CheckSquare, ArrowRight, Settings, 
-  Lock, RefreshCw, Download, Layers, Signature, FileOutput,
-  Trash2, Upload, AlertTriangle, Sparkles 
+  Lock, RefreshCw, Layers, Signature, FileOutput,
+  Trash2, Upload, Sparkles 
 } from 'lucide-react';
 
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
+const DocumentWithSSR = dynamic(() => import('react-pdf').then(m => m.Document), { ssr: false });
+const PageWithSSR = dynamic(() => import('react-pdf').then(m => m.Page), { ssr: false });
+import { pdfjs } from 'react-pdf';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PdfForms() {
@@ -27,19 +30,24 @@ export default function PdfForms() {
   const [totalPages, setTotalPages] = useState(0);
   const [renderError, setRenderError] = useState(false);
 
+  // TABS: 'fill', 'overlay', 'batch', 'export'
   const [activeTab, setActiveTab] = useState('fill'); 
+  
+  // OVERLAY STATES
   const [overlayMode, setOverlayMode] = useState('text'); 
   const [overlayText, setOverlayText] = useState('');
   const [overlayPage, setOverlayPage] = useState(1);
   const [overlayColor, setOverlayColor] = useState('#000000');
   const [overlaySize, setOverlaySize] = useState(20);
+  const [overlayPosition, setOverlayPosition] = useState('bottom-right'); // 🔥 NEW: Position Setting
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
   
   const signatureCanvasRef = useRef(null);
   const isDrawingRef = useRef(false); 
 
+  // EXPORT / SECURITY STATES
+  const [password, setPassword] = useState('');
   const [flattenForm, setFlattenForm] = useState(true);
-  const [validateRequired, setValidateRequired] = useState(false);
   const [metadataAuthor, setMetadataAuthor] = useState('');
   const [metadataTitle, setMetadataTitle] = useState('');
 
@@ -106,6 +114,7 @@ export default function PdfForms() {
     }));
   };
 
+  // 🔥 100% RESPONSIVE SIGNATURE DRAWING 🔥
   const handlePointerDown = (e) => {
     const canvas = signatureCanvasRef.current;
     if (!canvas) return;
@@ -197,51 +206,41 @@ export default function PdfForms() {
         }
       });
 
-      if (validateRequired) {
-        let missing = [];
-        formFields.forEach(f => {
-          if (f.type !== 'checkbox' && !formData[f.name]?.trim()) missing.push(f.name);
-        });
-        if (missing.length > 0) {
-          alert(`Please fill required fields: ${missing.join(', ')}`);
-          setIsProcessing(false);
-          return;
-        }
-      }
-
-      // B. OVERLAY MODE FIX (Text & Signature)
-      if (activeTab === 'overlay') {
+      // B. OVERLAY FIX (Perfect Positioning System)
+      if (activeTab === 'overlay' || overlayText || signatureDataUrl) {
         const pageIndex = Math.min(Math.max(1, overlayPage), totalPages) - 1;
         const page = baseDoc.getPage(pageIndex);
         const { width, height } = page.getSize();
 
+        // 🎯 Position Calculator
+        const getCoords = (itemWidth, itemHeight) => {
+          const pad = 40;
+          if (overlayPosition === 'bottom-right') return { x: width - itemWidth - pad, y: pad };
+          if (overlayPosition === 'bottom-left') return { x: pad, y: pad };
+          if (overlayPosition === 'top-right') return { x: width - itemWidth - pad, y: height - itemHeight - pad };
+          if (overlayPosition === 'top-left') return { x: pad, y: height - itemHeight - pad };
+          return { x: (width - itemWidth) / 2, y: (height - itemHeight) / 2 };
+        };
+
         if (overlayMode === 'text' && overlayText.trim()) {
           const font = await baseDoc.embedFont(StandardFonts.Helvetica);
-          
-          // Fix Color parsing for pdf-lib
+          const textWidth = font.widthOfTextAtSize(overlayText, overlaySize);
+          const { x, y } = getCoords(textWidth, overlaySize);
+
           const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(overlayColor);
           const r = result ? parseInt(result[1], 16) / 255 : 0;
           const g = result ? parseInt(result[2], 16) / 255 : 0;
           const b = result ? parseInt(result[3], 16) / 255 : 0;
 
-          page.drawText(overlayText, {
-            x: 50, 
-            y: height - 100, // Placed near top left
-            size: overlaySize,
-            font: font,
-            color: rgb(r, g, b),
-          });
+          page.drawText(overlayText, { x, y, size: overlaySize, font, color: rgb(r, g, b) });
         } 
-        else if (overlayMode === 'signature' && signatureDataUrl) {
-          // Fix Signature rendering using ArrayBuffer
-          const signatureBytes = await fetch(signatureDataUrl).then(res => res.arrayBuffer());
-          const pngImage = await baseDoc.embedPng(signatureBytes);
-          page.drawImage(pngImage, {
-            x: 50,
-            y: height - 150, // Placed near top left
-            width: 150, 
-            height: 75,
-          });
+        
+        if (overlayMode === 'signature' && signatureDataUrl) {
+          // 🔥 FIX: Properly extracting Base64 to prevent crash
+          const base64Data = signatureDataUrl.split(',')[1];
+          const pngImage = await baseDoc.embedPng(base64Data);
+          const { x, y } = getCoords(150, 75);
+          page.drawImage(pngImage, { x, y, width: 150, height: 75 });
         }
       }
 
@@ -289,18 +288,48 @@ export default function PdfForms() {
         return;
       }
 
-      // F. Normal Download
-      const blob = new Blob([finalBytes], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `MasterPdf_Filled_${file.name}`;
-      link.click();
+      // F. Normal Download & Password Encryption (Vercel Backend)
+      if (password && mode !== 'batch') {
+        try {
+          const pdfBlob = new Blob([finalBytes], { type: 'application/pdf' });
+          const pdfFile = new File([pdfBlob], `Protected_${Date.now()}.pdf`, { type: 'application/pdf' });
+          
+          // 🛡️ Frontend cannot encrypt existing PDFs natively, relying on Vercel Backend
+          const uploadBlob = await upload(pdfFile.name, pdfFile, { access: 'public', handleUploadUrl: '/api/upload' });
+          const response = await fetch('/api/master-convert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'protect-pdf', fileUrl: uploadBlob.url, password })
+          });
+
+          const data = await response.json();
+          if (response.ok && data.downloadUrl) {
+            window.location.href = data.downloadUrl;
+          } else {
+            alert("Vercel Backend missing or failed. Downloading standard Unencrypted PDF.");
+            triggerDownload(finalBytes, file.name);
+          }
+        } catch (error) {
+          alert("Server connection failed. Downloading standard Unencrypted PDF.");
+          triggerDownload(finalBytes, file.name);
+        }
+      } else {
+        triggerDownload(finalBytes, file.name);
+      }
 
     } catch (error) {
       console.error("Error processing PDF:", error);
       alert("Failed to process the PDF. " + error.message);
     }
     setIsProcessing(false);
+  };
+
+  const triggerDownload = (bytes, fileName) => {
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `MasterPdf_Filled_${fileName}`;
+    link.click();
   };
 
   return (
@@ -324,7 +353,7 @@ export default function PdfForms() {
             <div className="min-h-[450px] flex flex-col items-center justify-center p-10 bg-gray-50/50">
               <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
               <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl">
-                <UploadCloud size={28} /> Upload PDF
+                <UploadCloud size={28} /> Upload Fillable PDF
               </label>
             </div>
           ) : isLoading ? (
@@ -335,10 +364,11 @@ export default function PdfForms() {
           ) : (
             <div className="flex flex-col h-full">
               
+              {/* 🔥 NEW CENTRALIZED TABS 🔥 */}
               <div className="bg-gray-50 border-b border-gray-200 p-2 flex flex-wrap gap-1 overflow-x-auto sticky top-[72px] z-20 shadow-sm">
-                {['fill', 'overlay', 'pro', 'batch', 'export'].map((tab) => (
+                {['fill', 'overlay', 'batch', 'export'].map((tab) => (
                   <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${activeTab === tab ? 'bg-[#E5322D] text-white shadow-md' : 'text-gray-800 hover:bg-white hover:shadow-sm'}`}>
-                    {tab === 'fill' ? '📝 Fill Form' : tab === 'overlay' ? '🖊️ Overlay' : tab === 'pro' ? '⚙️ Metadata' : tab === 'batch' ? '📦 Batch' : '📊 Export'}
+                    {tab === 'fill' ? '📝 Fill Form' : tab === 'overlay' ? '🖊️ Overlay' : tab === 'batch' ? '📦 Batch' : '⚙️ Finalize & Export'}
                   </button>
                 ))}
               </div>
@@ -356,18 +386,18 @@ export default function PdfForms() {
                       </div>
                     </div>
                   ) : (
-                    <Document file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
+                    <DocumentWithSSR file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
                       <div className="flex flex-col gap-6 items-center pb-4">
                         {Array.from(new Array(totalPages), (el, index) => (
                           <div key={`page_${index + 1}`} className="relative border border-gray-300 shadow-md rounded bg-white overflow-hidden">
                             <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10 pointer-events-none">
                               Page {index + 1}
                             </div>
-                            <Page pageNumber={index + 1} width={400} renderTextLayer={false} renderAnnotationLayer={true} />
+                            <PageWithSSR pageNumber={index + 1} width={400} renderTextLayer={false} renderAnnotationLayer={true} />
                           </div>
                         ))}
                       </div>
-                    </Document>
+                    </DocumentWithSSR>
                   )}
                   <div className="mt-2 text-center text-xs font-bold text-gray-700 bg-white/80 px-3 py-1 border rounded-full w-fit mx-auto">
                     {totalPages} Page{totalPages > 1 ? 's' : ''} | {formFields.length} Fields Detected
@@ -385,111 +415,3 @@ export default function PdfForms() {
                           <p className="text-sm">This is a flat PDF. Use the <strong>Overlay</strong> tab to add text and signature manually.</p>
                         </div>
                       ) : (
-                        formFields.map((field, idx) => (
-                          <div key={idx} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                            <label className="block text-sm font-bold text-gray-800 mb-1 truncate">{field.name}</label>
-                            {field.type === 'text' && <input type="text" value={formData[field.name] || ''} onChange={(e) => handleInputChange(field.name, e.target.value, 'text')} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Type here..." />}
-                            {field.type === 'checkbox' && <label className="flex items-center gap-2 cursor-pointer font-medium text-gray-800 text-sm"><input type="checkbox" checked={formData[field.name] || false} onChange={() => handleInputChange(field.name, null, 'checkbox')} className="w-5 h-5 text-[#E5322D] rounded border-gray-300 accent-[#E5322D]" /><span>Check/Uncheck</span></label>}
-                            {field.type === 'dropdown' && <input type="text" value={formData[field.name] || ''} onChange={(e) => handleInputChange(field.name, e.target.value, 'text')} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Enter dropdown value" />}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {activeTab === 'overlay' && (
-                    <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><Layers size={18} className="text-[#E5322D]" /> Add Text / Signature Overlay</h3>
-                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
-                        <div className="flex gap-3">
-                          <button onClick={() => setOverlayMode('text')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${overlayMode === 'text' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 text-gray-800'}`}>Text</button>
-                          <button onClick={() => setOverlayMode('signature')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${overlayMode === 'signature' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 text-gray-800'}`}>Signature</button>
-                        </div>
-                        {overlayMode === 'text' && (
-                          <div className="space-y-2">
-                            <textarea value={overlayText} onChange={(e) => setOverlayText(e.target.value)} className="w-full bg-white border border-gray-300 text-gray-800 rounded-md p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" placeholder="Type text to overlay on PDF..." rows={3} />
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-800">
-                              <span>Size:</span>
-                              <input type="range" min="10" max="50" value={overlaySize} onChange={(e) => setOverlaySize(parseInt(e.target.value))} className="accent-[#E5322D]" />
-                              <span>{overlaySize}px</span>
-                              <input type="color" value={overlayColor} onChange={(e) => setOverlayColor(e.target.value)} className="w-6 h-6 border border-gray-300 rounded cursor-pointer" />
-                            </div>
-                          </div>
-                        )}
-                        {overlayMode === 'signature' && (
-                          <div className="space-y-2">
-                            <div className="border border-gray-300 bg-white rounded-lg p-1">
-                              <canvas 
-                                ref={signatureCanvasRef} width={400} height={150} 
-                                onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}
-                                className="w-full h-[150px] touch-none cursor-crosshair rounded bg-white" 
-                              />
-                            </div>
-                            <button onClick={clearSignature} className="flex items-center gap-1 text-xs font-bold text-gray-700 hover:text-red-500"><Trash2 size={14} /> Clear</button>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800 border-t pt-3">
-                          <span>Place on Page: </span>
-                          <input type="number" min="1" max={totalPages} value={overlayPage} onChange={(e) => setOverlayPage(parseInt(e.target.value))} className="w-16 bg-white border border-gray-300 text-gray-800 rounded p-1 text-center focus:ring-2 focus:ring-[#E5322D] outline-none" />
-                        </div>
-                        <p className="text-xs text-gray-500">Note: Overlay is placed at the top-left section of the specified page.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'pro' && (
-                    <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><Lock size={18} className="text-[#E5322D]" /> Document Metadata</h3>
-                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
-                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer"><input type="checkbox" checked={flattenForm} onChange={() => setFlattenForm(!flattenForm)} className="accent-[#E5322D] w-4 h-4" /> Flatten Form (Make text static / non-editable)</label>
-                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer"><input type="checkbox" checked={validateRequired} onChange={() => setValidateRequired(!validateRequired)} className="accent-[#E5322D] w-4 h-4" /> Validate Required Fields before download</label>
-                        <div className="grid grid-cols-2 gap-2 border-t pt-3 mt-2">
-                          <div><label className="block text-xs font-bold text-gray-800 mb-1">Author Name</label><input type="text" value={metadataAuthor} onChange={(e) => setMetadataAuthor(e.target.value)} placeholder="e.g. MasterPdf User" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" /></div>
-                          <div><label className="block text-xs font-bold text-gray-800 mb-1">Document Title</label><input type="text" value={metadataTitle} onChange={(e) => setMetadataTitle(e.target.value)} placeholder="e.g. Filled Form 2026" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm focus:ring-2 focus:ring-[#E5322D] outline-none" /></div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'batch' && (
-                    <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><Upload size={18} className="text-[#E5322D]" /> Batch Fill (CSV)</h3>
-                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
-                        <p className="text-sm font-medium text-gray-800">Upload a CSV file with headers matching the detected form fields.</p>
-                        <input type="file" accept=".csv" onChange={handleCsvUpload} className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-[#E5322D] file:text-white hover:file:bg-red-700" />
-                        {csvData.length > 0 && (
-                          <div className="mt-2"><p className="text-xs font-bold text-gray-800">{csvData.length} Rows loaded from CSV.</p><div className="max-h-[120px] overflow-y-auto bg-white border border-gray-200 rounded text-xs p-2">{csvData.slice(0, 5).map((row, idx) => (<div key={idx} className="border-b py-1 text-gray-700">{JSON.stringify(row)}</div>))}{csvData.length > 5 && <div className="text-gray-500 mt-1">...and {csvData.length - 5} more</div>}</div></div>
-                        )}
-                        <p className="text-[10px] text-gray-500">⚠️ Each row will generate a separate PDF. All will be downloaded as a single ZIP.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'export' && (
-                    <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                      <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2"><FileOutput size={18} className="text-[#E5322D]" /> Export Filled Data</h3>
-                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
-                        <p className="text-sm font-medium text-gray-800">Export the current form data as JSON or CSV.</p>
-                        <div className="flex gap-3">
-                          <button onClick={() => { const json = JSON.stringify(formData, null, 2); const blob = new Blob([json], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.json'; link.click(); }} className="flex-1 px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-gray-900 transition">Export JSON</button>
-                          <button onClick={() => { const headers = Object.keys(formData).join(','); const values = Object.values(formData).join(','); const csv = `${headers}\n${values}`; const blob = new Blob([csv], { type: 'text/csv' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.csv'; link.click(); }} className="flex-1 px-4 py-2 bg-[#E5322D] text-white text-sm font-bold rounded-lg hover:bg-red-700 transition">Export CSV</button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-auto pt-4 border-t border-gray-200 flex justify-end">
-                    <button onClick={() => { if (activeTab === 'batch' && csvData.length > 0) processPdf('batch'); else processPdf('single'); }} disabled={isProcessing || (activeTab === 'batch' && csvData.length === 0)} className="w-full md:w-auto flex items-center justify-center gap-2 px-12 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed">
-                      {isProcessing ? <><Settings className="animate-spin" size={24} /> Processing...</> : <>{activeTab === 'batch' ? 'Process Batch & Download ZIP' : 'Download Filled PDF'} <ArrowRight size={24} /></>}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
-      <Footer />
-    </div>
-  );
-}
