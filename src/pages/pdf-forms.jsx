@@ -5,11 +5,11 @@ import Footer from '../components/Footer';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import JSZip from 'jszip';
 import { 
-  UploadCloud, FileText, X, CheckSquare, ArrowRight, Settings, 
+  UploadCloud, X, CheckSquare, ArrowRight, Settings, 
   Lock, RefreshCw, Layers, FileOutput, Trash2, Upload, Sparkles, Edit3 
 } from 'lucide-react';
 
-// 🔥 FIX: 100% Static Imports (Like organize-pdf) to prevent Vercel Build Error 🔥
+// 🔥 FIX: 100% Clean Static Imports (No duplicate pdfjs, no dynamic mix-up) 🔥
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
@@ -173,7 +173,6 @@ export default function PdfForms() {
     reader.readAsText(file);
   };
 
-  // 🔥 MAIN PROCESS 🔥
   const processPdf = async (mode = 'single') => {
     if (!file) return alert("Please upload a base PDF form.");
     setIsProcessing(true);
@@ -481,4 +480,45 @@ export default function PdfForms() {
                           </div>
                           <div>
                             <label className="block text-xs font-bold text-gray-800 mb-1">Document Title</label>
-                            <input type="text" value={metadata
+                            <input type="text" value={metadataTitle} onChange={(e) => setMetadataTitle(e.target.value)} placeholder="e.g. Final Form" className="w-full bg-white border border-gray-300 rounded p-2 text-sm outline-none" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                        <p className="text-sm font-bold text-gray-800 border-b pb-1">2. Security & Form Lock</p>
+                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer">
+                          <input type="checkbox" checked={flattenForm} onChange={(e) => setFlattenForm(e.target.checked)} className="accent-[#E5322D] w-4 h-4" />
+                          Flatten Form (Make text static / non-editable)
+                        </label>
+                        <div className="pt-2">
+                          <label className="block text-xs font-bold text-gray-800 mb-1">Password Protect</label>
+                          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set PDF password" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm outline-none" />
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                        <p className="text-sm font-bold text-gray-800 border-b pb-1">3. Export Form Data</p>
+                        <div className="flex gap-3">
+                          <button onClick={() => { const json = JSON.stringify(formData, null, 2); const blob = new Blob([json], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.json'; link.click(); }} className="flex-1 px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-gray-900 transition">Export JSON</button>
+                          <button onClick={() => { const headers = Object.keys(formData).join(','); const values = Object.values(formData).join(','); const csv = `${headers}\n${values}`; const blob = new Blob([csv], { type: 'text/csv' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.csv'; link.click(); }} className="flex-1 px-4 py-2 bg-[#E5322D] text-white text-sm font-bold rounded-lg hover:bg-red-700 transition">Export CSV</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-auto pt-4 border-t border-gray-200 flex justify-end">
+                    <button onClick={() => { if (activeTab === 'batch' && csvData.length > 0) processPdf('batch'); else processPdf('single'); }} disabled={isProcessing || (activeTab === 'batch' && csvData.length === 0)} className="w-full md:w-auto flex items-center justify-center gap-2 px-12 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed">
+                      {isProcessing ? <><Settings className="animate-spin" size={24} /> Processing...</> : <>{activeTab === 'batch' ? 'Process Batch & Download ZIP' : 'Download Filled PDF'} <ArrowRight size={24} /></>}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
