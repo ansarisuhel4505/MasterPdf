@@ -2,17 +2,26 @@ import React, { useState } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import JSZip from 'jszip';
 import { 
   UploadCloud, Image as ImageIcon, X, Settings, Layers, 
   RotateCw, Contrast, Scan, FileOutput, RefreshCw, Lock,
-  Camera, Download, PaintBucket, FileText, ChevronDown, ArrowUp, ArrowDown
+  Camera, Download, PaintBucket, FileText, ArrowUp, ArrowDown
 } from 'lucide-react';
-import dynamic from 'next/dynamic';
-import { upload } from '@vercel/blob/client'; // 🔥 FIX: Added Vercel Blob for Backend Password
 
 let Tesseract = null;
+
+// 🔥 FIX: jsPDF Auto-Loader (Direct from CDN to prevent backend API hang) 🔥
+const loadJsPDF = () => {
+  return new Promise((resolve, reject) => {
+    if (window.jspdf && window.jspdf.jsPDF) return resolve(window.jspdf.jsPDF);
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    script.onload = () => resolve(window.jspdf.jsPDF);
+    script.onerror = () => reject(new Error("Failed to load jsPDF engine"));
+    document.head.appendChild(script);
+  });
+};
 
 export default function ScanToPdf() {
   const [items, setItems] = useState([]); 
@@ -33,10 +42,11 @@ export default function ScanToPdf() {
   const [ocrSuccess, setOcrSuccess] = useState(false);
 
   const [outputFormat, setOutputFormat] = useState('pdf');
-  const [dpi, setDpi] = useState(150);
   const [colorMode, setColorMode] = useState('color');
   const [watermarkText, setWatermarkText] = useState('');
   const [watermarkColor, setWatermarkColor] = useState('#000000');
+  
+  // PASSWORD STATE
   const [password, setPassword] = useState('');
 
   const handleCameraCapture = (e) => {
@@ -207,117 +217,99 @@ export default function ScanToPdf() {
     }
   };
 
-  // 🔥 100% FIXED PROCESS SCAN FUNCTION 🔥
+  // 🔥 100% FIXED PROCESS SCAN FUNCTION (Client-Side Only, A4 Fix, Password Fix) 🔥
   const processScan = async () => {
     if (items.length === 0) return alert("Please upload at least one image.");
     setIsProcessing(true);
     
     try {
+      const jsPDF = await loadJsPDF(); // Load jsPDF engine dynamically
       const zip = new JSZip();
       
       let singlePdfDoc = null;
-      if (outputFormat === 'pdf') {
-        singlePdfDoc = await PDFDocument.create();
-      }
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const canvas = await processImageToCanvas(item);
         
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
-        const arrayBuffer = await blob.arrayBuffer();
-
-        let currentPdfDoc = singlePdfDoc;
-        if (outputFormat === 'zip') {
-           currentPdfDoc = await PDFDocument.create();
-        }
-
-        const jpgImage = await currentPdfDoc.embedJpg(arrayBuffer);
-
-        // 🔥 FIX 1: STRICT A4 SIZING (Forces page to standard PDF size) 🔥
+        // 1. 🔥 STRICT A4 DIMENSIONS FIX (Forces exact standard A4 size) 🔥
         const isLandscape = canvas.width > canvas.height;
         const pageWidth = isLandscape ? 841.89 : 595.28;
         const pageHeight = isLandscape ? 595.28 : 841.89;
 
-        const page = currentPdfDoc.addPage([pageWidth, pageHeight]);
+        // 2. 🔥 SCALE TO FIT LOGIC (Shrinks huge camera photos perfectly to A4) 🔥
+        const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+        const w = canvas.width * scale;
+        const h = canvas.height * scale;
+        const x = (pageWidth - w) / 2;
+        const y = (pageHeight - h) / 2;
 
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+
+        let currentPdfDoc;
+
+        if (outputFormat === 'pdf') {
+          if (i === 0) {
+             singlePdfDoc = new jsPDF({ orientation: isLandscape ? 'l' : 'p', unit: 'pt', format: [pageWidth, pageHeight] });
+             currentPdfDoc = singlePdfDoc;
+          } else {
+             singlePdfDoc.addPage([pageWidth, pageHeight], isLandscape ? 'l' : 'p');
+             currentPdfDoc = singlePdfDoc;
+          }
+        } else {
+           currentPdfDoc = new jsPDF({ orientation: isLandscape ? 'l' : 'p', unit: 'pt', format: [pageWidth, pageHeight] });
+        }
+
+        // Apply Background Color
         if (backgroundColor !== '#ffffff') {
           const { r, g, b } = hexToRgb(backgroundColor);
-          page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: rgb(r, g, b) });
+          currentPdfDoc.setFillColor(Math.round(r * 255), Math.round(g * 255), Math.round(b * 255));
+          currentPdfDoc.rect(0, 0, pageWidth, pageHeight, 'F');
         }
         
-        // 🔥 FIX 2: SCALE IMAGE TO FIT INSIDE A4 PERFECTLY 🔥
-        const scaledImage = jpgImage.scaleToFit(pageWidth, pageHeight);
-        page.drawImage(jpgImage, { 
-          x: pageWidth / 2 - scaledImage.width / 2, 
-          y: pageHeight / 2 - scaledImage.height / 2, 
-          width: scaledImage.width, 
-          height: scaledImage.height 
-        });
+        // Render Image onto A4
+        currentPdfDoc.addImage(imgData, 'JPEG', x, y, w, h);
         
+        // Apply Watermark
         if (watermarkText.trim()) {
-          const font = await currentPdfDoc.embedFont(StandardFonts.Helvetica);
           const { r, g, b } = hexToRgb(watermarkColor);
-          page.drawText(watermarkText, { x: 50, y: 50, size: 30, font, color: rgb(r, g, b), opacity: 0.4 });
+          const mixR = Math.round((r * 255 * 0.4) + (255 * 0.6));
+          const mixG = Math.round((g * 255 * 0.4) + (255 * 0.6));
+          const mixB = Math.round((b * 255 * 0.4) + (255 * 0.6));
+          currentPdfDoc.setTextColor(mixR, mixG, mixB);
+          currentPdfDoc.setFontSize(30);
+          currentPdfDoc.text(watermarkText, 50, 50);
         }
         
+        // Apply OCR Hidden Text
         if (ocrText && ocrSuccess) {
-          const font = await currentPdfDoc.embedFont(StandardFonts.Helvetica);
-          page.drawText(ocrText, { x: 0, y: 0, size: 1, font, opacity: 0 }); 
+          currentPdfDoc.setTextColor(255, 255, 255);
+          currentPdfDoc.setFontSize(1);
+          currentPdfDoc.text(ocrText.substring(0, 100), 0, 0); 
         }
 
+        // 3. 🔥 PASSWORD ENCRYPTION FIX FOR BATCH ZIP MODE 🔥
         if (outputFormat === 'zip') {
-          const pdfBytes = await currentPdfDoc.save();
-          zip.file(`Scan_Page_${i+1}.pdf`, pdfBytes);
+          if (password) {
+             currentPdfDoc.setEncryption({ userPassword: password, ownerPassword: password, userPermissions: ['print'] });
+          }
+          const pdfBlob = currentPdfDoc.output('blob');
+          zip.file(`Scan_Page_${i+1}.pdf`, pdfBlob);
         }
       }
 
       if (outputFormat === 'zip') {
-        if (password) {
-           alert("Password protection requires backend processing and is only supported in 'Single PDF' mode. Generating unencrypted ZIP.");
-        }
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         const link = document.createElement('a'); 
         link.href = URL.createObjectURL(zipBlob);
         link.download = 'MasterPdf_Scanned_Documents.zip'; 
         link.click();
       } else {
-        
-        // 🔥 FIX 3: REAL PASSWORD PROTECTION (Uses Backend API) 🔥
-        const finalBytes = await singlePdfDoc.save();
-        
+        // 4. 🔥 PASSWORD ENCRYPTION FIX FOR SINGLE PDF MODE 🔥
         if (password) {
-          try {
-            const pdfBlob = new Blob([finalBytes], { type: 'application/pdf' });
-            const pdfFile = new File([pdfBlob], `Scanned_${Date.now()}.pdf`, { type: 'application/pdf' });
-            
-            // Upload to Vercel
-            const uploadBlob = await upload(pdfFile.name, pdfFile, { access: 'public', handleUploadUrl: '/api/upload' });
-            
-            // Protect via Backend API
-            const response = await fetch('/api/master-convert', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'protect-pdf', fileUrl: uploadBlob.url, password })
-            });
-
-            const data = await response.json();
-            if (response.ok && data.downloadUrl) {
-              window.location.href = data.downloadUrl;
-            } else {
-              alert("Error applying password: " + (data.error || "Server failed."));
-            }
-          } catch (err) {
-             alert("Server connection failed while encrypting PDF.");
-          }
-        } else {
-          // Normal Download without Password
-          const blob = new Blob([finalBytes], { type: 'application/pdf' });
-          const link = document.createElement('a'); 
-          link.href = URL.createObjectURL(blob);
-          link.download = 'MasterPdf_Scanned.pdf'; 
-          link.click();
+           singlePdfDoc.setEncryption({ userPassword: password, ownerPassword: password, userPermissions: ['print'] });
         }
+        singlePdfDoc.save('MasterPdf_Scanned.pdf');
       }
     } catch (error) {
       console.error("Scan Error:", error); 
@@ -483,24 +475,21 @@ export default function ScanToPdf() {
                       <h3 className="text-lg font-bold text-gray-900 border-b pb-2"><FileOutput size={18} className="inline text-[#E5322D] mr-2"/> Output & Security</h3>
                       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
                         <div className="grid grid-cols-2 gap-3">
-                          <div><label className="text-xs font-bold text-gray-800 block mb-1">DPI / Size</label>
-                            <select value={dpi} onChange={(e) => setDpi(Number(e.target.value))} className="w-full bg-white border border-gray-300 p-2 text-sm font-bold text-gray-800 rounded"><option value={72}>72 (Screen)</option><option value={150}>150 (Standard)</option><option value={300}>300 (Print)</option></select>
-                          </div>
                           <div><label className="text-xs font-bold text-gray-800 block mb-1">Color Mode</label>
                             <select value={colorMode} onChange={(e) => setColorMode(e.target.value)} className="w-full bg-white border border-gray-300 p-2 text-sm font-bold text-gray-800 rounded"><option value="color">Full Color</option><option value="grayscale">Grayscale</option><option value="bw">Black & White</option></select>
                           </div>
+                          <div><label className="text-xs font-bold text-gray-800 block mb-1">PDF Background Color</label><input type="color" value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="w-full h-10 border border-gray-300 rounded cursor-pointer" /></div>
                         </div>
                         <div className="border-t pt-3 flex flex-wrap gap-3 items-end">
                           <div className="flex-1"><label className="text-xs font-bold text-gray-800 block mb-1">Watermark Text</label><input type="text" placeholder="Confidential" value={watermarkText} onChange={(e) => setWatermarkText(e.target.value)} className="w-full bg-white border border-gray-300 p-2 text-sm font-bold text-gray-800 rounded" /></div>
                           <div><label className="text-xs font-bold text-gray-800 block mb-1">Watermark Color</label><input type="color" value={watermarkColor} onChange={(e) => setWatermarkColor(e.target.value)} className="w-10 h-10 border border-gray-300 rounded cursor-pointer" /></div>
                         </div>
                         <div className="border-t pt-3">
-                          <label className="text-xs font-bold text-gray-800 block mb-1">Password Protect (Single PDF Mode Only)</label>
-                          <input type="password" value={password} disabled={outputFormat === 'zip'} onChange={(e) => setPassword(e.target.value)} placeholder="Set PDF password" className="w-full bg-white border border-gray-300 p-2 text-sm font-bold text-gray-800 rounded disabled:bg-gray-200" />
+                          <label className="text-xs font-bold text-gray-800 block mb-1">Password Protect</label>
+                          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set PDF password" className="w-full bg-white border border-gray-300 p-2 text-sm font-bold text-gray-800 rounded" />
                         </div>
-                        <div className="border-t pt-3"><label className="text-xs font-bold text-gray-800 block mb-1">PDF Background Color</label><input type="color" value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="w-10 h-10 border border-gray-300 rounded cursor-pointer" /></div>
                         <div className="border-t pt-3"><label className="text-xs font-bold text-gray-800 block mb-1">Output Format</label>
-                          <div className="flex gap-3"><label className="text-sm font-bold text-gray-800"><input type="radio" name="fmt" checked={outputFormat === 'pdf'} onChange={() => setOutputFormat('pdf')} className="accent-[#E5322D] mr-1" /> Single PDF</label><label className="text-sm font-bold text-gray-800"><input type="radio" name="fmt" checked={outputFormat === 'zip'} onChange={() => { setOutputFormat('zip'); setPassword(''); }} className="accent-[#E5322D] mr-1" /> Download ZIP</label></div>
+                          <div className="flex gap-3"><label className="text-sm font-bold text-gray-800"><input type="radio" name="fmt" checked={outputFormat === 'pdf'} onChange={() => setOutputFormat('pdf')} className="accent-[#E5322D] mr-1" /> Single PDF</label><label className="text-sm font-bold text-gray-800"><input type="radio" name="fmt" checked={outputFormat === 'zip'} onChange={() => setOutputFormat('zip')} className="accent-[#E5322D] mr-1" /> Download ZIP</label></div>
                         </div>
                       </div>
                     </div>
