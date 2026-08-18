@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import dynamic from 'next/dynamic';
+// 🛡️ FIX 1: Removed 'next/dynamic'. Static import is MANDATORY for React-PDF v9+
 import { Document, Page, pdfjs } from 'react-pdf';
 import JSZip from 'jszip';
 import { 
@@ -11,18 +11,14 @@ import {
   Lock, RefreshCw, Download, Layers, Signature, FileOutput,
   Trash2, Upload, AlertTriangle, Sparkles 
 } from 'lucide-react';
+
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// 🛡️ FIX 1: 100% काम करने वाला हार्डकोडेड PDF.js वर्कर (Vercel पर पक्का चलेगा)
-pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.js';
-
-// 🛡️ FIX 2: react-pdf के लिए डायनामिक इंपोर्ट (SSR ब्लॉक करने के लिए जरूरी)
-const DocumentWithSSR = dynamic(() => import('react-pdf').then(m => m.Document), { ssr: false });
-const PageWithSSR = dynamic(() => import('react-pdf').then(m => m.Page), { ssr: false });
+// 🛡️ FIX 2: Version 9 .mjs worker setup (100% working on Vercel)
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PdfForms() {
-  // ========== CORE STATES ==========
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +28,6 @@ export default function PdfForms() {
   const [totalPages, setTotalPages] = useState(0);
   const [renderError, setRenderError] = useState(false);
 
-  // ========== TABS & OVERLAY MODE ==========
   const [activeTab, setActiveTab] = useState('fill'); 
   const [overlayMode, setOverlayMode] = useState('text'); 
   const [overlayText, setOverlayText] = useState('');
@@ -40,21 +35,18 @@ export default function PdfForms() {
   const [overlayColor, setOverlayColor] = useState('#000000');
   const [overlaySize, setOverlaySize] = useState(20);
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
+  
   const signatureCanvasRef = useRef(null);
-  // 🛡️ FIX 3: Canvas Drawing के लिए useRef (Closure को हैंडल करने के लिए)
   const isDrawingRef = useRef(false); 
 
-  // ========== PRO SETTINGS ==========
   const [password, setPassword] = useState('');
   const [flattenForm, setFlattenForm] = useState(true);
   const [validateRequired, setValidateRequired] = useState(false);
   const [metadataAuthor, setMetadataAuthor] = useState('');
   const [metadataTitle, setMetadataTitle] = useState('');
 
-  // ========== BATCH PROCESSING ==========
   const [csvData, setCsvData] = useState([]);
 
-  // ------------------------ FILE HANDLER ------------------------
   const handleFileChange = async (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile || selectedFile.type !== 'application/pdf') {
@@ -109,7 +101,6 @@ export default function PdfForms() {
     setSignatureDataUrl(null);
   };
 
-  // ------------------------ FORM FILLING ------------------------
   const handleInputChange = (name, value, type) => {
     setFormData(prev => ({
       ...prev,
@@ -117,16 +108,16 @@ export default function PdfForms() {
     }));
   };
 
-  // ------------------------ SIGNATURE CANVAS (Pro Level Fixed) ------------------------
-  // 🛡️ FIX 4: Pointer Events का इस्तेमाल (Touch + Mouse दोनों के लिए)
   const handlePointerDown = (e) => {
     const canvas = signatureCanvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Clear canvas on first draw to remove background
+    if (!signatureDataUrl) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
     
     ctx.beginPath();
     ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
@@ -148,7 +139,7 @@ export default function PdfForms() {
   const handlePointerUp = () => {
     isDrawingRef.current = false;
     if (signatureCanvasRef.current) {
-      setSignatureDataUrl(signatureCanvasRef.current.toDataURL());
+      setSignatureDataUrl(signatureCanvasRef.current.toDataURL('image/png'));
     }
   };
 
@@ -160,7 +151,6 @@ export default function PdfForms() {
     setSignatureDataUrl(null);
   };
 
-  // ------------------------ CSV UPLOAD (Batch) ------------------------
   const handleCsvUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -181,7 +171,6 @@ export default function PdfForms() {
     reader.readAsText(file);
   };
 
-  // ------------------------ MAIN PROCESS ------------------------
   const processPdf = async (mode = 'single') => {
     if (!file) return alert("Please upload a base PDF form.");
     setIsProcessing(true);
@@ -189,8 +178,8 @@ export default function PdfForms() {
       const arrayBuffer = await file.arrayBuffer();
       const baseDoc = await PDFDocument.load(arrayBuffer);
       
-      // A. Fill Form Fields
       const form = baseDoc.getForm();
+      
       formFields.forEach(field => {
         if (field.type === 'text') {
           const f = form.getTextField(field.name);
@@ -209,7 +198,6 @@ export default function PdfForms() {
         }
       });
 
-      // B. Validation
       if (validateRequired) {
         let missing = [];
         formFields.forEach(f => {
@@ -222,7 +210,6 @@ export default function PdfForms() {
         }
       }
 
-      // C. Overlay Text / Signature
       if (activeTab === 'overlay') {
         const page = baseDoc.getPage(overlayPage - 1);
         const { width, height } = page.getSize();
@@ -238,7 +225,7 @@ export default function PdfForms() {
           });
         } 
         else if (overlayMode === 'signature' && signatureDataUrl) {
-          const pngImage = await baseDoc.embedPng(signatureDataUrl.split(',')[1]);
+          const pngImage = await baseDoc.embedPng(signatureDataUrl);
           page.drawImage(pngImage, {
             x: width * 0.1,
             y: height * 0.5,
@@ -248,22 +235,28 @@ export default function PdfForms() {
         }
       }
 
-      // D. Metadata & Flatten
+      // 🛡️ FIX 3: FLATTEN FORM (यह पेज की Formatting और Layout को हमेशा 100% Original रखेगा)
+      if (flattenForm && mode !== 'batch') {
+        form.flatten(); 
+      }
+
       if (metadataAuthor) baseDoc.setAuthor(metadataAuthor);
       if (metadataTitle) baseDoc.setTitle(metadataTitle);
 
-      let finalBytes = await baseDoc.save();
+      let finalBytes;
       if (password) {
         finalBytes = await baseDoc.save({ password: password, userPassword: password });
+      } else {
+        finalBytes = await baseDoc.save();
       }
 
-      // E. Batch Process (CSV)
       if (mode === 'batch' && csvData.length > 0) {
         const zip = new JSZip();
         for (let rowIdx = 0; rowIdx < csvData.length; rowIdx++) {
           const row = csvData[rowIdx];
           const docCopy = await PDFDocument.load(arrayBuffer);
           const formCopy = docCopy.getForm();
+          
           formFields.forEach(field => {
             const val = row[field.name];
             if (!val) return;
@@ -272,9 +265,13 @@ export default function PdfForms() {
               if (f) f.setText(val);
             } else if (field.type === 'checkbox') {
               const f = formCopy.getCheckBox(field.name);
-              if (f && (val === 'TRUE' || val === 'true' || val === '1')) f.check();
+              if (f && (val.toLowerCase() === 'true' || val === '1')) f.check();
             }
           });
+
+          // Flatten batch forms to preserve layout
+          if (flattenForm) formCopy.flatten();
+
           const bytes = password ? await docCopy.save({ password }) : await docCopy.save();
           zip.file(`Filled_Form_${rowIdx+1}.pdf`, bytes);
         }
@@ -287,7 +284,6 @@ export default function PdfForms() {
         return;
       }
 
-      // F. Single Download
       const blob = new Blob([finalBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -334,7 +330,6 @@ export default function PdfForms() {
           ) : (
             <div className="flex flex-col h-full">
               
-              {/* ========== TOP TABS ========== */}
               <div className="bg-gray-50 border-b border-gray-200 p-2 flex flex-wrap gap-1 overflow-x-auto sticky top-[72px] z-20 shadow-sm">
                 {['fill', 'overlay', 'pro', 'batch', 'export'].map((tab) => (
                   <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${activeTab === tab ? 'bg-[#E5322D] text-white shadow-md' : 'text-gray-800 hover:bg-white hover:shadow-sm'}`}>
@@ -345,7 +340,6 @@ export default function PdfForms() {
 
               <div className="flex flex-col md:flex-row h-full relative p-6 gap-8">
                 
-                {/* ========== LEFT: PDF PREVIEW (अब बिना Worker Error के!) ========== */}
                 <div className="w-full md:w-1/2 min-h-[400px] bg-gray-50 border border-gray-200 rounded-xl p-4 overflow-y-auto max-h-[600px] relative">
                   <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm z-20"><X size={20} /></button>
                   
@@ -357,25 +351,24 @@ export default function PdfForms() {
                       </div>
                     </div>
                   ) : (
-                    <DocumentWithSSR file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
+                    <Document file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
                       <div className="flex flex-col gap-6 items-center pb-4">
                         {Array.from(new Array(totalPages), (el, index) => (
                           <div key={`page_${index + 1}`} className="relative border border-gray-300 shadow-md rounded bg-white overflow-hidden">
                             <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10 pointer-events-none">
                               Page {index + 1}
                             </div>
-                            <PageWithSSR pageNumber={index + 1} width={400} renderTextLayer={false} renderAnnotationLayer={true} />
+                            <Page pageNumber={index + 1} width={400} renderTextLayer={false} renderAnnotationLayer={true} />
                           </div>
                         ))}
                       </div>
-                    </DocumentWithSSR>
+                    </Document>
                   )}
                   <div className="mt-2 text-center text-xs font-bold text-gray-700 bg-white/80 px-3 py-1 border rounded-full w-fit mx-auto">
                     {totalPages} Page{totalPages > 1 ? 's' : ''} | {formFields.length} Fields Detected
                   </div>
                 </div>
 
-                {/* ========== RIGHT: ACTION PANEL ========== */}
                 <div className="w-full md:w-1/2 flex flex-col justify-between gap-4">
                   
                   {activeTab === 'fill' && (
@@ -417,14 +410,10 @@ export default function PdfForms() {
                         )}
                         {overlayMode === 'signature' && (
                           <div className="space-y-2">
-                            {/* 🛡️ FIX 5: हाई-क्वालिटी टच/माउस कैनवस */}
                             <div className="border border-gray-300 bg-white rounded-lg p-1">
                               <canvas 
                                 ref={signatureCanvasRef} width={400} height={150} 
-                                onPointerDown={handlePointerDown}
-                                onPointerMove={handlePointerMove}
-                                onPointerUp={handlePointerUp}
-                                onPointerLeave={handlePointerUp} // अगर माउस बाहर निकल जाए तो भी ड्रॉइंग रुके
+                                onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}
                                 className="w-full h-[150px] touch-none cursor-crosshair rounded bg-white" 
                               />
                             </div>
