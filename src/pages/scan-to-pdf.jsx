@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -11,32 +11,26 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
-// Scanner Feature Flags
 let Tesseract = null;
 
 export default function ScanToPdf() {
-  // ========== CORE STATES ==========
-  const [items, setItems] = useState([]); // {id, file, url, rotation, cropData, processedCanvas}
+  const [items, setItems] = useState([]); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
-  const [activeTab, setActiveTab] = useState('images'); // images | enhance | ocr | output
+  const [activeTab, setActiveTab] = useState('images'); 
   
-  // ========== DRAG & DROP STATES ==========
   const [draggedIndex, setDraggedIndex] = useState(null);
 
-  // ========== IMAGE ENHANCEMENT SLIDERS ==========
   const [rotationAngle, setRotationAngle] = useState(0);
   const [contrast, setContrast] = useState(100);
   const [brightness, setBrightness] = useState(100);
   const [binarize, setBinarize] = useState(false);
   const [backgroundColor, setBackgroundColor] = useState('#ffffff');
 
-  // ========== OCR SETTINGS ==========
   const [ocrText, setOcrText] = useState('');
   const [ocrLang, setOcrLang] = useState('eng');
   const [ocrSuccess, setOcrSuccess] = useState(false);
 
-  // ========== OUTPUT / PRO SETTINGS ==========
   const [outputFormat, setOutputFormat] = useState('pdf');
   const [dpi, setDpi] = useState(150);
   const [colorMode, setColorMode] = useState('color');
@@ -75,7 +69,6 @@ export default function ScanToPdf() {
     setItems(newItems);
   };
 
-  // ========== DRAG & DROP ==========
   const onDragStart = (e, index) => setDraggedIndex(index);
   const onDragOver = (e, index) => {
     e.preventDefault();
@@ -88,7 +81,6 @@ export default function ScanToPdf() {
   };
   const onDrop = () => setDraggedIndex(null);
 
-  // ========== SMART IMAGE PROCESSING: AUTO CROP ==========
   const performAutoCrop = (file) => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -214,51 +206,98 @@ export default function ScanToPdf() {
     }
   };
 
+  // 🔥 100% FIXED PROCESS SCAN FUNCTION 🔥
   const processScan = async () => {
     if (items.length === 0) return alert("Please upload at least one image.");
     setIsProcessing(true);
+    
     try {
       const zip = new JSZip();
-      const finalDocs = [];
+      
+      // If "Single PDF" is chosen, create ONE master document
+      let singlePdfDoc = null;
+      if (outputFormat === 'pdf') {
+        singlePdfDoc = await PDFDocument.create();
+      }
+
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const canvas = await processImageToCanvas(item);
-        const widthPx = canvas.width; const heightPx = canvas.height;
-        const widthPt = (widthPx / dpi) * 72; const heightPt = (heightPx / dpi) * 72;
-        const pdfDoc = await PDFDocument.create();
-        const page = pdfDoc.addPage([widthPt, heightPt]);
-        const jpgImage = await pdfDoc.embedJpg(await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95)));
+        
+        const widthPx = canvas.width; 
+        const heightPx = canvas.height;
+        const widthPt = (widthPx / dpi) * 72; 
+        const heightPt = (heightPx / dpi) * 72;
+        
+        // 🔥 FIX 1: Convert Blob to ArrayBuffer so pdf-lib doesn't crash 🔥
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+        const arrayBuffer = await blob.arrayBuffer();
+
+        // 🔥 FIX 2: Choose the correct document based on output format 🔥
+        let currentPdfDoc = singlePdfDoc;
+        if (outputFormat === 'zip') {
+           currentPdfDoc = await PDFDocument.create();
+        }
+
+        const page = currentPdfDoc.addPage([widthPt, heightPt]);
+        const jpgImage = await currentPdfDoc.embedJpg(arrayBuffer);
+        
         page.drawImage(jpgImage, { x: 0, y: 0, width: widthPt, height: heightPt });
+        
         if (backgroundColor !== '#ffffff') {
           const { r, g, b } = hexToRgb(backgroundColor);
           page.drawRectangle({ x: 0, y: 0, width: widthPt, height: heightPt, color: rgb(r, g, b), opacity: 0.3 });
         }
+        
         if (watermarkText.trim()) {
-          const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+          const font = await currentPdfDoc.embedFont(StandardFonts.Helvetica);
           const { r, g, b } = hexToRgb(watermarkColor);
           page.drawText(watermarkText, { x: 50, y: 50, size: 30, font, color: rgb(r, g, b), opacity: 0.4 });
         }
+        
         if (ocrText && ocrSuccess) {
-          const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-          page.drawText(ocrText, { x: 0, y: 0, size: 1, font, opacity: 0 });
+          const font = await currentPdfDoc.embedFont(StandardFonts.Helvetica);
+          page.drawText(ocrText, { x: 0, y: 0, size: 1, font, opacity: 0 }); // Hidden text for searchability
         }
-        let pdfBytes = await pdfDoc.save();
-        if (password) pdfBytes = await pdfDoc.save({ password, userPassword: password });
-        finalDocs.push({ bytes: pdfBytes, name: `Scan_Page_${i+1}.pdf` });
-        zip.file(`Scan_Page_${i+1}.pdf`, pdfBytes);
+
+        // If ZIP mode, save each individual document
+        if (outputFormat === 'zip') {
+          let pdfBytes;
+          if (password) {
+            pdfBytes = await currentPdfDoc.save({ password, userPassword: password });
+          } else {
+            pdfBytes = await currentPdfDoc.save();
+          }
+          zip.file(`Scan_Page_${i+1}.pdf`, pdfBytes);
+        }
       }
-      if (outputFormat === 'zip' || finalDocs.length > 1) {
+
+      // Download execution based on chosen format
+      if (outputFormat === 'zip') {
         const zipBlob = await zip.generateAsync({ type: 'blob' });
-        const link = document.createElement('a'); link.href = URL.createObjectURL(zipBlob);
-        link.download = 'MasterPdf_Scanned_Documents.zip'; link.click();
+        const link = document.createElement('a'); 
+        link.href = URL.createObjectURL(zipBlob);
+        link.download = 'MasterPdf_Scanned_Documents.zip'; 
+        link.click();
       } else {
-        const blob = new Blob([finalDocs[0].bytes], { type: 'application/pdf' });
-        const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
-        link.download = 'MasterPdf_Scanned.pdf'; link.click();
+        // Single PDF Mode Output
+        let finalBytes;
+        if (password) {
+          finalBytes = await singlePdfDoc.save({ password, userPassword: password });
+        } else {
+          finalBytes = await singlePdfDoc.save();
+        }
+        const blob = new Blob([finalBytes], { type: 'application/pdf' });
+        const link = document.createElement('a'); 
+        link.href = URL.createObjectURL(blob);
+        link.download = 'MasterPdf_Scanned.pdf'; 
+        link.click();
       }
     } catch (error) {
-      console.error("Scan Error:", error); alert("Failed to generate PDF.");
+      console.error("Scan Error:", error); 
+      alert("Failed to generate PDF. Error: " + error.message);
     }
+    
     setIsProcessing(false);
   };
 
@@ -318,7 +357,6 @@ export default function ScanToPdf() {
 
               <div className="flex flex-col md:flex-row h-full relative p-6 gap-8">
                 
-                {/* ============= FIXED LEFT SIDE IMAGE PREVIEW ============= */}
                 <div className="w-full md:w-1/2 min-h-[400px] bg-gray-50 border border-gray-200 rounded-xl p-4 overflow-y-auto max-h-[600px]">
                   <div className="space-y-3">
                     {items.map((item, index) => (
@@ -329,7 +367,6 @@ export default function ScanToPdf() {
                         <div className="flex items-center gap-4 flex-1 min-w-0">
                           <div className="text-gray-400 hover:text-gray-600 px-1"><Layers size={18} className="rotate-90" /></div>
                           
-                          {/* 🟢 FIXED THUMBNAIL CONTAINER (Bigger, Overflow, Fallback) */}
                           <div className="w-16 h-16 md:w-20 md:h-20 bg-gray-100 rounded-lg flex items-center justify-center shrink-0 border border-gray-200 overflow-hidden relative">
                             <img 
                               src={item.url} 
@@ -340,7 +377,6 @@ export default function ScanToPdf() {
                                 e.target.nextSibling.style.display = 'flex'; 
                               }} 
                             />
-                            {/* Fallback Icon if Image fails to load */}
                             <div className="absolute inset-0 hidden items-center justify-center text-gray-400">
                                 <ImageIcon size={24} />
                             </div>
@@ -362,7 +398,6 @@ export default function ScanToPdf() {
                   </div>
                 </div>
 
-                {/* RIGHT SIDE: Active Tab Panel (No Changes in Logic) */}
                 <div className="w-full md:w-1/2 flex flex-col justify-between gap-4">
                   {activeTab === 'images' && (
                     <div className="flex-grow overflow-y-auto space-y-4">
