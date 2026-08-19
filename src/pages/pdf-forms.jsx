@@ -9,12 +9,14 @@ import {
   Lock, RefreshCw, Layers, FileOutput, Trash2, Upload, Sparkles, Edit3 
 } from 'lucide-react';
 
-// 🔥 THE ULTIMATE FIX: No dynamic imports, direct static import for react-pdf 🔥
 import { Document, Page, pdfjs } from 'react-pdf';
+import dynamic from 'next/dynamic';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// Worker Setup (Strictly .mjs for Vercel/Next.js compatibility)
+const DocumentWithSSR = dynamic(() => import('react-pdf').then(m => m.Document), { ssr: false });
+const PageWithSSR = dynamic(() => import('react-pdf').then(m => m.Page), { ssr: false });
+
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PdfForms() {
@@ -27,10 +29,8 @@ export default function PdfForms() {
   const [totalPages, setTotalPages] = useState(0);
   const [renderError, setRenderError] = useState(false);
 
-  // TABS: 'fill', 'overlay', 'batch', 'export'
   const [activeTab, setActiveTab] = useState('fill'); 
   
-  // OVERLAY STATES
   const [overlayMode, setOverlayMode] = useState('text'); 
   const [overlayText, setOverlayText] = useState('');
   const [overlayPage, setOverlayPage] = useState(1);
@@ -42,7 +42,6 @@ export default function PdfForms() {
   const signatureCanvasRef = useRef(null);
   const isDrawingRef = useRef(false); 
 
-  // EXPORT / SECURITY STATES
   const [password, setPassword] = useState('');
   const [flattenForm, setFlattenForm] = useState(true);
   const [metadataAuthor, setMetadataAuthor] = useState('');
@@ -182,6 +181,7 @@ export default function PdfForms() {
       const baseDoc = await PDFDocument.load(arrayBuffer);
       const form = baseDoc.getForm();
       
+      // A. Form Fields
       formFields.forEach(field => {
         if (field.type === 'text') {
           const f = form.getTextField(field.name);
@@ -212,6 +212,7 @@ export default function PdfForms() {
         }
       }
 
+      // B. Overlay
       if (activeTab === 'overlay' || overlayText || signatureDataUrl) {
         const pageIndex = Math.min(Math.max(1, overlayPage), totalPages) - 1;
         const page = baseDoc.getPage(pageIndex);
@@ -247,6 +248,7 @@ export default function PdfForms() {
         }
       }
 
+      // C. Flatten
       if (flattenForm && mode !== 'batch') {
         try {
           form.flatten(); 
@@ -255,11 +257,13 @@ export default function PdfForms() {
         }
       }
 
+      // D. Metadata
       if (metadataAuthor.trim()) baseDoc.setAuthor(metadataAuthor.trim());
       if (metadataTitle.trim()) baseDoc.setTitle(metadataTitle.trim());
 
       const finalBytes = await baseDoc.save();
 
+      // E. Batch Mode
       if (mode === 'batch' && csvData.length > 0) {
         const zip = new JSZip();
         for (let rowIdx = 0; rowIdx < csvData.length; rowIdx++) {
@@ -286,27 +290,42 @@ export default function PdfForms() {
           zip.file(`Filled_Form_${rowIdx+1}.pdf`, bytes);
         }
         const zipBlob = await zip.generateAsync({ type: 'blob' });
+        
+        // 🔥 DIRECT INLINE BATCH DOWNLOAD 🔥
+        const url = window.URL.createObjectURL(zipBlob);
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(zipBlob);
+        link.href = url;
         link.download = 'Batch_Filled_Forms.zip';
         document.body.appendChild(link);
         link.click();
-        document.body.removeChild(link);
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        }, 100);
+        
         setIsProcessing(false);
         return;
       }
 
+      // F. Normal Download
       if (password && mode !== 'batch') {
-        alert("Notice: Advanced encryption requires a backend server. Generating standard PDF to your device.");
+        alert("Notice: Applying an encryption password to an existing PDF requires a backend API server. Generating standard PDF directly to your device.");
       }
       
+      // 🔥 DIRECT INLINE SINGLE DOWNLOAD (100% Foolproof) 🔥
       const blob = new Blob([finalBytes], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
+      link.href = url;
       link.download = `MasterPdf_Filled_${file.name}`;
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      
+      // Clean up browser memory
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
 
     } catch (error) {
       console.error("Error processing PDF:", error);
@@ -368,18 +387,18 @@ export default function PdfForms() {
                       </div>
                     </div>
                   ) : (
-                    <Document file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
+                    <DocumentWithSSR file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
                       <div className="flex flex-col gap-6 items-center pb-4">
                         {Array.from(new Array(totalPages), (el, index) => (
                           <div key={`page_${index + 1}`} className="relative border border-gray-300 shadow-md rounded bg-white overflow-hidden">
                             <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10 pointer-events-none">
                               Page {index + 1}
                             </div>
-                            <Page pageNumber={index + 1} width={400} renderTextLayer={false} renderAnnotationLayer={true} />
+                            <PageWithSSR pageNumber={index + 1} width={400} renderTextLayer={false} renderAnnotationLayer={true} />
                           </div>
                         ))}
                       </div>
-                    </Document>
+                    </DocumentWithSSR>
                   )}
                   <div className="mt-2 text-center text-xs font-bold text-gray-700 bg-white/80 px-3 py-1 border rounded-full w-fit mx-auto">
                     {totalPages} Page{totalPages > 1 ? 's' : ''} | {formFields.length} Fields Detected
