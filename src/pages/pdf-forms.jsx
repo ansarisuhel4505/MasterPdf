@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
-// Dynamic Import for Next.js SSR Compatibility
 import { pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
@@ -52,6 +51,8 @@ export default function PdfForms() {
 
   const [password, setPassword] = useState('');
   const [flattenForm, setFlattenForm] = useState(true);
+  // 🔥 FIX: Added the missing state back!
+  const [validateRequired, setValidateRequired] = useState(false); 
   const [metadataAuthor, setMetadataAuthor] = useState('');
   const [metadataTitle, setMetadataTitle] = useState('');
 
@@ -180,7 +181,6 @@ export default function PdfForms() {
     reader.readAsText(file);
   };
 
-  // 🔥 DIRECT FOOLPROOF DOWNLOAD HELPER 🔥
   const executeDownload = (data, filename, type) => {
     const blob = new Blob([data], { type });
     const url = URL.createObjectURL(blob);
@@ -201,7 +201,6 @@ export default function PdfForms() {
       const arrayBuffer = await file.arrayBuffer();
       const baseDoc = await PDFDocument.load(arrayBuffer);
       
-      // Safety check: if getForm() doesn't exist or throws, catch it
       try {
         const form = baseDoc.getForm();
         formFields.forEach(field => {
@@ -241,7 +240,6 @@ export default function PdfForms() {
         }
       }
 
-      // Overlay Logic
       if (activeTab === 'overlay' || overlayText || signatureDataUrl) {
         const pageIndex = Math.min(Math.max(1, overlayPage), totalPages) - 1;
         const page = baseDoc.getPage(pageIndex);
@@ -277,13 +275,11 @@ export default function PdfForms() {
         }
       }
 
-      // Metadata
       if (metadataAuthor.trim()) baseDoc.setAuthor(metadataAuthor.trim());
       if (metadataTitle.trim()) baseDoc.setTitle(metadataTitle.trim());
 
       const finalBytes = await baseDoc.save();
 
-      // Batch Mode Logic
       if (mode === 'batch' && csvData.length > 0) {
         const zip = new JSZip();
         for (let rowIdx = 0; rowIdx < csvData.length; rowIdx++) {
@@ -310,13 +306,11 @@ export default function PdfForms() {
         }
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         
-        // Execute Batch Download
         executeDownload(zipBlob, 'Batch_Filled_Forms.zip', 'application/zip');
         setIsProcessing(false);
         return;
       }
 
-      // 🔥 Execute Normal Download Directly (NO ALERTS TO BLOCK IT) 🔥
       executeDownload(finalBytes, `MasterPdf_Filled_${file.name || 'document.pdf'}`, 'application/pdf');
 
     } catch (error) {
@@ -510,10 +504,14 @@ export default function PdfForms() {
                           <input type="checkbox" checked={flattenForm} onChange={(e) => setFlattenForm(e.target.checked)} className="accent-[#E5322D] w-4 h-4" />
                           Flatten Form (Make text static / non-editable)
                         </label>
+                        {/* 🔥 FIX: Added Missing Validate Checkbox Here 🔥 */}
+                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer pt-2">
+                          <input type="checkbox" checked={validateRequired} onChange={(e) => setValidateRequired(e.target.checked)} className="accent-[#E5322D] w-4 h-4" />
+                          Validate Required Fields before download
+                        </label>
                         <div className="pt-2">
                           <label className="block text-xs font-bold text-gray-800 mb-1">Password Protect</label>
                           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set PDF password" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm outline-none" />
-                          <p className="text-[10px] text-gray-500 mt-1">Note: Encryption functionality depends on Backend API setup.</p>
                         </div>
                       </div>
 
