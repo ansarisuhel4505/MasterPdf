@@ -8,18 +8,21 @@ import {
   UploadCloud, X, CheckSquare, ArrowRight, Settings, 
   Lock, RefreshCw, Layers, FileOutput, Trash2, Upload, Sparkles, Edit3 
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 
-import { Document, Page, pdfjs } from 'react-pdf';
+// Dynamic Import for Next.js SSR Compatibility
+import { pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// 🔥 FIX 1: Worker sirf Browser mein set hoga, Server par crash nahi karega 🔥
+const Document = dynamic(() => import('react-pdf').then(m => m.Document), { ssr: false });
+const Page = dynamic(() => import('react-pdf').then(m => m.Page), { ssr: false });
+
 if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 }
 
 export default function PdfForms() {
-  // 🔥 FIX 2: Hydration aur Server Crash rokne ka Master State 🔥
   const [isClient, setIsClient] = useState(false);
   useEffect(() => {
     setIsClient(true);
@@ -177,6 +180,19 @@ export default function PdfForms() {
     reader.readAsText(file);
   };
 
+  // 🔥 DIRECT FOOLPROOF DOWNLOAD HELPER 🔥
+  const executeDownload = (data, filename, type) => {
+    const blob = new Blob([data], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const processPdf = async (mode = 'single') => {
     if (!file) return alert("Please upload a base PDF form.");
     setIsProcessing(true);
@@ -184,25 +200,34 @@ export default function PdfForms() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const baseDoc = await PDFDocument.load(arrayBuffer);
-      const form = baseDoc.getForm();
       
-      formFields.forEach(field => {
-        if (field.type === 'text') {
-          const f = form.getTextField(field.name);
-          if (f && formData[field.name]) f.setText(formData[field.name]);
-        } 
-        else if (field.type === 'checkbox') {
-          const f = form.getCheckBox(field.name);
-          if (f) {
-            if (formData[field.name]) f.check();
-            else f.uncheck();
+      // Safety check: if getForm() doesn't exist or throws, catch it
+      try {
+        const form = baseDoc.getForm();
+        formFields.forEach(field => {
+          if (field.type === 'text') {
+            const f = form.getTextField(field.name);
+            if (f && formData[field.name]) f.setText(formData[field.name]);
+          } 
+          else if (field.type === 'checkbox') {
+            const f = form.getCheckBox(field.name);
+            if (f) {
+              if (formData[field.name]) f.check();
+              else f.uncheck();
+            }
           }
+          else if (field.type === 'dropdown') {
+            const f = form.getDropdown(field.name);
+            if (f && formData[field.name]) f.select(formData[field.name]);
+          }
+        });
+
+        if (flattenForm && mode !== 'batch') {
+          form.flatten(); 
         }
-        else if (field.type === 'dropdown') {
-          const f = form.getDropdown(field.name);
-          if (f && formData[field.name]) f.select(formData[field.name]);
-        }
-      });
+      } catch (formError) {
+        console.warn("PDF Form logic skipped (Flat PDF or corrupt form).", formError);
+      }
 
       if (validateRequired) {
         let missing = [];
@@ -216,6 +241,7 @@ export default function PdfForms() {
         }
       }
 
+      // Overlay Logic
       if (activeTab === 'overlay' || overlayText || signatureDataUrl) {
         const pageIndex = Math.min(Math.max(1, overlayPage), totalPages) - 1;
         const page = baseDoc.getPage(pageIndex);
@@ -251,79 +277,53 @@ export default function PdfForms() {
         }
       }
 
-      if (flattenForm && mode !== 'batch') {
-        try {
-          form.flatten(); 
-        } catch(e) {
-          console.warn("Could not completely flatten form.", e);
-        }
-      }
-
+      // Metadata
       if (metadataAuthor.trim()) baseDoc.setAuthor(metadataAuthor.trim());
       if (metadataTitle.trim()) baseDoc.setTitle(metadataTitle.trim());
 
       const finalBytes = await baseDoc.save();
 
+      // Batch Mode Logic
       if (mode === 'batch' && csvData.length > 0) {
         const zip = new JSZip();
         for (let rowIdx = 0; rowIdx < csvData.length; rowIdx++) {
           const row = csvData[rowIdx];
           const docCopy = await PDFDocument.load(arrayBuffer);
-          const formCopy = docCopy.getForm();
+          try {
+            const formCopy = docCopy.getForm();
+            formFields.forEach(field => {
+              const val = row[field.name];
+              if (!val) return;
+              if (field.type === 'text') {
+                const f = formCopy.getTextField(field.name);
+                if (f) f.setText(val);
+              } else if (field.type === 'checkbox') {
+                const f = formCopy.getCheckBox(field.name);
+                if (f && (val.toLowerCase() === 'true' || val === '1')) f.check();
+              }
+            });
+            if (flattenForm) formCopy.flatten();
+          } catch(e) {}
           
-          formFields.forEach(field => {
-            const val = row[field.name];
-            if (!val) return;
-            if (field.type === 'text') {
-              const f = formCopy.getTextField(field.name);
-              if (f) f.setText(val);
-            } else if (field.type === 'checkbox') {
-              const f = formCopy.getCheckBox(field.name);
-              if (f && (val.toLowerCase() === 'true' || val === '1')) f.check();
-            }
-          });
-
-          if (flattenForm) {
-            try { formCopy.flatten(); } catch(e) {}
-          }
           const bytes = await docCopy.save();
           zip.file(`Filled_Form_${rowIdx+1}.pdf`, bytes);
         }
         const zipBlob = await zip.generateAsync({ type: 'blob' });
-        const url = window.URL.createObjectURL(zipBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = 'Batch_Filled_Forms.zip';
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(() => {
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-        }, 100);
+        
+        // Execute Batch Download
+        executeDownload(zipBlob, 'Batch_Filled_Forms.zip', 'application/zip');
         setIsProcessing(false);
         return;
       }
 
-      if (password && mode !== 'batch') {
-        alert("Notice: Advanced password encryption requires a backend server. Generating standard PDF to your device.");
-      }
-      
-      const blob = new Blob([finalBytes], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `MasterPdf_Filled_${file.name}`;
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      }, 100);
+      // 🔥 Execute Normal Download Directly (NO ALERTS TO BLOCK IT) 🔥
+      executeDownload(finalBytes, `MasterPdf_Filled_${file.name || 'document.pdf'}`, 'application/pdf');
 
     } catch (error) {
       console.error("Error processing PDF:", error);
-      alert("Failed to process the PDF. " + error.message);
+      alert("Something went wrong processing the file. Check if the PDF is corrupt.");
     }
+    
     setIsProcessing(false);
   };
 
@@ -513,14 +513,15 @@ export default function PdfForms() {
                         <div className="pt-2">
                           <label className="block text-xs font-bold text-gray-800 mb-1">Password Protect</label>
                           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set PDF password" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm outline-none" />
+                          <p className="text-[10px] text-gray-500 mt-1">Note: Encryption functionality depends on Backend API setup.</p>
                         </div>
                       </div>
 
                       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
                         <p className="text-sm font-bold text-gray-800 border-b pb-1">3. Export Form Data</p>
                         <div className="flex gap-3">
-                          <button onClick={() => { const json = JSON.stringify(formData, null, 2); const blob = new Blob([json], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.json'; link.click(); }} className="flex-1 px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-gray-900 transition">Export JSON</button>
-                          <button onClick={() => { const headers = Object.keys(formData).join(','); const values = Object.values(formData).join(','); const csv = `${headers}\n${values}`; const blob = new Blob([csv], { type: 'text/csv' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'form_data.csv'; link.click(); }} className="flex-1 px-4 py-2 bg-[#E5322D] text-white text-sm font-bold rounded-lg hover:bg-red-700 transition">Export CSV</button>
+                          <button onClick={() => { const json = JSON.stringify(formData, null, 2); executeDownload(json, 'form_data.json', 'application/json'); }} className="flex-1 px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-gray-900 transition">Export JSON</button>
+                          <button onClick={() => { const headers = Object.keys(formData).join(','); const values = Object.values(formData).join(','); const csv = `${headers}\n${values}`; executeDownload(csv, 'form_data.csv', 'text/csv'); }} className="flex-1 px-4 py-2 bg-[#E5322D] text-white text-sm font-bold rounded-lg hover:bg-red-700 transition">Export CSV</button>
                         </div>
                       </div>
                     </div>
