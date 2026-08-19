@@ -8,21 +8,18 @@ import {
   UploadCloud, X, CheckSquare, ArrowRight, Settings, 
   Lock, RefreshCw, Layers, FileOutput, Trash2, Upload, Sparkles, Edit3 
 } from 'lucide-react';
-import dynamic from 'next/dynamic';
 
-import { pdfjs } from 'react-pdf';
+// 🔥 100% FIXED IMPORTS: Pure Static Imports for flawless Preview 🔥
+import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-const Document = dynamic(() => import('react-pdf').then(m => m.Document), { ssr: false });
-const Page = dynamic(() => import('react-pdf').then(m => m.Page), { ssr: false });
-
-if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-}
+// Strict Worker Path
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PdfForms() {
   const [isClient, setIsClient] = useState(false);
+  
   useEffect(() => {
     setIsClient(true);
   }, []);
@@ -51,8 +48,7 @@ export default function PdfForms() {
 
   const [password, setPassword] = useState('');
   const [flattenForm, setFlattenForm] = useState(true);
-  // 🔥 FIX: Added the missing state back!
-  const [validateRequired, setValidateRequired] = useState(false); 
+  const [validateRequired, setValidateRequired] = useState(false);
   const [metadataAuthor, setMetadataAuthor] = useState('');
   const [metadataTitle, setMetadataTitle] = useState('');
 
@@ -373,8 +369,8 @@ export default function PdfForms() {
                         <button onClick={() => window.location.reload()} className="flex items-center gap-2 bg-[#E5322D] text-white py-2 px-6 rounded-lg hover:bg-red-700 transition font-bold"><RefreshCw size={18} /> Reload</button>
                       </div>
                     </div>
-                  ) : isClient ? (
-                    <Document file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
+                  ) : isClient && fileUrl ? (
+                    <Document file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={(err) => { console.error(err); setRenderError(true); }}>
                       <div className="flex flex-col gap-6 items-center pb-4">
                         {Array.from(new Array(totalPages), (el, index) => (
                           <div key={`page_${index + 1}`} className="relative border border-gray-300 shadow-md rounded bg-white overflow-hidden">
@@ -504,7 +500,6 @@ export default function PdfForms() {
                           <input type="checkbox" checked={flattenForm} onChange={(e) => setFlattenForm(e.target.checked)} className="accent-[#E5322D] w-4 h-4" />
                           Flatten Form (Make text static / non-editable)
                         </label>
-                        {/* 🔥 FIX: Added Missing Validate Checkbox Here 🔥 */}
                         <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer pt-2">
                           <input type="checkbox" checked={validateRequired} onChange={(e) => setValidateRequired(e.target.checked)} className="accent-[#E5322D] w-4 h-4" />
                           Validate Required Fields before download
@@ -512,6 +507,7 @@ export default function PdfForms() {
                         <div className="pt-2">
                           <label className="block text-xs font-bold text-gray-800 mb-1">Password Protect</label>
                           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set PDF password" className="w-full bg-white border border-gray-300 text-gray-800 rounded p-2 text-sm outline-none" />
+                          <p className="text-[10px] text-gray-500 mt-1">Note: Encryption functionality depends on Backend API setup.</p>
                         </div>
                       </div>
 
