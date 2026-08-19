@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -8,19 +8,23 @@ import {
   UploadCloud, X, CheckSquare, ArrowRight, Settings, 
   Lock, RefreshCw, Layers, FileOutput, Trash2, Upload, Sparkles, Edit3 
 } from 'lucide-react';
-import dynamic from 'next/dynamic';
 
-// 🔥 FIX: Setup PDF.js strictly for Next.js (Dynamic Import prevents SSR crashing)
-import { pdfjs } from 'react-pdf';
+import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-
-const Document = dynamic(() => import('react-pdf').then(m => m.Document), { ssr: false });
-const Page = dynamic(() => import('react-pdf').then(m => m.Page), { ssr: false });
+// 🔥 FIX 1: Worker sirf Browser mein set hoga, Server par crash nahi karega 🔥
+if (typeof window !== 'undefined') {
+  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+}
 
 export default function PdfForms() {
+  // 🔥 FIX 2: Hydration aur Server Crash rokne ka Master State 🔥
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -200,6 +204,18 @@ export default function PdfForms() {
         }
       });
 
+      if (validateRequired) {
+        let missing = [];
+        formFields.forEach(f => {
+          if (f.type !== 'checkbox' && !formData[f.name]?.trim()) missing.push(f.name);
+        });
+        if (missing.length > 0) {
+          alert(`Please fill required fields: ${missing.join(', ')}`);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
       if (activeTab === 'overlay' || overlayText || signatureDataUrl) {
         const pageIndex = Math.min(Math.max(1, overlayPage), totalPages) - 1;
         const page = baseDoc.getPage(pageIndex);
@@ -356,14 +372,14 @@ export default function PdfForms() {
                 <div className="w-full md:w-1/2 min-h-[400px] bg-gray-50 border border-gray-200 rounded-xl p-4 overflow-y-auto max-h-[600px] relative">
                   <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm z-20"><X size={20} /></button>
                   
-                  {renderError ? (
+                  {isClient && renderError ? (
                     <div className="w-full flex flex-col items-center justify-center py-12 text-center">
                       <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-sm">
                         <p className="text-sm text-gray-700 mb-4">Preview failed. Retry?</p>
                         <button onClick={() => window.location.reload()} className="flex items-center gap-2 bg-[#E5322D] text-white py-2 px-6 rounded-lg hover:bg-red-700 transition font-bold"><RefreshCw size={18} /> Reload</button>
                       </div>
                     </div>
-                  ) : (
+                  ) : isClient ? (
                     <Document file={fileUrl} loading={<div className="text-center py-10 text-gray-500">Loading preview...</div>} onLoadError={() => setRenderError(true)}>
                       <div className="flex flex-col gap-6 items-center pb-4">
                         {Array.from(new Array(totalPages), (el, index) => (
@@ -376,7 +392,7 @@ export default function PdfForms() {
                         ))}
                       </div>
                     </Document>
-                  )}
+                  ) : null}
                   <div className="mt-2 text-center text-xs font-bold text-gray-700 bg-white/80 px-3 py-1 border rounded-full w-fit mx-auto">
                     {totalPages} Page{totalPages > 1 ? 's' : ''} | {formFields.length} Fields Detected
                   </div>
