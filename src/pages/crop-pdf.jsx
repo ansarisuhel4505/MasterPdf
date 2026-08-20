@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -17,16 +17,17 @@ export default function VisualCropPdf() {
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState(null);
   const [isCropping, setIsCropping] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false);
   
   // PDF Viewer States
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   
-  // Crop state (Gallery jaisa box)
+  // Crop state
   const [crop, setCrop] = useState({ unit: '%', width: 80, height: 80, x: 10, y: 10 });
   
   // Enterprise Features: Page Range State
-  const [pageRange, setPageRange] = useState('all'); // all, odd, even, custom, current
+  const [pageRange, setPageRange] = useState('all'); 
   const [customPages, setCustomPages] = useState('');
 
   const handleFileChange = (e) => {
@@ -52,7 +53,6 @@ export default function VisualCropPdf() {
     setNumPages(numPages);
   };
 
-  // Helper to parse custom page range (e.g., "1-3, 5")
   const parseCustomPages = (input, totalPages) => {
     const pages = new Set();
     const parts = input.split(',').map(p => p.trim());
@@ -71,9 +71,73 @@ export default function VisualCropPdf() {
     return Array.from(pages).filter(p => p > 0 && p <= totalPages);
   };
 
-  // Simulated Auto-Detect (Snaps margins slightly inward)
-  const autoDetectCrop = () => {
-    setCrop({ unit: '%', x: 12, y: 12, width: 76, height: 76 });
+  // REAL Pixel-Based Auto Detect Crop
+  const performAutoCrop = async () => {
+    if (!fileUrl) return;
+    setIsDetecting(true);
+    
+    try {
+      // PDFJS ka use karke page ko scan karna
+      const loadingTask = pdfjs.getDocument(fileUrl);
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(currentPage);
+      
+      const viewport = page.getViewport({ scale: 1.5 }); // Good resolution for scanning
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+      const imgData = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+
+      // Scan all pixels to find non-white content
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const i = (y * canvas.width + x) * 4;
+          const r = imgData[i];
+          const g = imgData[i+1];
+          const b = imgData[i+2];
+          const a = imgData[i+3];
+
+          // Threshold for non-white/non-transparent pixel
+          if (a > 10 && (r < 250 || g < 250 || b < 250)) {
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+
+      // Add a small 2% padding around detected content
+      const paddingX = canvas.width * 0.02; 
+      const paddingY = canvas.height * 0.02;
+
+      minX = Math.max(0, minX - paddingX);
+      minY = Math.max(0, minY - paddingY);
+      maxX = Math.min(canvas.width, maxX + paddingX);
+      maxY = Math.min(canvas.height, maxY + paddingY);
+
+      if (maxX > minX && maxY > minY) {
+        setCrop({
+          unit: '%',
+          x: (minX / canvas.width) * 100,
+          y: (minY / canvas.height) * 100,
+          width: ((maxX - minX) / canvas.width) * 100,
+          height: ((maxY - minY) / canvas.height) * 100
+        });
+      } else {
+        alert("Could not detect content. The page might be completely blank or image-only.");
+      }
+    } catch (err) {
+      console.error("Auto detect failed", err);
+      alert("Smart scan failed. Please crop manually.");
+    }
+    
+    setIsDetecting(false);
   };
 
   const applyCropAndDownload = async (downloadMode) => {
@@ -86,7 +150,6 @@ export default function VisualCropPdf() {
       const pages = pdfDoc.getPages();
       const totalPdfPages = pages.length;
 
-      // Determine which pages to crop based on user selection
       let pagesToCrop = [];
       if (pageRange === 'all') {
         pagesToCrop = pages.map((_, i) => i + 1);
@@ -118,21 +181,24 @@ export default function VisualCropPdf() {
           const cropWidth = (crop.width / 100) * pdfWidth;
           const cropHeight = (crop.height / 100) * pdfHeight;
 
-          // pdf-lib's Y-axis starts from the bottom
           const newX = cropX;
           const newY = pdfHeight - cropY - cropHeight;
 
-          if (cropWidth > 30 && cropHeight > 30) {
+          if (cropWidth > 20 && cropHeight > 20) {
+            // FIX: Set ALL boxes so the page physically shrinks in ALL PDF Viewers
             page.setCropBox(newX, newY, cropWidth, cropHeight);
+            page.setMediaBox(newX, newY, cropWidth, cropHeight);
+            page.setTrimBox(newX, newY, cropWidth, cropHeight);
+            page.setBleedBox(newX, newY, cropWidth, cropHeight);
           }
         }
       });
 
       let finalPdfBytes;
 
-      // Handle Download Modes
+      // FIX: Download Mode Handle
       if (downloadMode === 'only_cropped') {
-        // Naya PDF create karo aur usme sirf cropped pages copy karo
+        // Naya PDF create karo aur usme sirf wahi pages dalo jo crop hue hain
         const newPdf = await PDFDocument.create();
         const zeroBasedIndices = pagesToCrop.map(p => p - 1);
         const copiedPages = await newPdf.copyPages(pdfDoc, zeroBasedIndices);
@@ -140,7 +206,7 @@ export default function VisualCropPdf() {
         copiedPages.forEach((page) => newPdf.addPage(page));
         finalPdfBytes = await newPdf.save();
       } else {
-        // Full Document (Jis page par crop laga, wo replace ho chuka hai in-place)
+        // Full Document (jis page par crop laga, wo completely replace ho jayega)
         finalPdfBytes = await pdfDoc.save();
       }
 
@@ -194,7 +260,6 @@ export default function VisualCropPdf() {
                 <p className="text-sm font-bold text-gray-500 mb-4 uppercase tracking-wide">Adjust crop box below</p>
                 
                 <div className="border-2 border-gray-300 shadow-md bg-white">
-                  {/* Crop box sirf tabhi dikhega jab page targeted ho */}
                   {(pageRange === 'all' || pageRange === 'current' || 
                    (pageRange === 'odd' && currentPage % 2 !== 0) || 
                    (pageRange === 'even' && currentPage % 2 === 0)) ? (
@@ -216,7 +281,6 @@ export default function VisualCropPdf() {
                   )}
                 </div>
 
-                {/* Pagination Controls */}
                 <div className="mt-6 flex items-center justify-between w-full max-w-[400px]">
                   <button 
                     disabled={currentPage <= 1}
@@ -241,20 +305,20 @@ export default function VisualCropPdf() {
                 <div>
                   <h3 className="text-2xl font-bold text-gray-900 mb-4 border-b pb-2">Crop Settings</h3>
                   
-                  {/* Auto Crop Feature */}
+                  {/* REAL Pixel Auto Crop Feature */}
                   <div className="bg-blue-50 border border-blue-100 p-5 rounded-xl text-center mb-6">
                     <Scan size={30} className="text-blue-500 mx-auto mb-2" />
                     <h3 className="font-bold text-gray-900 mb-1">Smart Auto-Crop</h3>
-                    <p className="text-xs text-gray-600 mb-3">Snap borders closer to content.</p>
+                    <p className="text-xs text-gray-600 mb-3">Scans page pixels to automatically remove white margins.</p>
                     <button 
-                      onClick={autoDetectCrop}
-                      className="w-full py-2 bg-white border border-blue-300 text-blue-600 font-bold rounded-lg hover:bg-blue-50 transition text-sm"
+                      onClick={performAutoCrop}
+                      disabled={isDetecting}
+                      className="w-full py-2 bg-white border border-blue-300 text-blue-600 font-bold rounded-lg hover:bg-blue-50 transition text-sm flex justify-center items-center gap-2"
                     >
-                      Auto Detect Margins
+                      {isDetecting ? <><Settings className="animate-spin" size={16} /> Scanning Pixels...</> : "Scan & Detect Margins"}
                     </button>
                   </div>
 
-                  {/* Enterprise Feature: Page Range Selector */}
                   <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl">
                     <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3 border-b pb-2">
                       <Layers size={16} className="text-[#E5322D]"/> Apply Crop To:
@@ -302,12 +366,11 @@ export default function VisualCropPdf() {
                   </div>
                 </div>
 
-                {/* Final Export / Download Options */}
+                {/* Final Export */}
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Download size={16} className="text-[#E5322D]" /> Finish & Export</h4>
                   
                   <div className="flex flex-col gap-3">
-                    {/* Option 1: Full Document */}
                     <button 
                       onClick={() => applyCropAndDownload('full_document')} 
                       disabled={isCropping} 
@@ -316,7 +379,6 @@ export default function VisualCropPdf() {
                       {isCropping ? <><Settings className="animate-spin" size={18} /> Processing...</> : "Download FULL PDF (Real)"}
                     </button>
                     
-                    {/* Option 2: Extracted Pages Only */}
                     {pageRange !== 'all' && (
                       <button 
                         onClick={() => applyCropAndDownload('only_cropped')} 
