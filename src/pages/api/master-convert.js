@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { action, fileUrl, password, boxes, mode } = req.body;
+  const { action, fileUrl, password, boxes } = req.body;
 
   if (!fileUrl) {
     return res.status(400).json({ error: 'No file URL provided' });
@@ -118,7 +118,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, downloadUrl: result.response.Files[0].Url, recoveryLevel: 'Tier 1 (Full Structural Recovery)' });
       } 
       catch (tier1Error) {
-        console.log("Tier 1 Failed. Initiating Tier 2 Force Rebuild...");
+        console.log("Tier 1 Failed:", tier1Error.message);
         
         try {
           // TIER 2: PDF-Lib Force Rebuild (Bypassing damaged headers)
@@ -131,7 +131,7 @@ export default async function handler(req, res) {
           return res.status(200).json({ success: true, downloadUrl: blob.url, recoveryLevel: 'Tier 2 (Forced Rebuild Recovery)' });
         } 
         catch (tier2Error) {
-          console.log("Tier 2 Failed. Initiating Tier 3 Data Scavenge...");
+          console.log("Tier 2 Failed:", tier2Error.message);
           
           try {
             // TIER 3: Raw Text Salvage (Extracting remaining readable strings)
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, downloadUrl: txtResult.response.Files[0].Url, recoveryLevel: 'Tier 3 (Raw Text Scavenge - Partial Data)' });
           } 
           catch (tier3Error) {
-            // Fatal Destruction: Mathmatically impossible to recover
+            console.log("Tier 3 Failed:", tier3Error.message);
             return res.status(500).json({ error: "File is mathematically destroyed beyond recovery (0% structural integrity)." });
           }
         }
