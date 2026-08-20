@@ -148,11 +148,16 @@ export default async function handler(req, res) {
 
         const callGroqAI = async (promptText) => {
           const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
+          
+          // 🔥 MAGIC TRICK: Ab yeh Vercel ke Environment Variables se model ka naam uthayega
+          // Agar aapne Vercel me koi naam nahi dala hai, to yeh default "llama3-8b-8192" use karega
+          const activeModel = process.env.CURRENT_GROQ_MODEL || "llama3-8b-8192";
+
           const aiResponse = await fetch(groqUrl, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: "llama3-8b-8192",
+              model: activeModel, // <--- AB YAHAN VARIABLE LAG GAYA HAI
               messages: [{ role: "user", content: promptText }],
               temperature: 0.5
             })
