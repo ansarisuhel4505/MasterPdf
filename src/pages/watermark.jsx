@@ -9,7 +9,6 @@ export default function AddWatermark() {
   const [file, setFile] = useState(null);
   const [isWatermarking, setIsWatermarking] = useState(false);
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
-  // Naya state color ke liye
   const [watermarkColor, setWatermarkColor] = useState('#E5322D'); 
 
   const handleFileChange = (e) => {
@@ -25,7 +24,6 @@ export default function AddWatermark() {
     setFile(null);
   };
 
-  // Hex color ko pdf-lib rgb format mein convert karne ka helper
   const hexToPdfRgb = (hex) => {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -33,7 +31,6 @@ export default function AddWatermark() {
     return rgb(r, g, b);
   };
 
-  // Client-Side Watermark Logic
   const applyWatermark = async () => {
     if (!file) return;
     if (!watermarkText.trim()) {
@@ -46,16 +43,30 @@ export default function AddWatermark() {
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       
-      // Font embed karna
       const customFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       const pages = pdfDoc.getPages();
 
-      // Har page ke center mein watermark lagana
       pages.forEach((page) => {
         const { width, height } = page.getSize();
-        const textSize = 60;
+        
+        // --- DYNAMIC TEXT SIZING LOGIC ---
+        // Page ke diagonal ki length calculate karna
+        const diagonal = Math.sqrt(width * width + height * height);
+        const maxTextWidth = diagonal * 0.75; // Diagonal ka 75% max width manenge taaki side mein thodi jagah (margin) bache
+        
+        // Base size par text ki width check karna
+        const baseSize = 100;
+        const textWidthAtBase = customFont.widthOfTextAtSize(watermarkText, baseSize);
+        
+        // Scale factor nikalna
+        const scale = maxTextWidth / textWidthAtBase;
+        
+        // Final size set karna (Max size 70 rakha hai taaki chhote words bohot zyada bade na ho jayein)
+        const textSize = Math.min(baseSize * scale, 70);
+        // ---------------------------------
+
         const textWidth = customFont.widthOfTextAtSize(watermarkText, textSize);
-        const textHeight = textSize; // Approximate text height
+        const textHeight = textSize; // Approximate height
         
         // 45 degrees in radians
         const angle = 45;
@@ -70,15 +81,14 @@ export default function AddWatermark() {
           y: y,
           size: textSize,
           font: customFont,
-          color: hexToPdfRgb(watermarkColor), // Dynamic color use ho raha hai
-          opacity: 0.3, // Transparency taaki piche ka text padha ja sake
-          rotate: degrees(angle), // Diagonal rotation
+          color: hexToPdfRgb(watermarkColor), 
+          opacity: 0.3, 
+          rotate: degrees(angle), 
         });
       });
 
       const pdfBytes = await pdfDoc.save();
 
-      // Download trigger karna
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -100,8 +110,6 @@ export default function AddWatermark() {
       <Navbar />
 
       <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
-        
-        {/* Tool Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Add Watermark to PDF</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -109,11 +117,9 @@ export default function AddWatermark() {
           </p>
         </div>
 
-        {/* Workspace Area */}
         <div className="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[450px] flex flex-col items-center justify-center relative">
           
           {!file ? (
-            // Upload State
             <div className="text-center w-full">
               <input 
                 type="file" 
@@ -132,10 +138,8 @@ export default function AddWatermark() {
               <p className="mt-4 text-gray-400 text-sm">or drop PDF here</p>
             </div>
           ) : (
-            // File Selected State
             <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start pt-4">
               
-              {/* Left Side: File Preview */}
               <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-8 relative h-[350px]">
                 <button 
                   onClick={removeFile}
@@ -145,7 +149,6 @@ export default function AddWatermark() {
                 </button>
                 <div className="relative">
                   <FileText size={80} className="text-gray-300 mb-4" />
-                  {/* Visual indication of watermark matching selected color */}
                   <span 
                     className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -rotate-45 font-bold opacity-30 text-xl tracking-widest pointer-events-none"
                     style={{ color: watermarkColor }}
@@ -158,13 +161,11 @@ export default function AddWatermark() {
                 </p>
               </div>
 
-              {/* Right Side: Watermark Settings */}
               <div className="w-full md:w-1/2 flex flex-col h-full justify-between min-h-[350px]">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Watermark Settings</h3>
                   
                   <div className="flex flex-col gap-5">
-                    {/* Text Input */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Type your text</label>
                       <div className="relative">
@@ -179,11 +180,9 @@ export default function AddWatermark() {
                       </div>
                     </div>
 
-                    {/* Color Selection UI */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Choose Color</label>
                       <div className="flex items-center gap-3">
-                        {/* Quick Color Presets */}
                         {['#E5322D', '#000000', '#2563EB', '#16A34A', '#9333EA'].map((color) => (
                           <button
                             key={color}
@@ -195,7 +194,6 @@ export default function AddWatermark() {
                             aria-label={`Select color ${color}`}
                           />
                         ))}
-                        {/* Custom Color Picker */}
                         <div className="ml-2 pl-3 border-l border-gray-300 relative flex items-center">
                           <input 
                             type="color" 
@@ -209,7 +207,7 @@ export default function AddWatermark() {
                     </div>
 
                     <p className="text-sm text-gray-500 bg-gray-50 p-4 rounded-lg mt-2">
-                      The text will be stamped diagonally across the center of all pages with 30% transparency.
+                      The text size will adjust automatically to fit your document perfectly.
                     </p>
                   </div>
                 </div>
