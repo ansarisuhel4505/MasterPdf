@@ -2,7 +2,6 @@ import { PDFDocument, rgb } from 'pdf-lib';
 import { put } from '@vercel/blob';
 const convertapi = require('convertapi')(process.env.CONVERT_API_SECRET);
 
-// Vercel Timeout Fix
 export const maxDuration = 60;
 
 export default async function handler(req, res) {
@@ -19,9 +18,6 @@ export default async function handler(req, res) {
   try {
     let result;
 
-    // ==========================================
-    // 🛡️ CATEGORY 0: ENTERPRISE REDACT PDF
-    // ==========================================
     if (action === 'redact-pdf') {
       try {
         const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
@@ -31,12 +27,9 @@ export default async function handler(req, res) {
         if (boxes && boxes.length > 0) {
           boxes.forEach((box) => {
             const page = pages[box.pageIndex || 0]; 
-            
-            // 🚀 SMART SCALING LOGIC
             const { width: actualWidth, height: actualHeight } = page.getSize();
-            const scale = actualWidth / 700; // 700px is the frontend render width
+            const scale = actualWidth / 700; 
 
-            // Calculate exact position based on real PDF size
             const scaledX = box.x * scale;
             const scaledY = box.y * scale;
             const scaledWidth = box.width * scale;
@@ -47,7 +40,7 @@ export default async function handler(req, res) {
               y: actualHeight - scaledY - scaledHeight, 
               width: scaledWidth,
               height: scaledHeight,
-              color: rgb(0, 0, 0), // Solid Black Box
+              color: rgb(0, 0, 0),
             });
           });
         } 
@@ -66,21 +59,17 @@ export default async function handler(req, res) {
       }
     }
 
-    // ==========================================
-    // 🟢 CATEGORY 1: NORMAL CONVERSIONS
-    // ==========================================
     else if (action === 'pdf-to-word') result = await convertapi.convert('docx', { File: fileUrl }, 'pdf');
     else if (action === 'pdf-to-excel') {
       try {
         result = await convertapi.convert('xlsx', { File: fileUrl }, 'pdf');
       } catch (excelError) {
-        // Agar PDF mein table nahi mili toh server crash hone se roko aur message bhejo
         if (excelError.message && excelError.message.includes('tables')) {
           return res.status(400).json({ 
-            error: "No Tables Found! Excel conversion ke liye PDF mein Data Tables (Rows/Columns) hona zaroori hai." 
+            error: "No Tables Found! Excel conversion ke liye PDF mein Data Tables hona zaroori hai." 
           });
         }
-        throw excelError; // Koi aur error ho toh usko aage bhej do
+        throw excelError;
       }
     }
     else if (action === 'pdf-to-powerpoint') result = await convertapi.convert('pptx', { File: fileUrl }, 'pdf');
@@ -89,41 +78,29 @@ export default async function handler(req, res) {
     else if (action === 'powerpoint-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'pptx');
     else if (action === 'pdf-to-jpg') result = await convertapi.convert('jpg', { File: fileUrl }, 'pdf');
     
-    // 🔥 100% FIXED IMAGE TO PDF CONVERTER (Dynamic Extension Detector) 🔥
     else if (action === 'jpg-to-pdf') {
-      // 1. URL se extension nikalo (jaise 'png', 'jpg')
       const ext = fileUrl.split('.').pop().split('?')[0].toLowerCase();
-      
-      // 2. Extension match karo
-      let fromFormat = 'jpg'; // Default
+      let fromFormat = 'jpg'; 
       if (['png', 'webp', 'gif', 'bmp', 'tiff', 'tif'].includes(ext)) {
         fromFormat = ext;
       } else if (ext === 'jpeg') {
         fromFormat = 'jpg';
       }
-
-      // 3. Sahi format ke sath ConvertAPI call karo
       result = await convertapi.convert('pdf', { File: fileUrl }, fromFormat);
     }
     
     else if (action === 'pdf-to-pdfa') result = await convertapi.convert('pdfa', { File: fileUrl }, 'pdf');
     else if (action === 'compress-pdf') result = await convertapi.convert('compress', { File: fileUrl }, 'pdf');
-   // ==========================================
-    // 🛡️ MULTI-LAYER ENTERPRISE REPAIR ENGINE
-    // ==========================================
+    
     else if (action === 'repair-pdf') {
       try {
-        // TIER 1: Standard AI / ConvertAPI Repair
         result = await convertapi.convert('repair', { File: fileUrl }, 'pdf');
         return res.status(200).json({ success: true, downloadUrl: result.response.Files[0].Url, recoveryLevel: 'Tier 1 (Full Structural Recovery)' });
       } 
       catch (tier1Error) {
         console.log("Tier 1 Failed:", tier1Error.message);
-        
         try {
-          // TIER 2: PDF-Lib Force Rebuild (Bypassing damaged headers)
           const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
-          // ignoreEncryption parameter forces pdf-lib to read broken streams
           const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true, updateMetadata: false });
           const rescuedBytes = await pdfDoc.save();
           
@@ -132,34 +109,28 @@ export default async function handler(req, res) {
         } 
         catch (tier2Error) {
           console.log("Tier 2 Failed:", tier2Error.message);
-          
           try {
-            // TIER 3: Raw Text Salvage (Extracting remaining readable strings)
             const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
             return res.status(200).json({ success: true, downloadUrl: txtResult.response.Files[0].Url, recoveryLevel: 'Tier 3 (Raw Text Scavenge - Partial Data)' });
           } 
           catch (tier3Error) {
             console.log("Tier 3 Failed:", tier3Error.message);
-            return res.status(500).json({ error: "File is mathematically destroyed beyond recovery (0% structural integrity)." });
+            return res.status(500).json({ error: "File is mathematically destroyed beyond recovery." });
           }
         }
       }
     }
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-    // 🔍 ENTERPRISE OCR ENGINE (Dynamic Format)
+    
     else if (action === 'ocr-pdf') {
-      // Frontend se aane wala format read karega (txt, pdfa, docx, xlsx). Default 'txt' rakhega.
       const format = req.body.format || 'txt'; 
       result = await convertapi.convert(format, { File: fileUrl }, 'pdf');
     }
     
-    // 🔥 HTML TO PDF CONVERTER 🔥
     else if (action === 'html-to-pdf') {
       if (fileUrl.startsWith('http')) {
-        // Live website link
         result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
       } else {
-        // Raw code
         const tempBlob = await put(`source-code-${Date.now()}.txt`, fileUrl, {
           access: 'public',
           contentType: 'text/plain'
@@ -168,24 +139,16 @@ export default async function handler(req, res) {
       }
     }
 
-    // ==========================================
-    // 🟡 CATEGORY 2: SECURITY TOOLS
-    // ==========================================
     else if (action === 'protect-pdf') {
       result = await convertapi.convert('encrypt', { File: fileUrl, UserPassword: password, OwnerPassword: password }, 'pdf');
     }
-   else if (action === 'unlock-pdf') {
+    else if (action === 'unlock-pdf') {
       result = await convertapi.convert('decrypt', { File: fileUrl, Password: password }, 'pdf');
     }
 
-    // ==========================================
-    // 🖋️ ENTERPRISE E-SIGNATURE & TAMPER SEAL
-    // ==========================================
     else if (action === 'sign-pdf') {
       const { signerName, signerEmail, lockDocument } = req.body;
-      
       try {
-        // STEP 1: Apply Visual Digital Stamp (Audit Info embedded in PDF)
         let stampResult = await convertapi.convert('watermark', {
           File: fileUrl,
           Text: `SECURELY SIGNED BY: ${signerName.toUpperCase()} | EMAIL: ${signerEmail}\nTIMESTAMP: ${new Date().toISOString()} | MASTERPDF ENTERPRISE SEAL`,
@@ -198,14 +161,12 @@ export default async function handler(req, res) {
 
         let finalUrl = stampResult.response.Files[0].Url;
 
-        // STEP 2: Apply Tamper-Evident Lock (Block Editing)
         if (lockDocument) {
           const lockResult = await convertapi.convert('encrypt', {
             File: finalUrl,
             OwnerPassword: 'MasterPdfSecureLock2026', 
             Permissions: 'Print' 
           }, 'pdf');
-          
           finalUrl = lockResult.response.Files[0].Url;
         }
 
@@ -216,13 +177,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // ==========================================
-    // 🧠 CATEGORY 3: AI TOOLS (GROQ / LLAMA 3)
-    // ==========================================
-
-    // ==========================================
-    // 🧠 CATEGORY 3: AI TOOLS (GROQ / LLAMA 3)
-    // ==========================================
     else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare') {
       if (!process.env.GROQ_API_KEY) return res.status(200).json({ success: false, textResult: "⚠️ Groq API Key is missing." });
 
@@ -231,16 +185,13 @@ export default async function handler(req, res) {
 
         const callGroqAI = async (promptText) => {
           const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
-          
-          // 🔥 MAGIC TRICK: Ab yeh Vercel ke Environment Variables se model ka naam uthayega
-          // Agar aapne Vercel me koi naam nahi dala hai, to yeh default "llama3-8b-8192" use karega
-         const activeModel = process.env.CURRENT_GROQ_MODEL || "openai/gpt-oss-20b";
+          const activeModel = process.env.CURRENT_GROQ_MODEL || "openai/gpt-oss-20b";
 
           const aiResponse = await fetch(groqUrl, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: activeModel, // <--- AB YAHAN VARIABLE LAG GAYA HAI
+              model: activeModel,
               messages: [{ role: "user", content: promptText }],
               temperature: 0.5
             })
