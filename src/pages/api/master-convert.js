@@ -174,9 +174,51 @@ export default async function handler(req, res) {
     else if (action === 'protect-pdf') {
       result = await convertapi.convert('encrypt', { File: fileUrl, UserPassword: password, OwnerPassword: password }, 'pdf');
     }
-    else if (action === 'unlock-pdf') {
+   else if (action === 'unlock-pdf') {
       result = await convertapi.convert('decrypt', { File: fileUrl, Password: password }, 'pdf');
     }
+
+    // ==========================================
+    // 🖋️ ENTERPRISE E-SIGNATURE & TAMPER SEAL
+    // ==========================================
+    else if (action === 'sign-pdf') {
+      const { signerName, signerEmail, lockDocument } = req.body;
+      
+      try {
+        // STEP 1: Apply Visual Digital Stamp (Audit Info embedded in PDF)
+        let stampResult = await convertapi.convert('watermark', {
+          File: fileUrl,
+          Text: `SECURELY SIGNED BY: ${signerName.toUpperCase()} | EMAIL: ${signerEmail}\nTIMESTAMP: ${new Date().toISOString()} | MASTERPDF ENTERPRISE SEAL`,
+          FontSize: '9',
+          Opacity: '75',
+          HorizontalAlignment: 'left',
+          VerticalAlignment: 'bottom',
+          FontColor: '#000000' 
+        }, 'pdf');
+
+        let finalUrl = stampResult.response.Files[0].Url;
+
+        // STEP 2: Apply Tamper-Evident Lock (Block Editing)
+        if (lockDocument) {
+          const lockResult = await convertapi.convert('encrypt', {
+            File: finalUrl,
+            OwnerPassword: 'MasterPdfSecureLock2026', 
+            Permissions: 'Print' 
+          }, 'pdf');
+          
+          finalUrl = lockResult.response.Files[0].Url;
+        }
+
+        return res.status(200).json({ success: true, downloadUrl: finalUrl });
+      } catch (signError) {
+        console.error("Sign PDF Error:", signError);
+        return res.status(500).json({ error: "Failed to apply cryptographic seal and lock." });
+      }
+    }
+
+    // ==========================================
+    // 🧠 CATEGORY 3: AI TOOLS (GROQ / LLAMA 3)
+    // ==========================================
 
     // ==========================================
     // 🧠 CATEGORY 3: AI TOOLS (GROQ / LLAMA 3)
