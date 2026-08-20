@@ -110,7 +110,12 @@ export default async function handler(req, res) {
     else if (action === 'compress-pdf') result = await convertapi.convert('compress', { File: fileUrl }, 'pdf');
     else if (action === 'repair-pdf') result = await convertapi.convert('repair', { File: fileUrl }, 'pdf');
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-    else if (action === 'ocr-pdf') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+    // 🔍 ENTERPRISE OCR ENGINE (Dynamic Format)
+    else if (action === 'ocr-pdf') {
+      // Frontend se aane wala format read karega (txt, pdfa, docx, xlsx). Default 'txt' rakhega.
+      const format = req.body.format || 'txt'; 
+      result = await convertapi.convert(format, { File: fileUrl }, 'pdf');
+    }
     
     // 🔥 HTML TO PDF CONVERTER 🔥
     else if (action === 'html-to-pdf') {
