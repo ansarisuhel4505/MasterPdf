@@ -151,7 +151,7 @@ export default async function handler(req, res) {
           
           // 🔥 MAGIC TRICK: Ab yeh Vercel ke Environment Variables se model ka naam uthayega
           // Agar aapne Vercel me koi naam nahi dala hai, to yeh default "llama3-8b-8192" use karega
-          const activeModel = process.env.CURRENT_GROQ_MODEL || "llama3-8b-8192";
+         const activeModel = process.env.CURRENT_GROQ_MODEL || "openai/gpt-oss-20b";
 
           const aiResponse = await fetch(groqUrl, {
             method: 'POST',
