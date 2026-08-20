@@ -88,20 +88,37 @@ export default async function handler(req, res) {
     else if (action === 'excel-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'xlsx');
     else if (action === 'powerpoint-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'pptx');
     else if (action === 'pdf-to-jpg') result = await convertapi.convert('jpg', { File: fileUrl }, 'pdf');
-    else if (action === 'jpg-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'jpg');
+    
+    // 🔥 100% FIXED IMAGE TO PDF CONVERTER (Dynamic Extension Detector) 🔥
+    else if (action === 'jpg-to-pdf') {
+      // 1. URL se extension nikalo (jaise 'png', 'jpg')
+      const ext = fileUrl.split('.').pop().split('?')[0].toLowerCase();
+      
+      // 2. Extension match karo
+      let fromFormat = 'jpg'; // Default
+      if (['png', 'webp', 'gif', 'bmp', 'tiff', 'tif'].includes(ext)) {
+        fromFormat = ext;
+      } else if (ext === 'jpeg') {
+        fromFormat = 'jpg';
+      }
+
+      // 3. Sahi format ke sath ConvertAPI call karo
+      result = await convertapi.convert('pdf', { File: fileUrl }, fromFormat);
+    }
+    
     else if (action === 'pdf-to-pdfa') result = await convertapi.convert('pdfa', { File: fileUrl }, 'pdf');
     else if (action === 'compress-pdf') result = await convertapi.convert('compress', { File: fileUrl }, 'pdf');
     else if (action === 'repair-pdf') result = await convertapi.convert('repair', { File: fileUrl }, 'pdf');
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     else if (action === 'ocr-pdf') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     
-    // 🔥 100% FIXED CODE-TO-PDF CONVERTER 🔥
+    // 🔥 HTML TO PDF CONVERTER 🔥
     else if (action === 'html-to-pdf') {
       if (fileUrl.startsWith('http')) {
-        // Agar koi live website ka link hai toh web-to-pdf chalega
+        // Live website link
         result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
       } else {
-        // Agar raw code hai, toh usko .txt file banakar bhejo taaki code jaisa hai waisa hi dikhe!
+        // Raw code
         const tempBlob = await put(`source-code-${Date.now()}.txt`, fileUrl, {
           access: 'public',
           contentType: 'text/plain'
