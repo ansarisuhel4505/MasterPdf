@@ -19,14 +19,12 @@ export default function VisualCropPdf() {
   const [isCropping, setIsCropping] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
   
-  // PDF Viewer States
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   
-  // Crop state
+  // Default crop size 80% with 10% margins
   const [crop, setCrop] = useState({ unit: '%', width: 80, height: 80, x: 10, y: 10 });
   
-  // Enterprise Features: Page Range State
   const [pageRange, setPageRange] = useState('all'); 
   const [customPages, setCustomPages] = useState('');
 
@@ -49,9 +47,7 @@ export default function VisualCropPdf() {
     setCurrentPage(1);
   };
 
-  const onDocumentLoadSuccess = ({ numPages }) => {
-    setNumPages(numPages);
-  };
+  const onDocumentLoadSuccess = ({ numPages }) => setNumPages(numPages);
 
   const parseCustomPages = (input, totalPages) => {
     const pages = new Set();
@@ -71,18 +67,17 @@ export default function VisualCropPdf() {
     return Array.from(pages).filter(p => p > 0 && p <= totalPages);
   };
 
-  // REAL Pixel-Based Auto Detect Crop
+  // Improved Smart Scan
   const performAutoCrop = async () => {
     if (!fileUrl) return;
     setIsDetecting(true);
     
     try {
-      // PDFJS ka use karke page ko scan karna
       const loadingTask = pdfjs.getDocument(fileUrl);
       const pdf = await loadingTask.promise;
       const page = await pdf.getPage(currentPage);
       
-      const viewport = page.getViewport({ scale: 1.5 }); // Good resolution for scanning
+      const viewport = page.getViewport({ scale: 1.0 });
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d', { willReadFrequently: true });
       canvas.height = viewport.height;
@@ -93,17 +88,13 @@ export default function VisualCropPdf() {
       const imgData = context.getImageData(0, 0, canvas.width, canvas.height).data;
       let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
 
-      // Scan all pixels to find non-white content
       for (let y = 0; y < canvas.height; y++) {
         for (let x = 0; x < canvas.width; x++) {
           const i = (y * canvas.width + x) * 4;
-          const r = imgData[i];
-          const g = imgData[i+1];
-          const b = imgData[i+2];
-          const a = imgData[i+3];
-
-          // Threshold for non-white/non-transparent pixel
-          if (a > 10 && (r < 250 || g < 250 || b < 250)) {
+          const r = imgData[i], g = imgData[i+1], b = imgData[i+2], a = imgData[i+3];
+          
+          // Better threshold for scanned and gray-ish backgrounds
+          if (a > 30 && (r < 245 || g < 245 || b < 245)) {
             if (x < minX) minX = x;
             if (y < minY) minY = y;
             if (x > maxX) maxX = x;
@@ -112,14 +103,11 @@ export default function VisualCropPdf() {
         }
       }
 
-      // Add a small 2% padding around detected content
-      const paddingX = canvas.width * 0.02; 
-      const paddingY = canvas.height * 0.02;
-
-      minX = Math.max(0, minX - paddingX);
-      minY = Math.max(0, minY - paddingY);
-      maxX = Math.min(canvas.width, maxX + paddingX);
-      maxY = Math.min(canvas.height, maxY + paddingY);
+      const padX = canvas.width * 0.02, padY = canvas.height * 0.02;
+      minX = Math.max(0, minX - padX);
+      minY = Math.max(0, minY - padY);
+      maxX = Math.min(canvas.width, maxX + padX);
+      maxY = Math.min(canvas.height, maxY + padY);
 
       if (maxX > minX && maxY > minY) {
         setCrop({
@@ -130,16 +118,17 @@ export default function VisualCropPdf() {
           height: ((maxY - minY) / canvas.height) * 100
         });
       } else {
-        alert("Could not detect content. The page might be completely blank or image-only.");
+        alert("Couldn't detect clear margins. Please crop manually.");
       }
     } catch (err) {
-      console.error("Auto detect failed", err);
-      alert("Smart scan failed. Please crop manually.");
+      console.error(err);
+      alert("Scan failed.");
     }
     
     setIsDetecting(false);
   };
 
+  // CORE LOGIC FIX: Download & Coordinate Mapping
   const applyCropAndDownload = async (downloadMode) => {
     if (!file) return;
     setIsCropping(true);
@@ -147,16 +136,16 @@ export default function VisualCropPdf() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const pages = pdfDoc.getPages();
-      const totalPdfPages = pages.length;
+      const totalPdfPages = pdfDoc.getPageCount();
 
+      // Step 1: Filter Pages
       let pagesToCrop = [];
       if (pageRange === 'all') {
-        pagesToCrop = pages.map((_, i) => i + 1);
+        pagesToCrop = Array.from({length: totalPdfPages}, (_, i) => i + 1);
       } else if (pageRange === 'odd') {
-        pagesToCrop = pages.map((_, i) => i + 1).filter(p => p % 2 !== 0);
+        pagesToCrop = Array.from({length: totalPdfPages}, (_, i) => i + 1).filter(p => p % 2 !== 0);
       } else if (pageRange === 'even') {
-        pagesToCrop = pages.map((_, i) => i + 1).filter(p => p % 2 === 0);
+        pagesToCrop = Array.from({length: totalPdfPages}, (_, i) => i + 1).filter(p => p % 2 === 0);
       } else if (pageRange === 'custom') {
         pagesToCrop = parseCustomPages(customPages, totalPdfPages);
       } else if (pageRange === 'current') {
@@ -164,52 +153,58 @@ export default function VisualCropPdf() {
       }
 
       if (pagesToCrop.length === 0) {
-        alert("No valid pages selected for cropping.");
+        alert("No valid pages selected.");
         setIsCropping(false);
         return;
       }
 
-      // Apply crop Box to targeted pages
-      pages.forEach((page, index) => {
-        const pageNum = index + 1;
+      // Step 2: Extract or Keep Full PDF
+      let outPdf;
+      let targetIndices = []; 
+
+      if (downloadMode === 'only_cropped') {
+        // Sirf cropped pages ka naya PDF banega (Issue 1 & 2 fix)
+        outPdf = await PDFDocument.create();
+        const zeroBasedIndices = pagesToCrop.map(p => p - 1);
+        const copiedPages = await outPdf.copyPages(pdfDoc, zeroBasedIndices);
+        copiedPages.forEach((p) => outPdf.addPage(p));
+        // Naye pdf mein ab wahi pages hain jo crop hone the
+        targetIndices = Array.from({length: copiedPages.length}, (_, i) => i);
+      } else {
+        // Full PDF mein sirf un pages ko replace karega jo select hue the (Issue 3 fix)
+        outPdf = pdfDoc;
+        targetIndices = pagesToCrop.map(p => p - 1);
+      }
+
+      // Step 3: Apply the strict Crop dimensions
+      const pages = outPdf.getPages();
+
+      targetIndices.forEach((pageIndex) => {
+        const page = pages[pageIndex];
         
-        if (pagesToCrop.includes(pageNum)) {
-          const { width: pdfWidth, height: pdfHeight } = page.getSize();
-          
-          const cropX = (crop.x / 100) * pdfWidth;
-          const cropY = (crop.y / 100) * pdfHeight;
-          const cropWidth = (crop.width / 100) * pdfWidth;
-          const cropHeight = (crop.height / 100) * pdfHeight;
+        // Exact Box Matching (solves replacement issue)
+        const currentBox = page.getCropBox() || page.getMediaBox();
+        const pWidth = currentBox.width;
+        const pHeight = currentBox.height;
 
-          const newX = cropX;
-          const newY = pdfHeight - cropY - cropHeight;
+        const cWidth = (crop.width / 100) * pWidth;
+        const cHeight = (crop.height / 100) * pHeight;
+        const cX = (crop.x / 100) * pWidth;
+        const cY = (crop.y / 100) * pHeight;
 
-          if (cropWidth > 20 && cropHeight > 20) {
-            // FIX: Set ALL boxes so the page physically shrinks in ALL PDF Viewers
-            page.setCropBox(newX, newY, cropWidth, cropHeight);
-            page.setMediaBox(newX, newY, cropWidth, cropHeight);
-            page.setTrimBox(newX, newY, cropWidth, cropHeight);
-            page.setBleedBox(newX, newY, cropWidth, cropHeight);
-          }
+        const newX = currentBox.x + cX;
+        const newY = currentBox.y + (pHeight - cY - cHeight); // Invert Y for PDF
+
+        if (cWidth > 10 && cHeight > 10) {
+          page.setCropBox(newX, newY, cWidth, cHeight);
+          page.setMediaBox(newX, newY, cWidth, cHeight);
+          page.setTrimBox(newX, newY, cWidth, cHeight);
+          page.setBleedBox(newX, newY, cWidth, cHeight);
         }
       });
 
-      let finalPdfBytes;
-
-      // FIX: Download Mode Handle
-      if (downloadMode === 'only_cropped') {
-        // Naya PDF create karo aur usme sirf wahi pages dalo jo crop hue hain
-        const newPdf = await PDFDocument.create();
-        const zeroBasedIndices = pagesToCrop.map(p => p - 1);
-        const copiedPages = await newPdf.copyPages(pdfDoc, zeroBasedIndices);
-        
-        copiedPages.forEach((page) => newPdf.addPage(page));
-        finalPdfBytes = await newPdf.save();
-      } else {
-        // Full Document (jis page par crop laga, wo completely replace ho jayega)
-        finalPdfBytes = await pdfDoc.save();
-      }
-
+      // Step 4: Download
+      const finalPdfBytes = await outPdf.save();
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -218,8 +213,8 @@ export default function VisualCropPdf() {
       link.click();
 
     } catch (error) {
-      console.error("Error cropping PDF:", error);
-      alert("Failed to crop. Ensure the file is not protected.");
+      console.error("Error processing PDF:", error);
+      alert("Failed to process PDF.");
     }
     
     setIsCropping(false);
@@ -251,7 +246,7 @@ export default function VisualCropPdf() {
           ) : (
             <div className="flex flex-col lg:flex-row gap-8">
               
-              {/* Left: Drag & Drop Visual Preview Panel */}
+              {/* Left: Preview Panel */}
               <div className="w-full lg:w-7/12 flex flex-col items-center justify-start bg-gray-100 border border-gray-300 rounded-xl p-6 relative">
                 <button onClick={removeFile} className="absolute top-4 right-4 z-10 bg-white shadow rounded-full p-2 text-gray-500 hover:text-red-500">
                   <X size={20} />
@@ -267,7 +262,7 @@ export default function VisualCropPdf() {
                       <Document 
                         file={fileUrl} 
                         onLoadSuccess={onDocumentLoadSuccess}
-                        loading={<div className="p-10 flex flex-col items-center justify-center text-gray-500"><Settings className="animate-spin mb-2" size={30} /> Loading PDF...</div>}
+                        loading={<div className="p-10 text-gray-500"><Settings className="animate-spin mb-2" size={30} /></div>}
                       >
                         <Page pageNumber={currentPage} renderTextLayer={false} renderAnnotationLayer={false} width={450} />
                       </Document>
@@ -282,34 +277,25 @@ export default function VisualCropPdf() {
                 </div>
 
                 <div className="mt-6 flex items-center justify-between w-full max-w-[400px]">
-                  <button 
-                    disabled={currentPage <= 1}
-                    onClick={() => setCurrentPage(prev => prev - 1)}
-                    className="flex items-center gap-1 px-4 py-2 bg-white border rounded-lg shadow-sm disabled:opacity-50 hover:bg-gray-50"
-                  >
+                  <button disabled={currentPage <= 1} onClick={() => setCurrentPage(prev => prev - 1)} className="flex items-center gap-1 px-4 py-2 bg-white border rounded-lg shadow-sm disabled:opacity-50 hover:bg-gray-50">
                     <ChevronLeft size={16}/> Prev Page
                   </button>
                   <span className="text-sm font-bold text-gray-700">Page {currentPage} of {numPages}</span>
-                  <button 
-                    disabled={currentPage >= numPages}
-                    onClick={() => setCurrentPage(prev => prev + 1)}
-                    className="flex items-center gap-1 px-4 py-2 bg-white border rounded-lg shadow-sm disabled:opacity-50 hover:bg-gray-50"
-                  >
+                  <button disabled={currentPage >= numPages} onClick={() => setCurrentPage(prev => prev + 1)} className="flex items-center gap-1 px-4 py-2 bg-white border rounded-lg shadow-sm disabled:opacity-50 hover:bg-gray-50">
                     Next Page <ChevronRight size={16}/>
                   </button>
                 </div>
               </div>
 
-              {/* Right: Settings & Download Controls */}
+              {/* Right: Controls */}
               <div className="w-full lg:w-5/12 flex flex-col justify-between overflow-y-auto">
                 <div>
                   <h3 className="text-2xl font-bold text-gray-900 mb-4 border-b pb-2">Crop Settings</h3>
                   
-                  {/* REAL Pixel Auto Crop Feature */}
+                  {/* Smart Scan */}
                   <div className="bg-blue-50 border border-blue-100 p-5 rounded-xl text-center mb-6">
                     <Scan size={30} className="text-blue-500 mx-auto mb-2" />
                     <h3 className="font-bold text-gray-900 mb-1">Smart Auto-Crop</h3>
-                    <p className="text-xs text-gray-600 mb-3">Scans page pixels to automatically remove white margins.</p>
                     <button 
                       onClick={performAutoCrop}
                       disabled={isDetecting}
@@ -319,25 +305,17 @@ export default function VisualCropPdf() {
                     </button>
                   </div>
 
+                  {/* Range Settings */}
                   <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl">
                     <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3 border-b pb-2">
                       <Layers size={16} className="text-[#E5322D]"/> Apply Crop To:
                     </label>
                     <div className="grid grid-cols-2 gap-2 mb-3">
-                      {[
-                        { id: 'all', label: 'All Pages' },
-                        { id: 'odd', label: 'Odd Pages Only' },
-                        { id: 'even', label: 'Even Pages Only' },
-                        { id: 'custom', label: 'Custom Range' },
-                      ].map((range) => (
+                      {[{ id: 'all', label: 'All Pages' }, { id: 'odd', label: 'Odd Only' }, { id: 'even', label: 'Even Only' }, { id: 'custom', label: 'Custom Range' }].map((range) => (
                         <button
                           key={range.id}
                           onClick={() => setPageRange(range.id)}
-                          className={`py-2 px-2 text-xs font-bold border rounded-md transition-all ${
-                            pageRange === range.id 
-                              ? 'border-[#E5322D] bg-red-50 text-[#E5322D]' 
-                              : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'
-                          }`}
+                          className={`py-2 px-2 text-xs font-bold border rounded-md transition-all ${pageRange === range.id ? 'border-[#E5322D] bg-red-50 text-[#E5322D]' : 'border-gray-200 text-gray-600 bg-white hover:border-gray-300'}`}
                         >
                           {range.label}
                         </button>
@@ -352,21 +330,14 @@ export default function VisualCropPdf() {
                     </button>
                     
                     {pageRange === 'custom' && (
-                      <div className="mt-3 animate-fade-in">
-                        <input
-                          type="text"
-                          value={customPages}
-                          onChange={(e) => setCustomPages(e.target.value)}
-                          placeholder="e.g. 1-5, 8, 11-13"
-                          className="w-full border border-gray-300 rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#E5322D]"
-                        />
-                        <p className="text-[10px] text-gray-500 mt-1">Enter page numbers separated by commas.</p>
+                      <div className="mt-3">
+                        <input type="text" value={customPages} onChange={(e) => setCustomPages(e.target.value)} placeholder="e.g. 1-5, 8, 11-13" className="w-full border border-gray-300 rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#E5322D]" />
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Final Export */}
+                {/* Final Exports */}
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Download size={16} className="text-[#E5322D]" /> Finish & Export</h4>
                   
@@ -376,7 +347,7 @@ export default function VisualCropPdf() {
                       disabled={isCropping} 
                       className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white font-bold text-sm bg-[#E5322D] hover:bg-red-700 transition shadow-md disabled:bg-gray-400"
                     >
-                      {isCropping ? <><Settings className="animate-spin" size={18} /> Processing...</> : "Download FULL PDF (Real)"}
+                      {isCropping ? <><Settings className="animate-spin" size={18} /> Processing...</> : "Download FULL PDF (Real Replacement)"}
                     </button>
                     
                     {pageRange !== 'all' && (
