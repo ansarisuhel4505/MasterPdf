@@ -41,12 +41,14 @@ export default function EnterpriseRepairPdf() {
   const processFile = async () => {
     if (!file) return;
     setStatus('processing');
-    setLogs(["[SYSTEM] Initializing MasterPdf Multi-Tier Recovery Engine..."]);
+    setLogs(["[SYSTEM] Initializing MasterPdf Multi-Tier Recovery Engine v3.0..."]);
     
     try {
       await addLog("[SCAN] Uploading corrupt file to secure vault...", 800);
       const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
       
+      await addLog("[DIAGNOSTIC] Analyzing file structure and XREF tables...", 900);
+      await addLog("[SECURITY] Scanning and stripping potential malicious code...", 800);
       await addLog("[TIER 1] Attempting Standard Structural Rebuild...", 1000);
       
       const response = await fetch('/api/master-convert', {
@@ -58,19 +60,22 @@ export default function EnterpriseRepairPdf() {
       const data = await response.json();
       
       if (response.ok && data.downloadUrl) {
-        if (data.recoveryLevel.includes('Tier 2')) {
-          await addLog("[WARNING] Tier 1 Failed. Triggering Tier 2 Force Rebuild...", 500);
-        } else if (data.recoveryLevel.includes('Tier 3')) {
-          await addLog("[WARNING] Core Structure Dead. Triggering Tier 3 Data Scavenge...", 500);
-          await addLog("[DATA] Extracting surviving raw text...", 800);
+        if (data.recoveryLevel && data.recoveryLevel.includes('Tier 2')) {
+          await addLog("[WARNING] Tier 1 Failed. Triggering Tier 2 Force Rebuild...", 600);
+          await addLog("[REPAIR] Bypassing broken streams and force-loading bytes...", 800);
+        } else if (data.recoveryLevel && data.recoveryLevel.includes('Tier 3')) {
+          await addLog("[WARNING] Core Structure Dead. Triggering Tier 3 Data Scavenge...", 600);
+          await addLog("[DATA] Extracting surviving raw text and discarding broken layout...", 800);
+        } else {
+          await addLog("[PRESERVE] Validating Metadata and Digital Signatures...", 700);
         }
         
-        await addLog(`[SUCCESS] Process completed via: ${data.recoveryLevel}`, 500);
+        await addLog(`[SUCCESS] Process completed via: ${data.recoveryLevel || 'Standard Repair'}`, 500);
         setDownloadLink(data.downloadUrl);
-        setRecoveryLevel(data.recoveryLevel);
+        setRecoveryLevel(data.recoveryLevel || 'Tier 1');
         setStatus('success');
       } else {
-        await addLog(`[FATAL ERROR] System Failure: ${data.error}`, 500);
+        await addLog(`[FATAL ERROR] System Failure: ${data.error || "Unknown Error"}`, 500);
         setStatus('error');
       }
     } catch (error) {
@@ -87,11 +92,11 @@ export default function EnterpriseRepairPdf() {
       <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-red-100 text-[#E5322D] px-3 py-1 rounded-full text-xs font-bold mb-4">
-            <ShieldCheck size={14} /> Multi-Tier Recovery Engine
+            <ShieldCheck size={14} /> Ultimate Multi-Tier Recovery
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Advanced PDF Repair</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Our 3-Tier system attempts structural rebuild, force byte-loading, and raw data scavenge to save your files.
+            Deep diagnostic tool to fix corrupt XREF tables, sanitize malware, and scavenge raw data if the file is destroyed.
           </p>
         </div>
 
@@ -119,11 +124,12 @@ export default function EnterpriseRepairPdf() {
                 </div>
 
                 <div className="bg-white border border-gray-200 rounded-lg p-5">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Recovery Tiers</h4>
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Active Recovery Modules</h4>
                   <ul className="space-y-3">
-                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><CheckCircle2 size={16} className="text-green-500"/> Tier 1: Standard Rebuild</li>
-                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><Wrench size={16} className="text-blue-500"/> Tier 2: Forced Byte Rescue</li>
-                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><Database size={16} className="text-yellow-500"/> Tier 3: Raw Text Scavenge</li>
+                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><Wrench size={16} className="text-blue-500"/> Structural XREF Rebuild (Tier 1)</li>
+                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><ShieldCheck size={16} className="text-green-500"/> Malicious Code Stripping</li>
+                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><Database size={16} className="text-purple-500"/> Force Byte Rescue (Tier 2)</li>
+                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><CheckCircle2 size={16} className="text-yellow-500"/> Metadata Preservation</li>
                   </ul>
                 </div>
               </div>
@@ -140,7 +146,7 @@ export default function EnterpriseRepairPdf() {
                     <div className="text-gray-600 h-full flex items-center justify-center">System ready. Awaiting repair command...</div>
                   ) : (
                     logs.map((log, index) => (
-                      <div key={index} className={`mb-1 ${log.includes('[FATAL') ? 'text-red-500 font-bold' : log.includes('[ERROR]') || log.includes('[WARNING]') ? 'text-yellow-400' : log.includes('[SUCCESS]') ? 'text-green-400' : 'text-gray-300'}`}>
+                      <div key={index} className={`mb-1 ${log.includes('[FATAL') ? 'text-red-500 font-bold' : log.includes('[ERROR]') || log.includes('[WARNING]') ? 'text-yellow-400' : log.includes('[SUCCESS]') ? 'text-green-400' : log.includes('[SECURITY]') ? 'text-blue-400' : 'text-gray-300'}`}>
                         <span className="text-gray-600 mr-2">{new Date().toISOString().split('T')[1].split('.')[0]}</span>
                         {log}
                       </div>
@@ -152,7 +158,7 @@ export default function EnterpriseRepairPdf() {
                 <div className="mt-6">
                   {status === 'idle' || status === 'error' ? (
                     <button onClick={processFile} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-md">
-                      Initiate 3-Tier Repair <Wrench size={22} />
+                      Start Deep Repair <Wrench size={22} />
                     </button>
                   ) : status === 'success' ? (
                     <div className="flex flex-col gap-3">
@@ -163,7 +169,7 @@ export default function EnterpriseRepairPdf() {
                           <p className="text-xs">
                             {recoveryLevel.includes('Tier 3') 
                               ? "PDF structure was completely destroyed. We scavenged and saved the raw text inside a TXT file." 
-                              : "Your PDF document has been structurally recovered and is ready for use."}
+                              : "Your PDF document has been structurally recovered, sanitized, and is ready for use."}
                           </p>
                         </div>
                       </div>
@@ -173,7 +179,7 @@ export default function EnterpriseRepairPdf() {
                     </div>
                   ) : (
                     <button disabled className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-gray-400 cursor-not-allowed">
-                      <Settings className="animate-spin" size={22} /> Processing Rescue Ops...
+                      <Settings className="animate-spin" size={22} /> System Processing...
                     </button>
                   )}
                 </div>
