@@ -9,6 +9,8 @@ export default function AddWatermark() {
   const [file, setFile] = useState(null);
   const [isWatermarking, setIsWatermarking] = useState(false);
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
+  // Naya state color ke liye
+  const [watermarkColor, setWatermarkColor] = useState('#E5322D'); 
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -21,6 +23,14 @@ export default function AddWatermark() {
 
   const removeFile = () => {
     setFile(null);
+  };
+
+  // Hex color ko pdf-lib rgb format mein convert karne ka helper
+  const hexToPdfRgb = (hex) => {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    return rgb(r, g, b);
   };
 
   // Client-Side Watermark Logic
@@ -45,15 +55,24 @@ export default function AddWatermark() {
         const { width, height } = page.getSize();
         const textSize = 60;
         const textWidth = customFont.widthOfTextAtSize(watermarkText, textSize);
+        const textHeight = textSize; // Approximate text height
+        
+        // 45 degrees in radians
+        const angle = 45;
+        const angleRad = (angle * Math.PI) / 180;
+
+        // Math for perfect centering after rotation
+        const x = (width / 2) - (textWidth / 2) * Math.cos(angleRad) + (textHeight / 2) * Math.sin(angleRad);
+        const y = (height / 2) - (textWidth / 2) * Math.sin(angleRad) - (textHeight / 2) * Math.cos(angleRad);
         
         page.drawText(watermarkText, {
-          x: width / 2 - textWidth / 2, // Center X
-          y: height / 2 - textSize / 2, // Center Y
+          x: x,
+          y: y,
           size: textSize,
           font: customFont,
-          color: rgb(0.9, 0.2, 0.2), // Red color
+          color: hexToPdfRgb(watermarkColor), // Dynamic color use ho raha hai
           opacity: 0.3, // Transparency taaki piche ka text padha ja sake
-          rotate: degrees(45), // Diagonal rotation
+          rotate: degrees(angle), // Diagonal rotation
         });
       });
 
@@ -125,23 +144,27 @@ export default function AddWatermark() {
                   <X size={20} />
                 </button>
                 <div className="relative">
-                  <FileText size={80} className="text-[#E5322D] mb-4 opacity-90" />
-                  {/* Visual indication of watermark */}
-                  <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -rotate-45 text-red-500 font-bold opacity-30 text-xl tracking-widest pointer-events-none">
+                  <FileText size={80} className="text-gray-300 mb-4" />
+                  {/* Visual indication of watermark matching selected color */}
+                  <span 
+                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -rotate-45 font-bold opacity-30 text-xl tracking-widest pointer-events-none"
+                    style={{ color: watermarkColor }}
+                  >
                     TEXT
                   </span>
                 </div>
-                <p className="text-sm text-gray-800 font-bold text-center break-words w-full px-4">
+                <p className="text-sm text-gray-800 font-bold text-center break-words w-full px-4 mt-2">
                   {file.name}
                 </p>
               </div>
 
               {/* Right Side: Watermark Settings */}
-              <div className="w-full md:w-1/2 flex flex-col h-[350px] justify-between">
+              <div className="w-full md:w-1/2 flex flex-col h-full justify-between min-h-[350px]">
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Watermark Text</h3>
+                  <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Watermark Settings</h3>
                   
-                  <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-5">
+                    {/* Text Input */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Type your text</label>
                       <div className="relative">
@@ -155,6 +178,36 @@ export default function AddWatermark() {
                         />
                       </div>
                     </div>
+
+                    {/* Color Selection UI */}
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Choose Color</label>
+                      <div className="flex items-center gap-3">
+                        {/* Quick Color Presets */}
+                        {['#E5322D', '#000000', '#2563EB', '#16A34A', '#9333EA'].map((color) => (
+                          <button
+                            key={color}
+                            onClick={() => setWatermarkColor(color)}
+                            className={`w-8 h-8 rounded-full border-2 transition-transform ${
+                              watermarkColor === color ? 'border-gray-800 scale-110' : 'border-transparent hover:scale-105'
+                            }`}
+                            style={{ backgroundColor: color }}
+                            aria-label={`Select color ${color}`}
+                          />
+                        ))}
+                        {/* Custom Color Picker */}
+                        <div className="ml-2 pl-3 border-l border-gray-300 relative flex items-center">
+                          <input 
+                            type="color" 
+                            value={watermarkColor}
+                            onChange={(e) => setWatermarkColor(e.target.value)}
+                            className="w-8 h-8 rounded cursor-pointer border-0 p-0"
+                            title="Choose custom color"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <p className="text-sm text-gray-500 bg-gray-50 p-4 rounded-lg mt-2">
                       The text will be stamped diagonally across the center of all pages with 30% transparency.
                     </p>
