@@ -149,14 +149,16 @@ export default async function handler(req, res) {
     else if (action === 'sign-pdf') {
       const { signerName, signerEmail, lockDocument } = req.body;
       try {
+        // STEP 1: Apply Visual Digital Stamp (Audit Info embedded in PDF)
         let stampResult = await convertapi.convert('watermark', {
           File: fileUrl,
-          Text: `SECURELY SIGNED BY: ${signerName.toUpperCase()} | EMAIL: ${signerEmail}\nTIMESTAMP: ${new Date().toISOString()} | MASTERPDF ENTERPRISE SEAL`,
-          FontSize: '9',
-          Opacity: '75',
-          HorizontalAlignment: 'left',
+          Text: `SECURELY SIGNED BY: ${signerName.toUpperCase()}\nEMAIL: ${signerEmail}\nTIMESTAMP: ${new Date().toISOString()}`,
+          FontSize: '10',
+          Opacity: '80',
+          HorizontalAlignment: 'center',
           VerticalAlignment: 'bottom',
-          FontColor: '#000000' 
+          MarginBottom: '30', 
+          FontColor: '#4A4A4A' 
         }, 'pdf');
 
         let finalUrl = stampResult.response.Files[0].Url;
