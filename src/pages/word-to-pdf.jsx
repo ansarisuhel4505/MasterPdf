@@ -5,13 +5,12 @@ import Footer from '../components/Footer';
 import { UploadCloud, FileText, X, ArrowRight, Settings } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
 
-// 🛑 HAR FILE KE LIYE BAS YEH 3 CHEEZEIN CHANGE KARNI HAIN 🛑
 const TOOL_TITLE = "Word to PDF Converter";
 const TOOL_DESC = "Make DOC and DOCX files easy to read by converting them to PDF.";
-const ACTION_NAME = "word-to-pdf"; // Example: "jpg-to-pdf", "excel-to-pdf", "compress-pdf"
-const ACCEPT_FORMAT = ".doc,.docx"; // Example: ".jpg,.jpeg", ".xlsx", ".pdf"
+const ACTION_NAME = "word-to-pdf"; 
+const ACCEPT_FORMAT = ".doc,.docx"; 
 
-export default function GenericTool() {
+export default function WordToPdf() {
   const [file, setFile] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
 
@@ -25,10 +24,8 @@ export default function GenericTool() {
     setIsConverting(true);
     
     try {
-      // 1. Vercel Blob Upload (Bypasses limit)
       const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
 
-      // 2. Send URL to Backend
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -37,7 +34,14 @@ export default function GenericTool() {
       
       const data = await response.json();
       if (response.ok && data.downloadUrl) {
-        window.location.href = data.downloadUrl; // Auto Download
+        // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.setAttribute('download', `MasterPdf_Converted_${file.name.split('.')[0]}.pdf`);
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
         alert("Action Failed: " + data.error);
       }
@@ -49,11 +53,19 @@ export default function GenericTool() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>{TOOL_TITLE} - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Convert Word to PDF Online Free | MasterPdf</title>
+        <meta name="description" content="Convert Word documents (Docx/Doc) to PDF format easily and securely. 100% Free online tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="word to pdf, convert docx to pdf, doc to pdf, free word to pdf converter, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Convert Word to PDF Online Free | MasterPdf" />
+        <meta property="og:description" content="Convert Word documents (Docx/Doc) to PDF format easily and securely." />
+      </Head>
+
       <Navbar />
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">{TOOL_TITLE}</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">{TOOL_TITLE}</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">{TOOL_DESC}</p>
         </div>
         <div className="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[450px] flex flex-col items-center justify-center relative">
@@ -67,14 +79,14 @@ export default function GenericTool() {
           ) : (
             <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start pt-4">
               <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-8 relative h-[350px]">
-                <button onClick={() => setFile(null)} className="absolute top-4 right-4 bg-white border text-gray-500 hover:text-red-500 rounded-full p-2"><X size={20} /></button>
+                <button onClick={() => setFile(null)} className="absolute top-4 right-4 bg-white border text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition"><X size={20} /></button>
                 <FileText size={80} className="text-[#E5322D] mb-4 opacity-90" />
                 <p className="text-sm font-bold mt-4">{file.name}</p>
               </div>
               <div className="w-full md:w-1/2 flex flex-col h-[350px] justify-between">
                 <div><h3 className="text-xl font-bold border-b pb-2">Ready to Process</h3></div>
                 <div className="mt-6 flex justify-end">
-                   <button onClick={processFile} disabled={isConverting} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 disabled:bg-gray-400">
+                   <button onClick={processFile} disabled={isConverting} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 disabled:bg-gray-400">
                      {isConverting ? <><Settings className="animate-spin" size={24} /> Processing...</> : <>Convert Now <ArrowRight size={24} /></>}
                    </button>
                 </div>
