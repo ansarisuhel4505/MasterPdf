@@ -69,12 +69,18 @@ export default function ComparePdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>Smart AI Compare PDF - MasterPdf</title>
+        <title>Compare PDF Files Online Free | AI PDF Comparison | MasterPdf</title>
+        <meta name="description" content="Easily compare two PDF files online for free. Use AI to detect text differences, additions, and deletions instantly. Created by Suhel Ansari." />
+        <meta name="keywords" content="compare pdf, pdf comparison tool, find differences in pdf, compare two pdf files, ai pdf compare, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Compare PDF Files Online Free | AI PDF Comparison | MasterPdf" />
+        <meta property="og:description" content="Use AI to automatically detect exactly what changed between two PDF documents." />
       </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold mb-4">
