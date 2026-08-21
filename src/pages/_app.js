@@ -1,10 +1,10 @@
 import Head from 'next/head';
-import '../styles/globals.css';
+import '@/styles/globals.css';
+
 function MyApp({ Component, pageProps }) {
   return (
     <>
       <Head>
-        {/* 🔥 BULLETPROOF BASE64 SVG FAVICON (Yeh Vercel par kabhi error nahi dega) 🔥 */}
         <link 
           rel="icon" 
           type="image/svg+xml" 
@@ -12,8 +12,6 @@ function MyApp({ Component, pageProps }) {
         />
         <meta name="theme-color" content="#E5322D" />
       </Head>
-      
-      {/* Tumhari poori website yahan load hoti hai */}
       <Component {...pageProps} />
     </>
   );
