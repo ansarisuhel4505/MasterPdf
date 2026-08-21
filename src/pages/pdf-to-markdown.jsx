@@ -90,9 +90,15 @@ export default function PdfToMarkdown() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>Enterprise PDF to Markdown - MasterPdf</title>
+        <title>Convert PDF to Markdown (MD) Online Free | MasterPdf</title>
+        <meta name="description" content="Extract clean, structured Markdown from PDFs using AI. Ideal for LLM Training, RAG Pipelines, and GitHub Docs. Free tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="pdf to markdown, pdf to md, ai document parser, extract text from pdf, llm parser, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Convert PDF to Markdown (MD) Online Free | MasterPdf" />
+        <meta property="og:description" content="Extract clean, structured Markdown from PDFs using AI. Free tool by MasterPdf." />
       </Head>
+
       <Navbar />
 
       <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
