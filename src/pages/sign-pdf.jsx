@@ -15,7 +15,7 @@ import {
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-// 🔥 50 Handpicked Signature Fonts
+// 🔥 50 Handpicked Signature Fonts (Preserved perfectly)
 const signatureFonts = [
   "Brush Script MT", "Caveat", "Dancing Script", "Pacifico", "Satisfy", "Homemade Apple", "Sacramento", "Yellowtail", 
   "Parisienne", "Bad Script", "Tangerine", "Alex Brush", "Allura", "Arizonia", "Cookie", "Courgette", "Damion", 
@@ -47,7 +47,7 @@ export default function VisualSignPdf() {
   const [uploadedSig, setUploadedSig] = useState(null);
   const [uploadedStamp, setUploadedStamp] = useState(null);
   
-  const [sigMode, setSigMode] = useState('simple'); // 'simple' or 'digital'
+  const [sigMode, setSigMode] = useState('simple'); 
   
   const [elements, setElements] = useState([]);
   const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
@@ -117,7 +117,6 @@ export default function VisualSignPdf() {
     }
   };
 
-  // 🔥 Auto Generate Unique Digital Signature
   const generateDigitalSig = () => {
     const uniqueId = Math.random().toString(36).substring(2, 10).toUpperCase() + "-" + Date.now().toString(36).toUpperCase();
     const timestamp = new Date().toLocaleString();
@@ -182,7 +181,6 @@ export default function VisualSignPdf() {
       const lines = text.split('\n');
       lines.forEach((line, i) => ctx.fillText(line, 10, 15 + (i * 22)));
       
-      // Draw Digital Stamp Graphic
       ctx.fillStyle = '#E5322D';
       ctx.beginPath(); ctx.arc(width - 30, height / 2, 18, 0, 2 * Math.PI); ctx.fill();
       ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 18px Arial'; ctx.fillText('✓', width - 38, height / 2 - 8);
@@ -251,7 +249,6 @@ export default function VisualSignPdf() {
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head>
         <title>e-Sign PDF Documents | MasterPdf</title>
-        {/* 🔥 Importing 50 Premium Google Fonts */}
         <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Amatic+SC&family=Arizonia&family=Bad+Script&family=Caveat&family=Comic+Neue&family=Cookie&family=Courgette&family=Damion&family=Dancing+Script&family=Engagement&family=Grand+Hotel&family=Handlee&family=Homemade+Apple&family=Indie+Flower&family=Kalam&family=Kaushan+Script&family=Leckerli+One&family=Marck+Script&family=Nanum+Pen+Script&family=Neucha&family=Niconne&family=Norican&family=Nothing+You+Could+Do&family=Oleo+Script&family=Over+the+Rainbow&family=Pacifico&family=Parisienne&family=Patrick+Hand&family=Pinyon+Script&family=Qwigley&family=Rancho&family=Reenie+Beanie&family=Rochester&family=Rock+Salt&family=Rouge+Script&family=Ruge+Boogie&family=Sacramento&family=Satisfy&family=Schoolbell&family=Shadows+Into+Light&family=Sofia&family=Stalemate&family=Tangerine&family=Vibur&family=Yellowtail&family=Yesteryear&family=Zeyada&display=swap" rel="stylesheet" />
       </Head>
 
@@ -299,7 +296,6 @@ export default function VisualSignPdf() {
                    <Page pageNumber={currentPage} renderTextLayer={false} renderAnnotationLayer={false} width={600} onLoadSuccess={(pageInfo) => setPdfDimensions({ width: pageInfo.width, height: pageInfo.height })} />
                  </Document>
 
-                 {/* 🔥 FIX 6: touch-none added for Mobile Drag Drop */}
                  {elements.filter(el => el.page === currentPage).map((el) => (
                    <Rnd
                      key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
@@ -407,7 +403,7 @@ export default function VisualSignPdf() {
                       <div className="bg-gray-600 p-1.5 rounded text-white"><Type size={14}/></div> Text
                     </button>
                     <button onClick={() => addElement('stamp')} className="w-full border border-gray-200 rounded-lg p-3 bg-white hover:bg-gray-50 flex items-center gap-3 transition-colors text-sm font-medium text-gray-700 shadow-sm">
-                      <div className="bg-gray-600 p-1.5 rounded text-white"><Stamp size={14}/></div> Company Stamp
+                      <div className="bg-gray-400 p-1.5 rounded text-white"><Stamp size={14}/></div> Company Stamp
                     </button>
                   </div>
                 </div>
@@ -429,17 +425,20 @@ export default function VisualSignPdf() {
       </main>
       <Footer />
 
-      {/* 🔥 EXACT ILOVEPDF STYLE MODAL WITH 50 FONTS & COLOR PICKER 🔥 */}
+      {/* 🔥 EXACT ILOVEPDF STYLE MODAL WITH SCROLL FIX 🔥 */}
       {showSignatureModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-[800px] rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          {/* Added max-h-[95vh] and flex-col to keep the header intact and allow internal scrolling */}
+          <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
             
-            <div className="flex justify-between items-center bg-gray-50 border-b border-gray-200 p-5 px-8">
+            {/* Header */}
+            <div className="flex justify-between items-center bg-gray-50 border-b border-gray-200 p-4 sm:p-5 px-6 sm:px-8 shrink-0">
               <h3 className="text-xl font-bold text-gray-800 tracking-tight">Set your signature details</h3>
               <button onClick={() => setShowSignatureModal(false)} className="text-gray-400 hover:text-[#E5322D] border border-gray-200 px-3 py-1 rounded-md text-sm font-bold bg-white shadow-sm">Cancel</button>
             </div>
 
-            <div className="p-8">
+            {/* Scrollable Body Container */}
+            <div className="p-4 sm:p-8 overflow-y-auto flex-grow">
               <div className="flex flex-col md:flex-row gap-6 mb-6">
                 <div className="flex-grow">
                   <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
@@ -447,39 +446,38 @@ export default function VisualSignPdf() {
                   </label>
                   <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-gray-400 outline-none font-medium text-gray-800 transition" />
                 </div>
-                <div className="w-32">
+                <div className="w-full md:w-32">
                   <label className="block text-sm font-bold text-gray-700 mb-2">Initials:</label>
                   <input type="text" value={initials} onChange={(e) => setInitials(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 focus:ring-1 focus:ring-gray-400 outline-none font-medium text-gray-800 text-center" />
                 </div>
               </div>
 
               {/* Horizontal Tabs */}
-              <div className="flex border-b border-gray-200">
-                <button onClick={() => setHTab('Signature')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 ${hTab === 'Signature' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}>
+              <div className="flex border-b border-gray-200 overflow-x-auto">
+                <button onClick={() => setHTab('Signature')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 whitespace-nowrap ${hTab === 'Signature' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}>
                   <PenTool size={16}/> Signature
                 </button>
-                <button onClick={() => setHTab('Initials')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 ${hTab === 'Initials' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}>
+                <button onClick={() => setHTab('Initials')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 whitespace-nowrap ${hTab === 'Initials' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}>
                   <span className="font-black text-xs border-b border-gray-400">AC</span> Initials
                 </button>
-                <button onClick={() => setHTab('Stamp')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 ${hTab === 'Stamp' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}>
+                <button onClick={() => setHTab('Stamp')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 whitespace-nowrap ${hTab === 'Stamp' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}>
                   <Stamp size={16}/> Company Stamp
                 </button>
               </div>
 
               {/* Workspace Content */}
-              <div className="bg-gray-100 rounded-b-xl flex min-h-[300px] border border-gray-200 border-t-0 relative">
+              <div className="bg-gray-100 rounded-b-xl flex flex-col md:flex-row min-h-[300px] border border-gray-200 border-t-0 relative">
                 
                 {(hTab === 'Signature' || hTab === 'Initials') && (
-                  <div className="w-16 bg-gray-200 border-r border-gray-300 flex flex-col rounded-bl-xl overflow-hidden">
-                    <button onClick={() => setVTab('Type')} className={`py-4 flex justify-center border-l-4 transition-colors ${vTab === 'Type' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Type size={20}/></button>
-                    <button onClick={() => setVTab('Draw')} className={`py-4 flex justify-center border-l-4 transition-colors ${vTab === 'Draw' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><PenTool size={20}/></button>
-                    <button onClick={() => setVTab('Upload')} className={`py-4 flex justify-center border-l-4 transition-colors ${vTab === 'Upload' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Upload size={20}/></button>
+                  <div className="w-full md:w-16 bg-gray-200 border-r border-gray-300 flex flex-row md:flex-col rounded-bl-xl overflow-hidden shrink-0">
+                    <button onClick={() => setVTab('Type')} className={`py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Type' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Type size={20}/></button>
+                    <button onClick={() => setVTab('Draw')} className={`py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Draw' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><PenTool size={20}/></button>
+                    <button onClick={() => setVTab('Upload')} className={`py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Upload' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Upload size={20}/></button>
                   </div>
                 )}
 
-                <div className="flex-grow p-4 relative flex flex-col">
+                <div className="flex-grow p-4 relative flex flex-col overflow-hidden">
                   
-                  {/* 🔥 FIX 4: Color Picker for Signature */}
                   {(hTab === 'Signature' || hTab === 'Initials') && (vTab === 'Type' || vTab === 'Draw') && (
                      <div className="flex justify-end gap-2 mb-3 px-2">
                        <Palette size={16} className="text-gray-400 mt-1"/>
@@ -489,13 +487,12 @@ export default function VisualSignPdf() {
                      </div>
                   )}
 
-                  {/* 🔥 FIX 1: 50 Fonts List */}
                   {(hTab === 'Signature' || hTab === 'Initials') && vTab === 'Type' && (
                     <div className="flex flex-col gap-2 bg-gray-100 h-[240px] overflow-y-auto pr-2">
                       {signatureFonts.map((font, index) => (
                         <label key={index} className={`flex items-center gap-4 px-4 py-3 rounded-md cursor-pointer transition border-b border-gray-200 ${selectedStyle === index ? 'bg-white shadow-sm border-[#E5322D]' : 'hover:bg-gray-50 border-transparent'}`}>
-                          <input type="radio" checked={selectedStyle === index} onChange={() => setSelectedStyle(index)} className="w-5 h-5 accent-[#E5322D]" />
-                          <span className="text-3xl" style={{ fontFamily: font, color: sigColor }}>{hTab === 'Signature' ? fullName : initials}</span>
+                          <input type="radio" checked={selectedStyle === index} onChange={() => setSelectedStyle(index)} className="w-5 h-5 accent-[#E5322D] shrink-0" />
+                          <span className="text-3xl truncate" style={{ fontFamily: font, color: sigColor }}>{hTab === 'Signature' ? fullName : initials}</span>
                         </label>
                       ))}
                     </div>
@@ -506,7 +503,7 @@ export default function VisualSignPdf() {
                       <canvas 
                         ref={canvasRef}
                         onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                        className="w-full h-[200px] bg-white border border-gray-300 rounded cursor-crosshair shadow-inner"
+                        className="w-full h-[200px] bg-white border border-gray-300 rounded cursor-crosshair shadow-inner touch-none"
                         width={500} height={200}
                       />
                       <div className="flex justify-between w-full text-xs text-gray-500 px-2 font-medium">
@@ -516,19 +513,18 @@ export default function VisualSignPdf() {
                     </div>
                   )}
 
-                  {/* 🔥 FIX 2: Working Signature Upload */}
                   {(hTab === 'Signature' || hTab === 'Initials') && vTab === 'Upload' && (
-                    <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-300 bg-white rounded-lg m-2">
-                      <div className="text-center p-6 w-full flex flex-col items-center">
+                    <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-300 bg-white rounded-lg m-2 p-4">
+                      <div className="text-center w-full flex flex-col items-center">
                         {uploadedSig ? (
                            <>
-                             <img src={uploadedSig} alt="Uploaded" className="max-h-[120px] object-contain mb-4" />
+                             <img src={uploadedSig} alt="Uploaded" className="max-h-[120px] max-w-full object-contain mb-4" />
                              <button onClick={() => setUploadedSig(null)} className="text-xs text-gray-500 hover:text-red-500 underline">Remove Image</button>
                            </>
                         ) : (
                            <>
                              <input type="file" id="sig-upload" accept="image/*" onChange={(e) => handleImageUpload(e, 'sig')} className="hidden" />
-                             <label htmlFor="sig-upload" className="border border-gray-300 text-gray-700 font-bold px-6 py-2 rounded-lg hover:bg-gray-50 transition mb-3 shadow-sm cursor-pointer">
+                             <label htmlFor="sig-upload" className="border border-gray-300 text-gray-700 font-bold px-6 py-2 rounded-lg hover:bg-gray-50 transition mb-3 shadow-sm cursor-pointer whitespace-nowrap">
                                Upload image
                              </label>
                              <p className="text-sm text-gray-500 font-medium">or tap to browse</p>
@@ -539,19 +535,18 @@ export default function VisualSignPdf() {
                     </div>
                   )}
 
-                  {/* 🔥 FIX 3: Working Company Stamp Upload */}
                   {hTab === 'Stamp' && (
-                    <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-300 bg-white rounded-lg m-2">
-                      <div className="text-center p-6 w-full flex flex-col items-center">
+                    <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-300 bg-white rounded-lg m-2 p-4">
+                      <div className="text-center w-full flex flex-col items-center">
                         {uploadedStamp ? (
                            <>
-                             <img src={uploadedStamp} alt="Stamp" className="max-h-[140px] object-contain mb-4" />
+                             <img src={uploadedStamp} alt="Stamp" className="max-h-[140px] max-w-full object-contain mb-4" />
                              <button onClick={() => setUploadedStamp(null)} className="text-xs text-gray-500 hover:text-red-500 underline">Remove Image</button>
                            </>
                         ) : (
                            <>
                              <input type="file" id="stamp-upload" accept="image/*" onChange={(e) => handleImageUpload(e, 'stamp')} className="hidden" />
-                             <label htmlFor="stamp-upload" className="border border-gray-300 text-gray-700 font-bold px-6 py-2 rounded-lg hover:bg-gray-50 transition mb-3 shadow-sm cursor-pointer">
+                             <label htmlFor="stamp-upload" className="border border-[#E5322D] text-[#E5322D] font-bold px-6 py-2 rounded-lg hover:bg-red-50 transition mb-3 shadow-sm cursor-pointer whitespace-nowrap">
                                Upload company stamp
                              </label>
                              <p className="text-[10px] text-gray-400 mt-3">Accepted formats: PNG, JPG</p>
@@ -563,15 +558,15 @@ export default function VisualSignPdf() {
                 </div>
 
                 {(hTab === 'Signature' || hTab === 'Initials') && (
-                  <div className="w-32 bg-gray-50 border-l border-gray-200 flex flex-col items-center justify-center p-4">
-                    <QrCode size={50} className="text-gray-300 mb-2"/>
+                  <div className="w-full md:w-32 bg-gray-50 border-t md:border-t-0 md:border-l border-gray-200 flex flex-row md:flex-col items-center justify-center p-4 shrink-0">
+                    <QrCode size={50} className="text-gray-300 mb-0 md:mb-2 hidden md:block"/>
                     <span className="text-[10px] font-bold text-gray-500 text-center leading-tight hover:text-[#E5322D] cursor-pointer transition-colors">Draw from your mobile device</span>
                   </div>
                 )}
               </div>
 
-              <div className="mt-8 flex justify-end">
-                <button onClick={applyModalSettings} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-3 px-10 rounded-xl transition shadow-md">
+              <div className="mt-6 flex justify-end">
+                <button onClick={applyModalSettings} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-3 px-10 rounded-xl transition shadow-md w-full md:w-auto">
                   Apply
                 </button>
               </div>
