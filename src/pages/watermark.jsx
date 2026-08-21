@@ -8,7 +8,6 @@ import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { UploadCloud, X, Type, Settings, Stamp, Layers, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 
-// FIX for Next.js: react-pdf worker setup
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function AdvancedWatermark() {
@@ -16,16 +15,13 @@ export default function AdvancedWatermark() {
   const [fileUrl, setFileUrl] = useState(null);
   const [isWatermarking, setIsWatermarking] = useState(false);
   
-  // PDF Viewer States
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Watermark Settings
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
   const [watermarkColor, setWatermarkColor] = useState('#E5322D');
   
-  // Page Targeting Settings
-  const [pageRange, setPageRange] = useState('all'); // all, odd, even, custom, current
+  const [pageRange, setPageRange] = useState('all'); 
   const [customPages, setCustomPages] = useState('');
 
   const handleFileChange = (e) => {
@@ -72,7 +68,6 @@ export default function AdvancedWatermark() {
     return Array.from(pages).filter(p => p > 0 && p <= totalPages);
   };
 
-  // Main Watermarking & Download Logic
   const applyWatermark = async (downloadMode) => {
     if (!file) return;
     if (!watermarkText.trim()) {
@@ -88,7 +83,6 @@ export default function AdvancedWatermark() {
       const pages = pdfDoc.getPages();
       const totalPdfPages = pages.length;
 
-      // Determine which pages to watermark
       let pagesToWatermark = [];
       if (pageRange === 'all') {
         pagesToWatermark = pages.map((_, i) => i + 1);
@@ -99,7 +93,7 @@ export default function AdvancedWatermark() {
       } else if (pageRange === 'custom') {
         pagesToWatermark = parseCustomPages(customPages, totalPdfPages);
       } else if (pageRange === 'current') {
-        pagesToWatermark = [currentPage]; // Sirf display wala page
+        pagesToWatermark = [currentPage]; 
       }
 
       if (pagesToWatermark.length === 0) {
@@ -108,14 +102,12 @@ export default function AdvancedWatermark() {
         return;
       }
 
-      // Apply watermark to selected pages
       pages.forEach((page, index) => {
         const pageNum = index + 1;
         
         if (pagesToWatermark.includes(pageNum)) {
           const { width, height } = page.getSize();
           
-          // Dynamic Sizing Logic
           const diagonal = Math.sqrt(width * width + height * height);
           const maxTextWidth = diagonal * 0.75; 
           const baseSize = 100;
@@ -141,28 +133,27 @@ export default function AdvancedWatermark() {
 
       let finalPdfBytes;
 
-      // Handle Download Modes
       if (downloadMode === 'only_watermarked') {
-        // Extract only the watermarked pages into a NEW pdf
         const newPdf = await PDFDocument.create();
-        // pdf-lib uses 0-based indexing for copyPages
         const zeroBasedIndices = pagesToWatermark.map(p => p - 1);
         const copiedPages = await newPdf.copyPages(pdfDoc, zeroBasedIndices);
         
         copiedPages.forEach((page) => newPdf.addPage(page));
         finalPdfBytes = await newPdf.save();
       } else {
-        // Save the full document (some pages have watermark, others don't)
         finalPdfBytes = await pdfDoc.save();
       }
 
-      // Trigger Download
+      // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       const suffix = downloadMode === 'only_watermarked' ? '_Extracted' : '_Watermarked';
       link.download = `MasterPdf${suffix}_${file.name}`;
+      link.target = '_blank';
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
       
     } catch (error) {
       console.error("Error adding watermark:", error);
@@ -173,14 +164,22 @@ export default function AdvancedWatermark() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Visual PDF Watermarker - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Add Watermark to PDF Online Free | MasterPdf</title>
+        <meta name="description" content="Add text watermarks to your PDF files online easily and securely. Free PDF stamper tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="watermark pdf, add watermark to pdf, stamp pdf, free pdf watermarker, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Add Watermark to PDF Online Free | MasterPdf" />
+        <meta property="og:description" content="Add text watermarks to your PDF files online easily and securely." />
+      </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Visual PDF Watermarker</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Preview, target specific pages, and download exactly what you need.
+            Preview, target specific pages, and add secure text stamps instantly.
           </p>
         </div>
 
@@ -198,16 +197,13 @@ export default function AdvancedWatermark() {
           ) : (
             <div className="w-full h-full flex flex-col lg:flex-row gap-8">
               
-              {/* Left: Visual PDF Preview Panel */}
               <div className="w-full lg:w-7/12 flex flex-col items-center justify-start bg-gray-100 border border-gray-300 rounded-xl p-6 relative">
                 <button onClick={removeFile} className="absolute top-4 right-4 z-10 bg-white shadow rounded-full p-2 text-gray-500 hover:text-red-500">
                   <X size={20} />
                 </button>
 
-                {/* PDF Viewer with Overlay */}
                 <div className="relative border border-gray-300 shadow-md bg-white overflow-hidden flex justify-center w-full max-w-[450px]">
                   
-                  {/* Live Watermark Overlay (Only shows if page is targeted) */}
                   {(pageRange === 'all' || 
                     pageRange === 'current' || 
                    (pageRange === 'odd' && currentPage % 2 !== 0) || 
@@ -231,7 +227,6 @@ export default function AdvancedWatermark() {
                   </Document>
                 </div>
 
-                {/* Pagination Controls */}
                 <div className="mt-6 flex items-center justify-between w-full max-w-[400px]">
                   <button 
                     disabled={currentPage <= 1}
@@ -251,12 +246,10 @@ export default function AdvancedWatermark() {
                 </div>
               </div>
 
-              {/* Right: Settings & Download Controls */}
               <div className="w-full lg:w-5/12 flex flex-col justify-between overflow-y-auto">
                 <div>
                   <h3 className="text-2xl font-bold text-gray-900 mb-4 border-b pb-2">Watermark Settings</h3>
                   
-                  {/* Text & Color (Previous Features) */}
                   <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
                     <div className="mb-4">
                       <label className="block text-sm font-bold text-gray-700 mb-2">Watermark Text</label>
@@ -275,7 +268,6 @@ export default function AdvancedWatermark() {
                     </div>
                   </div>
 
-                  {/* Page Target Settings (New Features) */}
                   <div className="mb-6">
                     <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3">
                       <Layers size={16} className="text-[#E5322D]"/> Apply Watermark To:
@@ -309,12 +301,10 @@ export default function AdvancedWatermark() {
                   </div>
                 </div>
 
-                {/* Final Export / Download Options */}
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Download size={16} className="text-[#E5322D]" /> Finish & Export</h4>
                   
                   <div className="flex flex-col gap-3">
-                    {/* Option 1: Full Document */}
                     <button 
                       onClick={() => applyWatermark('full_document')} 
                       disabled={isWatermarking} 
@@ -323,7 +313,6 @@ export default function AdvancedWatermark() {
                       Download FULL PDF (With Watermarks)
                     </button>
                     
-                    {/* Option 2: Extracted Pages Only */}
                     {pageRange !== 'all' && (
                       <button 
                         onClick={() => applyWatermark('only_watermarked')} 
