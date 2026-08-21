@@ -2,35 +2,32 @@ import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { 
   UploadCloud, X, PenTool, Lock, CheckCircle2, Download, Settings, 
-  User, Calendar, Type, Stamp, PlusCircle, Trash2, ChevronLeft, ChevronRight, ShieldCheck 
+  User, Calendar, Type, Stamp, PlusCircle, ChevronLeft, ChevronRight, ShieldCheck 
 } from 'lucide-react';
 
-// Setup PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// 🔥 FIX 2: Stable PDF.js worker for Next.js
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function VisualSignPdf() {
-  // File & View States
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState(null);
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // Modal & Signature Details State
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [activeTab, setActiveTab] = useState('Signature');
   const [fullName, setFullName] = useState('Suhel Ansari');
   const [initials, setInitials] = useState('SA');
-  const [selectedStyle, setSelectedStyle] = useState(0); // 0, 1, 2 for different cursive fonts
+  const [selectedStyle, setSelectedStyle] = useState(0); 
 
-  // Draggable Elements State
   const [elements, setElements] = useState([]);
   const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
 
@@ -42,12 +39,14 @@ export default function VisualSignPdf() {
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
+    
+    // 🔥 FIX 1: Bulletproof PDF detection (MIME type OR extension check)
+    if (selectedFile && (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf'))) {
       setFile(selectedFile);
       setFileUrl(URL.createObjectURL(selectedFile));
-      setShowSignatureModal(true); // Open modal right after upload
-    } else {
-      alert("Please upload a valid PDF document.");
+      setShowSignatureModal(true); 
+    } else if (selectedFile) {
+      alert("Please upload a valid PDF document (.pdf).");
     }
   };
 
@@ -57,7 +56,6 @@ export default function VisualSignPdf() {
 
   const onDocumentLoadSuccess = ({ numPages }) => setNumPages(numPages);
 
-  // Add elements to the PDF workspace
   const addElement = (type) => {
     let value = '';
     let fontStyle = 'Arial, sans-serif';
@@ -90,21 +88,19 @@ export default function VisualSignPdf() {
     setElements(elements.filter(el => el.id !== id));
   };
 
-  // Convert HTML Text to Base64 Image (Crucial for embedding Custom Cursive fonts into PDF-lib)
   const textToImageDataUrl = (text, fontStyle, width, height) => {
     const canvas = document.createElement('canvas');
-    canvas.width = width * 2; // High Res
+    canvas.width = width * 2; 
     canvas.height = height * 2;
     const ctx = canvas.getContext('2d');
     ctx.scale(2, 2);
     ctx.font = `30px ${fontStyle}`;
-    ctx.fillStyle = '#E5322D'; // Red signature color
+    ctx.fillStyle = '#E5322D'; 
     ctx.textBaseline = 'middle';
     ctx.fillText(text, 10, height / 2);
     return canvas.toDataURL('image/png');
   };
 
-  // Final Processing (Visual Stamping + Locking)
   const applySignatureAndDownload = async () => {
     if (!file) return;
     setIsProcessing(true);
@@ -114,21 +110,17 @@ export default function VisualSignPdf() {
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-      // Loop through all placed elements and stamp them on respective pages
       for (const el of elements) {
         const page = pdfDoc.getPages()[el.page - 1];
         const { width: pdfWidth, height: pdfHeight } = page.getSize();
         
-        // Calculate coordinates based on UI scale vs PDF actual scale
         const scaleX = pdfWidth / pdfDimensions.width;
         const scaleY = pdfHeight / pdfDimensions.height;
         
         const actualX = el.x * scaleX;
-        // PDF Y coordinate starts from BOTTOM left, UI starts from TOP left
         const actualY = pdfHeight - (el.y * scaleY) - (el.height * scaleY);
 
         if (el.type === 'signature' || el.type === 'initials') {
-          // Convert cursive text to image to preserve exact font look in PDF
           const dataUrl = textToImageDataUrl(el.value, el.fontStyle, el.width, el.height);
           const imgBytes = await fetch(dataUrl).then(res => res.arrayBuffer());
           const pdfImage = await pdfDoc.embedPng(imgBytes);
@@ -137,21 +129,18 @@ export default function VisualSignPdf() {
             x: actualX, y: actualY, width: el.width * scaleX, height: el.height * scaleY
           });
         } else {
-          // Standard text elements (Name, Date, Text)
           page.drawText(el.value, {
             x: actualX + 5, y: actualY + 15, size: 14 * scaleX, font: helveticaFont, color: rgb(0.2, 0.2, 0.2)
           });
         }
       }
 
-      // Add Metadata & Lock Document
       pdfDoc.setAuthor(fullName);
       pdfDoc.setCreator('MasterPdf Enterprise Engine');
       pdfDoc.setModificationDate(new Date());
 
       const finalPdfBytes = await pdfDoc.save();
 
-      // Trigger Download
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -187,7 +176,8 @@ export default function VisualSignPdf() {
             <p className="text-lg text-gray-600 mb-10 max-w-2xl mx-auto">
               Sign yourself or request electronic signatures from others. Secure, fast, and legally binding.
             </p>
-            <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
+            {/* 🔥 FIX 3: onClick={(e) => (e.target.value = null)} ensures same file can be re-uploaded */}
+            <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} onClick={(e) => (e.target.value = null)} className="hidden" />
             <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-5 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
               <UploadCloud size={28} /> Select PDF file
             </label>
@@ -195,7 +185,6 @@ export default function VisualSignPdf() {
         ) : (
           <div className="w-full max-w-[1600px] h-[80vh] flex flex-col lg:flex-row bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
             
-            {/* LEFT SIDEBAR: Page Navigation */}
             <div className="w-full lg:w-24 bg-gray-50 border-r border-gray-200 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex">
                <h4 className="text-[10px] font-bold text-gray-500 uppercase">Pages</h4>
                {Array.from({ length: numPages }, (_, i) => i + 1).map(page => (
@@ -209,9 +198,7 @@ export default function VisualSignPdf() {
                ))}
             </div>
 
-            {/* CENTER: Document Viewer Workspace */}
             <div className="flex-grow bg-gray-200/50 p-6 flex flex-col items-center justify-start overflow-y-auto relative border-r border-gray-200">
-               {/* Mobile Pagination Control */}
                <div className="lg:hidden flex items-center justify-between w-full max-w-[600px] mb-4 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
                  <button disabled={currentPage <= 1} onClick={() => setCurrentPage(p => p - 1)} className="p-2 text-gray-600 disabled:opacity-50"><ChevronLeft size={20}/></button>
                  <span className="font-bold text-sm text-gray-800">Page {currentPage} of {numPages}</span>
@@ -219,7 +206,11 @@ export default function VisualSignPdf() {
                </div>
 
                <div className="relative shadow-xl bg-white select-none">
-                 <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess}>
+                 <Document 
+                   file={fileUrl} 
+                   onLoadSuccess={onDocumentLoadSuccess}
+                   loading={<div className="p-10 text-gray-500 font-medium">Loading PDF Document...</div>}
+                 >
                    <Page 
                      pageNumber={currentPage} 
                      renderTextLayer={false} 
@@ -229,7 +220,6 @@ export default function VisualSignPdf() {
                    />
                  </Document>
 
-                 {/* Rendering Draggable Elements over PDF */}
                  {elements.filter(el => el.page === currentPage).map((el) => (
                    <Rnd
                      key={el.id}
@@ -269,14 +259,12 @@ export default function VisualSignPdf() {
                </div>
             </div>
 
-            {/* RIGHT SIDEBAR: Tools & Options */}
             <div className="w-full lg:w-[350px] bg-white p-6 flex flex-col h-full overflow-y-auto">
               <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
                 <h3 className="text-xl font-bold text-gray-900">Signing options</h3>
                 <button onClick={removeFile} className="text-gray-400 hover:text-red-500"><X size={20}/></button>
               </div>
 
-              {/* Type Toggle */}
               <div className="mb-6">
                 <h4 className="text-sm font-bold text-gray-800 mb-3">Type</h4>
                 <div className="flex gap-3">
@@ -291,10 +279,9 @@ export default function VisualSignPdf() {
                 </div>
               </div>
 
-              {/* Required Fields */}
               <div className="mb-6">
                 <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center justify-between">
-                  Required fields <button onClick={() => setShowSignatureModal(true)} className="text-[#E5322D] text-xs hover:underline">Edit Signature</button>
+                  Required fields <button onClick={() => setShowSignatureModal(true)} className="text-[#E5322D] text-xs hover:underline">Edit</button>
                 </h4>
                 <div 
                   onClick={() => addElement('signature')}
@@ -308,7 +295,6 @@ export default function VisualSignPdf() {
                 </div>
               </div>
 
-              {/* Optional Fields */}
               <div className="mb-8">
                 <h4 className="text-sm font-bold text-gray-800 mb-3">Optional fields</h4>
                 <div className="space-y-2">
@@ -330,7 +316,6 @@ export default function VisualSignPdf() {
                 </div>
               </div>
 
-              {/* Action Button */}
               <div className="mt-auto pt-4 border-t border-gray-100">
                 <button 
                   onClick={applySignatureAndDownload} 
@@ -371,14 +356,12 @@ export default function VisualSignPdf() {
                 </div>
               </div>
 
-              {/* TABS */}
               <div className="flex border-b border-gray-200 mb-6">
                 <button onClick={() => setActiveTab('Signature')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 ${activeTab === 'Signature' ? 'text-gray-900 border-b-2 border-[#E5322D]' : 'text-gray-500 hover:text-gray-800'}`}><PenTool size={16}/> Signature</button>
                 <button onClick={() => setActiveTab('Initials')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 ${activeTab === 'Initials' ? 'text-gray-900 border-b-2 border-[#E5322D]' : 'text-gray-500 hover:text-gray-800'}`}>AC Initials</button>
                 <button onClick={() => setActiveTab('Stamp')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 ${activeTab === 'Stamp' ? 'text-gray-900 border-b-2 border-[#E5322D]' : 'text-gray-500 hover:text-gray-800'}`}><Stamp size={16}/> Company Stamp</button>
               </div>
 
-              {/* TAB CONTENT */}
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 min-h-[200px]">
                 {activeTab === 'Signature' && (
                   <div className="flex flex-col gap-3">
