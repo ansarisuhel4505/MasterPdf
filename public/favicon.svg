@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Red Rounded Background -->
+  <rect width="512" height="512" rx="120" fill="#E5322D"/>
+  <!-- Bold White 'M' -->
+  <path d="M120 380 V160 L256 280 L392 160 V380" fill="none" stroke="#FFFFFF" stroke-width="50" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Little PDF text at the bottom -->
+  <text x="256" y="450" font-family="Arial, sans-serif" font-size="65" font-weight="900" fill="#FFFFFF" text-anchor="middle" letter-spacing="4">PDF</text>
+</svg>
