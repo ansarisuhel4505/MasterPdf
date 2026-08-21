@@ -11,10 +11,10 @@ export default function PdfToMarkdown() {
   const [loadingStatus, setLoadingStatus] = useState('');
 
   // 🔥 ENTERPRISE FEATURES STATES 🔥
-  const [useAI, setUseAI] = useState(true); // AI Structuring
-  const [useOCR, setUseOcr] = useState(false); // For Scanned PDFs
-  const [cleanFormatting, setCleanFormatting] = useState(true); // Remove Watermarks/Footers
-  const [preserveTables, setPreserveTables] = useState(true); // Table extraction
+  const [useAI, setUseAI] = useState(true); 
+  const [useOCR, setUseOcr] = useState(false); 
+  const [cleanFormatting, setCleanFormatting] = useState(true); 
+  const [preserveTables, setPreserveTables] = useState(true); 
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -37,7 +37,6 @@ export default function PdfToMarkdown() {
 
       setLoadingStatus(useAI ? 'AI is structuring Markdown...' : 'Extracting raw text...');
       
-      // Select Action based on Enterprise Settings
       const actionType = useAI ? 'pdf-to-enterprise-md' : 'pdf-to-markdown';
 
       const response = await fetch('/api/master-convert', {
@@ -59,7 +58,6 @@ export default function PdfToMarkdown() {
       if (response.ok && data.textResult) {
         setLoadingStatus('Generating final .md file...');
         
-        // Frontend par hi file generate karke download karwana
         const mdBlob = new Blob([data.textResult], { type: 'text/markdown' });
         const downloadLink = document.createElement('a');
         downloadLink.href = URL.createObjectURL(mdBlob);
@@ -69,7 +67,6 @@ export default function PdfToMarkdown() {
         document.body.removeChild(downloadLink);
       } 
       else if (response.ok && data.downloadUrl && !useAI) {
-        // Standard Raw Text Fallback
         const textResponse = await fetch(data.downloadUrl);
         const textContent = await textResponse.text();
         const mdBlob = new Blob([textContent], { type: 'text/markdown' });
@@ -120,7 +117,6 @@ export default function PdfToMarkdown() {
           ) : (
             <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start">
               
-              {/* Left Side: Preview */}
               <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-xl p-8 relative min-h-[350px]">
                 <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition">
                   <X size={20} />
@@ -134,7 +130,6 @@ export default function PdfToMarkdown() {
                 <p className="text-xs text-gray-500 mt-2">Ready for Extraction</p>
               </div>
 
-              {/* Right Side: Enterprise Settings */}
               <div className="w-full md:w-1/2 flex flex-col min-h-[350px] justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2 flex items-center gap-2">
