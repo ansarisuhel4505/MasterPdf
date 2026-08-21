@@ -8,7 +8,7 @@ import { UploadCloud, FileText, X, Hash, Settings } from 'lucide-react';
 export default function PageNumbers() {
   const [file, setFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [position, setPosition] = useState('center'); // 'left', 'center', 'right'
+  const [position, setPosition] = useState('center');
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -23,7 +23,6 @@ export default function PageNumbers() {
     setFile(null);
   };
 
-  // Client-Side Page Number Logic
   const addPageNumbers = async () => {
     if (!file) return;
 
@@ -43,25 +42,24 @@ export default function PageNumbers() {
         
         let xPosition;
         if (position === 'left') {
-          xPosition = 30; // 30px from left
+          xPosition = 30; 
         } else if (position === 'right') {
-          xPosition = width - textWidth - 30; // 30px from right
+          xPosition = width - textWidth - 30; 
         } else {
-          xPosition = width / 2 - textWidth / 2; // Center
+          xPosition = width / 2 - textWidth / 2; 
         }
 
         page.drawText(text, {
           x: xPosition,
-          y: 30, // 30px from bottom margin
+          y: 30, 
           size: textSize,
           font: customFont,
-          color: rgb(0, 0, 0), // Black color
+          color: rgb(0, 0, 0), 
         });
       });
 
       const pdfBytes = await pdfDoc.save();
 
-      // Download trigger karna
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -77,14 +75,20 @@ export default function PageNumbers() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>Add page numbers to PDF online - MasterPdf</title>
+        <title>Add Page Numbers to PDF Online Free | MasterPdf</title>
+        <meta name="description" content="Add page numbers to your PDF documents easily. Choose position and layout. 100% free online tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="add page numbers to pdf, insert page numbers, edit pdf, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Add Page Numbers to PDF Online Free | MasterPdf" />
+        <meta property="og:description" content="Add page numbers to your PDF documents easily. Choose position and layout." />
       </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         
-        {/* Tool Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Add page numbers</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -92,11 +96,9 @@ export default function PageNumbers() {
           </p>
         </div>
 
-        {/* Workspace Area */}
         <div className="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[450px] flex flex-col items-center justify-center relative">
           
           {!file ? (
-            // Upload State
             <div className="text-center w-full">
               <input 
                 type="file" 
@@ -115,10 +117,8 @@ export default function PageNumbers() {
               <p className="mt-4 text-gray-400 text-sm">or drop PDF here</p>
             </div>
           ) : (
-            // File Selected State
             <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start pt-4">
               
-              {/* Left Side: File Preview */}
               <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-8 relative h-[350px]">
                 <button 
                   onClick={removeFile}
@@ -128,7 +128,6 @@ export default function PageNumbers() {
                 </button>
                 <div className="relative w-24 h-32 bg-white border-2 border-gray-300 shadow-md flex items-center justify-center mb-6">
                   <FileText size={40} className="text-[#E5322D] opacity-80" />
-                  {/* Visual Indicator of Page Number Position */}
                   <div className={`absolute bottom-2 text-[8px] font-bold text-red-500 ${position === 'left' ? 'left-2' : position === 'right' ? 'right-2' : 'left-1/2 transform -translate-x-1/2'}`}>
                     1
                   </div>
@@ -138,7 +137,6 @@ export default function PageNumbers() {
                 </p>
               </div>
 
-              {/* Right Side: Page Number Settings */}
               <div className="w-full md:w-1/2 flex flex-col h-[350px] justify-between">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Position Options</h3>
