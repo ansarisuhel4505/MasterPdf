@@ -5,11 +5,11 @@ function MyApp({ Component, pageProps }) {
   return (
     <>
       <Head>
-        {/* 🔥 DIRECT INLINE SVG CODE FOR FAVICON (No external image file needed) 🔥 */}
+        {/* 🔥 BULLETPROOF BASE64 SVG FAVICON (Yeh Vercel par kabhi error nahi dega) 🔥 */}
         <link 
           rel="icon" 
           type="image/svg+xml" 
-          href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='120' fill='%23E5322D'/><path d='M120 380 V160 L256 280 L392 160 V380' fill='none' stroke='%23FFFFFF' stroke-width='50' stroke-linecap='round' stroke-linejoin='round'/><text x='256' y='450' font-family='Arial, sans-serif' font-size='65' font-weight='900' fill='%23FFFFFF' text-anchor='middle' letter-spacing='4'>PDF</text></svg>" 
+          href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgcng9IjEyMCIgZmlsbD0iI0U1MzIyRCIvPjxwYXRoIGQ9Ik0xMjAgMzgwIFYxNjAgTDI1NiAyODAgTDM5MiAxNjAgVjM4MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkZGRkZGIiBzdHJva2Utd2lkdGg9IjUwIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48dGV4dCB4PSIyNTYiIHk9IjQ1MCIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjY1IiBmb250LXdlaWdodD0iOTAwIiBmaWxsPSIjRkZGRkZGIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBsZXR0ZXItc3BhY2luZz0iNCI+UERGPC90ZXh0Pjwvc3ZnPg==" 
         />
         <meta name="theme-color" content="#E5322D" />
       </Head>
