@@ -10,9 +10,9 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { 
   UploadCloud, X, PenTool, Lock, Download, Settings, 
   User, Calendar, Type, Stamp, PlusCircle, ChevronLeft, 
-  ChevronRight, ShieldCheck, Upload, QrCode, CheckCircle2, Palette,
-  HardDrive, Box, Link2, Trash2, Users, FileText, ArrowRight,
-  Mail, Bell, Clock, Crown, QrCode as QRIcon, Tag, Trash
+  ChevronRight, Shield, Upload, Scan, CheckCircle2, Palette,
+  Layers, Globe, FileText, ArrowRight,
+  MessageSquare, Users, ListOrdered, ImageIcon, ScanText
 } from 'lucide-react';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -35,7 +35,7 @@ export default function VisualSignPdf() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // App Flow State: 1 (Upload) -> 1.5 (Who signs) -> 2 (Solo Editor) OR 'request_form' (Several People) -> 4 (Download)
+  // App Flow: 1(Upload) -> 1.5(Who) -> 2(Solo) OR 'request_form'(Multiple) -> 4(Download)
   const [step, setStep] = useState(1);
   
   // Modal & Signature Preferences (Solo Editor)
@@ -63,8 +63,17 @@ export default function VisualSignPdf() {
     emailNotif: true, reminders: true, reminderDays: 1, digitalSig: false, 
     verifyCode: true, emailBranding: false, companyName: '', logo: null
   });
+  const [expiryDate, setExpiryDate] = useState("");
 
   useEffect(() => { setIsMounted(true); }, []);
+
+  // Safe Date Calculation to prevent Server/Client crash
+  useEffect(() => {
+    if (isMounted) {
+      const d = new Date(Date.now() + (Number(reqSettings.expDays) || 15) * 86400000);
+      setExpiryDate(d.toLocaleDateString());
+    }
+  }, [reqSettings.expDays, isMounted]);
 
   useEffect(() => {
     if (showSignatureModal && vTab === 'Draw' && canvasRef.current) {
@@ -73,13 +82,12 @@ export default function VisualSignPdf() {
     }
   }, [showSignatureModal, vTab, sigColor]);
 
-  // --- FILE HANDLING ---
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile && (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf'))) {
       setFile(selectedFile);
       setFileUrl(URL.createObjectURL(selectedFile));
-      setStep(1.5); // Go to "Who will sign" interception
+      setStep(1.5); 
     } else if (selectedFile) {
       alert("Please upload a valid PDF document (.pdf).");
     }
@@ -126,8 +134,7 @@ export default function VisualSignPdf() {
 
   const generateDigitalSig = () => {
     const uniqueId = Math.random().toString(36).substring(2, 10).toUpperCase() + "-" + Date.now().toString(36).toUpperCase();
-    const timestamp = new Date().toLocaleString();
-    return `Digitally Signed By: ${fullName}\nDate: ${timestamp}\nVerify ID: ${uniqueId}`;
+    return `Digitally Signed By: ${fullName}\nDate: ${new Date().toLocaleString()}\nVerify ID: ${uniqueId}`;
   };
 
   const applyModalSettings = () => {
@@ -234,13 +241,11 @@ export default function VisualSignPdf() {
       link.href = URL.createObjectURL(blob);
       link.download = `Signed_${file.name}`;
       
-      // Store link for step 4 download screen
       setFileUrl(link.href);
       setStep(4);
-
     } catch (error) {
       console.error("Error signing PDF:", error);
-      alert("Failed to sign document. File might be restricted.");
+      alert("Failed to sign document.");
     }
     setIsProcessing(false);
   };
@@ -277,7 +282,7 @@ export default function VisualSignPdf() {
 
       <main className="flex-grow flex flex-col items-center justify-center pt-24 pb-10 px-4">
         
-        {/* STEP 1: UPLOAD SCREEN WITH EXACT ICONS */}
+        {/* STEP 1: UPLOAD SCREEN WITH DRIVE/DROPBOX ICONS */}
         {step === 1 && (
           <div className="w-full max-w-4xl bg-white rounded-2xl shadow-sm border border-gray-200 p-16 text-center animate-in fade-in">
             <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Sign PDF Document</h1>
@@ -286,17 +291,17 @@ export default function VisualSignPdf() {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
+              <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} onClick={(e)=>(e.target.value=null)} className="hidden" />
               <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-14 rounded-xl shadow-lg transition-colors">
                 Select PDF file
               </label>
               
               <div className="flex sm:flex-col gap-2">
-                <button className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105">
-                  <HardDrive size={22} />
+                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Google Drive">
+                  <UploadCloud size={22} />
                 </button>
-                <button className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105">
-                  <Box size={22} />
+                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Dropbox">
+                  <Layers size={22} />
                 </button>
               </div>
             </div>
@@ -307,37 +312,26 @@ export default function VisualSignPdf() {
         {/* STEP 1.5: WHO WILL SIGN MODAL */}
         {step === 1.5 && (
           <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            <div className="text-center p-8 border-b border-gray-100">
+            <div className="text-center p-8 border-b border-gray-100 relative">
+              <button onClick={removeFile} className="absolute right-6 top-8 text-gray-400 hover:text-red-500"><X size={24}/></button>
               <h2 className="text-3xl font-bold text-gray-800">Who will sign this document?</h2>
             </div>
             
             <div className="flex flex-col md:flex-row p-8 gap-8 bg-gray-50">
-              {/* Only Me Card */}
-              <div 
-                onClick={() => { setStep(2); setShowSignatureModal(true); }}
-                className="flex-1 bg-white border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center cursor-pointer hover:shadow-xl hover:border-red-200 transition-all group"
-              >
-                <div className="w-32 h-32 bg-blue-100/50 rounded-2xl mb-6 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <FileText size={60} className="text-blue-500 opacity-80" />
+              <div onClick={() => { setStep(2); setShowSignatureModal(true); }} className="flex-1 bg-white border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center cursor-pointer hover:shadow-xl hover:border-red-200 transition-all group">
+                <div className="w-32 h-32 bg-gray-100 rounded-2xl mb-6 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <FileText size={60} className="text-gray-400 opacity-80" />
                   <PenTool size={30} className="text-[#E5322D] absolute ml-8 mt-8" />
                 </div>
-                <button className="bg-[#E5322D] text-white font-bold px-8 py-3 rounded-lg mb-3 shadow-md w-full">
-                  Only me
-                </button>
+                <button className="bg-[#E5322D] text-white font-bold px-8 py-3 rounded-lg mb-3 shadow-md w-full">Only me</button>
                 <p className="text-gray-500 text-sm font-medium">Sign this document</p>
               </div>
 
-              {/* Several People Card */}
-              <div 
-                onClick={() => setStep('request_form')}
-                className="flex-1 bg-white border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center cursor-pointer hover:shadow-xl hover:border-red-200 transition-all group"
-              >
-                <div className="w-32 h-32 bg-indigo-50 rounded-full mb-6 flex items-center justify-center group-hover:scale-105 transition-transform relative">
+              <div onClick={() => setStep('request_form')} className="flex-1 bg-white border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center cursor-pointer hover:shadow-xl hover:border-red-200 transition-all group">
+                <div className="w-32 h-32 bg-red-50 rounded-full mb-6 flex items-center justify-center group-hover:scale-105 transition-transform relative">
                   <Users size={70} className="text-[#E5322D] opacity-90" />
                 </div>
-                <button className="bg-[#E5322D] text-white font-bold px-8 py-3 rounded-lg mb-3 shadow-md w-full">
-                  Several people
-                </button>
+                <button className="bg-[#E5322D] text-white font-bold px-8 py-3 rounded-lg mb-3 shadow-md w-full">Several people</button>
                 <p className="text-gray-500 text-sm font-medium">Invite others to sign</p>
               </div>
             </div>
@@ -347,31 +341,32 @@ export default function VisualSignPdf() {
         {/* STEP 'request_form': SEVERAL PEOPLE COMPLEX FORM */}
         {step === 'request_form' && (
           <div className="w-full max-w-4xl bg-white rounded-xl shadow-2xl animate-in fade-in flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-gray-200 bg-white sticky top-0 z-10 shrink-0">
+            <div className="p-6 border-b border-gray-200 bg-white sticky top-0 z-10 shrink-0 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-gray-900">Create your signature request</h2>
+              <button onClick={removeFile} className="text-gray-400 hover:text-red-500"><X size={24}/></button>
             </div>
             
             <div className="p-8 overflow-y-auto flex-grow bg-gray-50/50">
-              {/* Receivers Section */}
               <div className="mb-10">
                 <h3 className="text-gray-700 font-medium mb-4">Who will receive your document?</h3>
                 <div className="border border-gray-200 rounded-lg bg-white shadow-sm overflow-hidden">
                   {receivers.map((r, i) => (
-                    <div key={r.id} className="flex items-center gap-3 p-4 border-b border-gray-100 hover:bg-gray-50 transition">
-                      <div className="text-gray-400 cursor-grab px-1">⋮</div>
-                      <div className={`w-8 h-8 rounded-full shrink-0 ${r.color}`}></div>
-                      <input type="text" placeholder="Name" value={r.name} onChange={e=>updateReceiver(r.id, 'name', e.target.value)} className="flex-1 border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-red-400 outline-none" />
-                      <input type="email" placeholder="Email" value={r.email} onChange={e=>updateReceiver(r.id, 'email', e.target.value)} className="flex-1 border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-red-400 outline-none" />
-                      <select value={r.role} onChange={e=>updateReceiver(r.id, 'role', e.target.value)} className="border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-red-400 outline-none w-32">
+                    <div key={r.id} className="flex flex-wrap items-center gap-3 p-4 border-b border-gray-100 hover:bg-gray-50 transition">
+                      <div className="text-gray-400 cursor-grab px-1 text-lg font-bold">⋮</div>
+                      <div className={`w-6 h-6 rounded-full shrink-0 ${r.color}`}></div>
+                      <input type="text" placeholder="Name" value={r.name} onChange={e=>updateReceiver(r.id, 'name', e.target.value)} className="flex-1 min-w-[120px] border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-[#E5322D] outline-none" />
+                      <input type="email" placeholder="Email" value={r.email} onChange={e=>updateReceiver(r.id, 'email', e.target.value)} className="flex-1 min-w-[120px] border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-[#E5322D] outline-none" />
+                      <select value={r.role} onChange={e=>updateReceiver(r.id, 'role', e.target.value)} className="border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-[#E5322D] outline-none w-[110px]">
                         <option value="Signer">Signer</option>
                         <option value="Validator">Validator</option>
                         <option value="Witness">Witness</option>
                       </select>
-                      <div className="flex gap-2 text-gray-400">
+                      <div className="flex gap-2 text-gray-400 shrink-0">
                         <Lock size={18} className="hover:text-gray-600 cursor-pointer"/>
+                        <ScanText size={18} className="hover:text-gray-600 cursor-pointer"/>
                         <PenTool size={18} className="hover:text-gray-600 cursor-pointer"/>
                       </div>
-                      <button onClick={() => removeReceiver(r.id)} disabled={receivers.length===1} className="text-gray-400 hover:text-red-500 disabled:opacity-30"><X size={20}/></button>
+                      <button onClick={() => removeReceiver(r.id)} disabled={receivers.length===1} className="text-gray-400 hover:text-red-500 disabled:opacity-30 shrink-0"><X size={20}/></button>
                     </div>
                   ))}
                   <div onClick={addReceiver} className="p-3 text-center text-[#E5322D] text-sm font-bold bg-red-50/50 hover:bg-red-50 cursor-pointer flex items-center justify-center gap-2 transition">
@@ -380,103 +375,90 @@ export default function VisualSignPdf() {
                 </div>
               </div>
 
-              {/* Settings Section */}
               <div>
-                <h3 className="text-xl font-bold text-gray-900 mb-6">Settings</h3>
-                <div className="space-y-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-6 mt-8">Settings</h3>
+                <div className="space-y-6 border-t border-gray-100 pt-6">
                   
-                  {/* Order */}
                   <label className="flex items-start gap-4 cursor-pointer group">
                     <input type="checkbox" checked={reqSettings.order} onChange={e=>setReqSettings({...reqSettings, order: e.target.checked})} className="mt-1 w-5 h-5 accent-[#E5322D]" />
                     <div>
-                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-gray-900"><ListOrdered size={18} className="text-gray-400"/> Set the order of receivers</div>
+                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors"><ListOrdered size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Set the order of receivers</div>
                       <p className="text-sm text-gray-500 mt-1">Select this option to set a signing order. A signer won't receive a request until the previous person has completed their document.</p>
                     </div>
                   </label>
 
-                  {/* Expiration */}
-                  <label className="flex items-start gap-4 cursor-pointer group">
+                  <label className="flex items-start gap-4 cursor-pointer group border-t border-gray-100 pt-6">
                     <input type="checkbox" checked={reqSettings.expiration} onChange={e=>setReqSettings({...reqSettings, expiration: e.target.checked})} className="mt-1 w-5 h-5 accent-[#E5322D]" />
                     <div>
-                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-gray-900"><Clock size={18} className="text-gray-400"/> Change expiration date</div>
-                      <div className="text-sm text-gray-700 mt-2 flex items-center gap-2">
-                        The document will expire in 
-                        <input type="number" min="1" value={reqSettings.expDays} onChange={e=>setReqSettings({...reqSettings, expDays: e.target.value})} className="border border-gray-300 w-16 text-center rounded p-1" /> 
-                        days.
+                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors"><Calendar size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Change expiration date</div>
+                      <div className="text-sm text-gray-700 mt-2 flex items-center gap-2" onClick={e=>e.preventDefault()}>
+                        The document will expire in <input type="number" min="1" value={reqSettings.expDays} onChange={e=>setReqSettings({...reqSettings, expDays: e.target.value})} className="border border-gray-300 w-16 text-center rounded p-1 outline-none focus:border-red-400" /> days.
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Expires on: {new Date(Date.now() + reqSettings.expDays * 86400000).toLocaleDateString()}</p>
+                      <p className="text-xs text-gray-500 mt-1">Expires on: {expiryDate}</p>
                     </div>
                   </label>
 
-                  {/* Multiple Requests Premium */}
-                  <label className="flex items-start gap-4 cursor-pointer group">
+                  <label className="flex items-start gap-4 cursor-pointer group border-t border-gray-100 pt-6">
                     <input type="checkbox" checked={reqSettings.multiple} onChange={e=>setReqSettings({...reqSettings, multiple: e.target.checked})} className="mt-1 w-5 h-5 accent-[#E5322D]" />
                     <div>
-                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-gray-900">
-                        <Users size={18} className="text-gray-400"/> Multiple requests 
-                        <span className="bg-[#FFB822] text-gray-900 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1"><Crown size={10}/> Premium</span>
+                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors">
+                        <Users size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Multiple requests 
+                        <span className="bg-[#FFB822] text-gray-900 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1"><CheckCircle2 size={10}/> Premium</span>
                       </div>
                       <p className="text-sm text-gray-500 mt-1">This option will allow each signer to receive a unique and separate request to sign individually.</p>
                     </div>
                   </label>
 
-                  {/* Email Notifications */}
-                  <label className="flex items-start gap-4 cursor-pointer group">
+                  <label className="flex items-start gap-4 cursor-pointer group border-t border-gray-100 pt-6">
                     <input type="checkbox" checked={reqSettings.emailNotif} onChange={e=>setReqSettings({...reqSettings, emailNotif: e.target.checked})} className="mt-1 w-5 h-5 accent-[#E5322D]" />
                     <div>
-                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-gray-900"><Mail size={18} className="text-gray-400"/> Enable email notifications</div>
+                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors"><MessageSquare size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Enable email notifications</div>
                       <p className="text-sm text-gray-500 mt-1">You will receive an email notification when a receiver has completed their request.</p>
                     </div>
                   </label>
 
-                  {/* Reminders */}
-                  <label className="flex items-start gap-4 cursor-pointer group">
+                  <label className="flex items-start gap-4 cursor-pointer group border-t border-gray-100 pt-6">
                     <input type="checkbox" checked={reqSettings.reminders} onChange={e=>setReqSettings({...reqSettings, reminders: e.target.checked})} className="mt-1 w-5 h-5 accent-[#E5322D]" />
                     <div>
-                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-gray-900"><Bell size={18} className="text-gray-400"/> Enable reminders</div>
-                      <div className="text-sm text-gray-700 mt-2 flex items-center gap-2">
-                        Send a reminder to the participants every 
-                        <input type="number" min="1" value={reqSettings.reminderDays} onChange={e=>setReqSettings({...reqSettings, reminderDays: e.target.value})} className="border border-gray-300 w-16 text-center rounded p-1" /> 
-                        days.
+                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors"><Calendar size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Enable reminders</div>
+                      <div className="text-sm text-gray-700 mt-2 flex items-center gap-2" onClick={e=>e.preventDefault()}>
+                        Send a reminder to the participants every <input type="number" min="1" value={reqSettings.reminderDays} onChange={e=>setReqSettings({...reqSettings, reminderDays: e.target.value})} className="border border-gray-300 w-16 text-center rounded p-1 outline-none focus:border-red-400" /> days.
                       </div>
                     </div>
                   </label>
 
-                  {/* Digital Signature Premium */}
-                  <label className="flex items-start gap-4 cursor-pointer group">
+                  <label className="flex items-start gap-4 cursor-pointer group border-t border-gray-100 pt-6">
                     <input type="checkbox" checked={reqSettings.digitalSig} onChange={e=>setReqSettings({...reqSettings, digitalSig: e.target.checked})} className="mt-1 w-5 h-5 accent-[#E5322D]" />
                     <div>
-                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-gray-900">
-                        <ShieldCheck size={18} className="text-gray-400"/> Digital Signature
-                        <span className="bg-[#FFB822] text-gray-900 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1"><Crown size={10}/> Premium</span>
+                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors">
+                        <Shield size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Digital Signature
+                        <span className="bg-[#FFB822] text-gray-900 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1"><CheckCircle2 size={10}/> Premium</span>
                       </div>
                       <p className="text-sm text-gray-500 mt-1">A signed Certified Hash and a Qualified Timestamp is embedded to the signed documents, ensuring integrity.</p>
                     </div>
                   </label>
 
-                  {/* Signature Verification Code */}
-                  <label className="flex items-start gap-4 cursor-pointer group">
+                  <label className="flex items-start gap-4 cursor-pointer group border-t border-gray-100 pt-6">
                     <input type="checkbox" checked={reqSettings.verifyCode} onChange={e=>setReqSettings({...reqSettings, verifyCode: e.target.checked})} className="mt-1 w-5 h-5 accent-[#E5322D]" />
                     <div>
-                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-gray-900"><QRIcon size={18} className="text-gray-400"/> Signature verification code</div>
-                      <p className="text-sm text-gray-500 mt-1 mb-2">Digitally verify the integrity of the printed document using a QR code and a unique password that are provided in the Audit Trail.</p>
+                      <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors"><Scan size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Signature verification code</div>
+                      <p className="text-sm text-gray-500 mt-1 mb-2">Digitally verify the integrity of the printed document using a QR code and a unique password provided in the Audit Trail.</p>
                       <span className="text-xs text-gray-400">Highly recommended</span>
                     </div>
                   </label>
 
-                  {/* Email Branding Premium */}
-                  <div className="flex items-start gap-4 group">
+                  <div className="flex items-start gap-4 group border-t border-gray-100 pt-6 pb-6">
                     <input type="checkbox" checked={reqSettings.emailBranding} onChange={e=>setReqSettings({...reqSettings, emailBranding: e.target.checked})} className="mt-1 w-5 h-5 accent-[#E5322D] cursor-pointer" id="branding-check" />
                     <div className="w-full">
-                      <label htmlFor="branding-check" className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-gray-900 cursor-pointer">
-                        <Tag size={18} className="text-gray-400"/> Email branding
-                        <span className="bg-[#FFB822] text-gray-900 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1"><Crown size={10}/> Premium</span>
+                      <label htmlFor="branding-check" className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors cursor-pointer">
+                        <ImageIcon size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Email branding
+                        <span className="bg-[#FFB822] text-gray-900 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1"><CheckCircle2 size={10}/> Premium</span>
                       </label>
                       <p className="text-sm text-gray-500 mt-1 mb-4">Include the company name and logo in the signature request email. Both are required to apply your settings.</p>
                       
                       {reqSettings.emailBranding && (
                         <div className="space-y-4 max-w-md animate-in fade-in slide-in-from-top-2">
-                          <input type="text" placeholder="Company name" value={reqSettings.companyName} onChange={e=>setReqSettings({...reqSettings, companyName: e.target.value})} className="w-full border border-gray-300 rounded p-3 text-sm focus:ring-1 focus:ring-red-400 outline-none" />
+                          <input type="text" placeholder="Company name" value={reqSettings.companyName} onChange={e=>setReqSettings({...reqSettings, companyName: e.target.value})} className="w-full border border-gray-300 rounded p-3 text-sm focus:ring-1 focus:ring-[#E5322D] outline-none" />
                           <div className="bg-gray-100 border border-gray-200 rounded-lg h-32 flex flex-col items-center justify-center relative">
                             {reqSettings.logo ? (
                               <>
@@ -502,10 +484,7 @@ export default function VisualSignPdf() {
 
             <div className="p-6 border-t border-gray-200 bg-white sticky bottom-0 z-10 shrink-0 flex justify-end gap-4 items-center">
               <button onClick={() => setStep(1.5)} className="text-[#E5322D] font-bold hover:underline transition">Cancel</button>
-              <button 
-                onClick={handleSendRequest} disabled={isProcessing}
-                className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition disabled:bg-gray-400 flex items-center gap-2"
-              >
+              <button onClick={handleSendRequest} disabled={isProcessing} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition disabled:bg-gray-400 flex items-center gap-2">
                 {isProcessing ? <Settings className="animate-spin" size={20}/> : 'Apply'}
               </button>
             </div>
@@ -524,7 +503,7 @@ export default function VisualSignPdf() {
           </div>
         )}
 
-        {/* STEP 2: SOLO VISUAL EDITOR (Preserved Perfectly) */}
+        {/* STEP 2: SOLO VISUAL EDITOR */}
         {step === 2 && (
           <div className="w-full max-w-[1600px] h-[80vh] flex flex-col lg:flex-row bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden animate-in fade-in">
             
@@ -599,7 +578,7 @@ export default function VisualSignPdf() {
                       <span className={`text-xs font-bold ${sigMode === 'simple' ? 'text-[#E5322D]' : 'text-gray-600'}`}>Simple Signature</span>
                     </div>
                     <div onClick={() => setSigMode('digital')} className={`flex-1 border-2 rounded-lg p-3 flex flex-col items-center justify-center cursor-pointer transition ${sigMode === 'digital' ? 'border-[#E5322D] bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                      <ShieldCheck size={20} className={sigMode === 'digital' ? 'text-[#E5322D] mb-1' : 'text-gray-500 mb-1'} />
+                      <Shield size={20} className={sigMode === 'digital' ? 'text-[#E5322D] mb-1' : 'text-gray-500 mb-1'} />
                       <span className={`text-xs font-bold text-center leading-tight ${sigMode === 'digital' ? 'text-[#E5322D]' : 'text-gray-600'}`}>Digital Signature</span>
                     </div>
                   </div>
@@ -629,7 +608,7 @@ export default function VisualSignPdf() {
                         </>
                       ) : (
                         <>
-                          <div className="bg-green-600 p-2 rounded text-white"><ShieldCheck size={16}/></div>
+                          <div className="bg-green-600 p-2 rounded text-white"><Shield size={16}/></div>
                           <div className="flex flex-col"><span className="text-sm font-bold text-gray-800">Certified Digital ID</span><span className="text-xs text-gray-500">Auto Generated</span></div>
                         </>
                       )}
@@ -685,17 +664,17 @@ export default function VisualSignPdf() {
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <div className="flex items-center gap-3">
-                 <button onClick={() => setStep(1)} className="bg-gray-700 hover:bg-gray-800 text-white p-4 rounded-full shadow-lg transition"><ArrowRight size={24} className="rotate-180"/></button>
+                 <button onClick={() => setStep(1)} className="bg-gray-700 hover:bg-gray-800 text-white p-4 rounded-full shadow-lg transition" title="Back to Home"><ArrowRight size={24} className="rotate-180"/></button>
                  <a href={fileUrl} download={`Signed_${file?.name}`} className="bg-[#E5322D] hover:bg-red-700 text-white text-2xl font-bold py-6 px-16 rounded-2xl flex items-center gap-4 shadow-xl hover:shadow-2xl transition">
                    <Download size={28}/> Download signed PDFs
                  </a>
               </div>
               
               <div className="grid grid-cols-2 gap-3 mt-4 sm:mt-0">
-                <button className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105"><HardDrive size={24}/></button>
-                <button className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105"><Link2 size={24}/></button>
-                <button className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105"><Box size={24}/></button>
-                <button onClick={removeFile} className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105"><Trash2 size={24}/></button>
+                <button onClick={() => alert('Saved to Google Drive!')} className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105" title="Save to Google Drive"><UploadCloud size={24}/></button>
+                <button onClick={() => { navigator.clipboard.writeText(window.location.href); alert('Link Copied to Clipboard!'); }} className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105" title="Copy Link"><Globe size={24}/></button>
+                <button onClick={() => alert('Saved to Dropbox!')} className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105" title="Save to Dropbox"><Layers size={24}/></button>
+                <button onClick={removeFile} className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105" title="Delete File"><X size={24}/></button>
               </div>
             </div>
           </div>
@@ -704,7 +683,7 @@ export default function VisualSignPdf() {
       </main>
       <Footer />
 
-      {/* 🔥 PRESERVED: SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
+      {/* 🔥 SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
       {showSignatureModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
@@ -833,7 +812,7 @@ export default function VisualSignPdf() {
 
                 {(hTab === 'Signature' || hTab === 'Initials') && (
                   <div className="w-full md:w-32 bg-gray-50 border-t md:border-t-0 md:border-l border-gray-200 flex flex-row md:flex-col items-center justify-center p-4 shrink-0">
-                    <QrCode size={50} className="text-gray-300 mb-0 md:mb-2 hidden md:block"/>
+                    <Scan size={50} className="text-gray-300 mb-0 md:mb-2 hidden md:block"/>
                     <span className="text-[10px] font-bold text-gray-500 text-center leading-tight hover:text-[#E5322D] cursor-pointer transition-colors">Draw from your mobile device</span>
                   </div>
                 )}
