@@ -85,8 +85,19 @@ export default function CompressPdf() {
           }),
         });
         const data = await response.json();
-        if (response.ok && data.downloadUrl) window.location.href = data.downloadUrl;
-        else alert("Compression Failed: " + (data.error || "Unknown error"));
+        
+        if (response.ok && data.downloadUrl) {
+          // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+          const link = document.createElement('a');
+          link.href = data.downloadUrl;
+          link.setAttribute('download', `MasterPdf_Compressed_${file.name}`);
+          link.target = '_blank'; // Trigger background download instantly
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } else {
+          alert("Compression Failed: " + (data.error || "Unknown error"));
+        }
       } 
       
       // 2. Image (Photo)
@@ -146,6 +157,7 @@ export default function CompressPdf() {
            fileExtension = 'jpg';
         }
 
+        // Image local download is already fast
         const link = document.createElement('a');
         link.href = URL.createObjectURL(finalBlob);
         link.download = `Resized_${file.name.split('.')[0]}.${fileExtension === 'pdf' ? 'pdf' : fileExtension}`;
@@ -162,7 +174,16 @@ export default function CompressPdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Compress & Resize PDF/Images - MasterPdf</title></Head>
+      
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Compress PDF Size Online Free | MasterPdf</title>
+        <meta name="description" content="Reduce PDF file size quickly without losing quality. Best free online PDF compressor tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="compress pdf, reduce pdf size, optimize pdf, free pdf compressor, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Compress PDF Size Online Free | MasterPdf" />
+        <meta property="og:description" content="Reduce PDF file size quickly without losing quality. Best free online PDF compressor tool." />
+      </Head>
+
       <Navbar />
       <main className="flex-grow flex flex-col items-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
@@ -245,7 +266,7 @@ export default function CompressPdf() {
                           </div>
                         </div>
 
-                        {/* IMAGE SETTINGS (High Contrast Enabled) */}
+                        {/* IMAGE SETTINGS */}
                         {fileType === 'image' && (
                           <div className="pt-3 border-t border-gray-200 space-y-3">
                             <div className="flex items-center gap-3">
@@ -281,7 +302,7 @@ export default function CompressPdf() {
                           </div>
                         )}
 
-                        {/* PDF SETTINGS (High Contrast Enabled) */}
+                        {/* PDF SETTINGS */}
                         {fileType === 'pdf' && (
                           <div className="pt-3 border-t border-gray-200 space-y-3">
                              <label className="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
