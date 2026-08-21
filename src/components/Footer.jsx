@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Globe, ChevronDown, Phone, MessageSquare, Mail, X, FileText, Settings, Shield, Image as ImageIcon, Layers, Lock } from 'lucide-react';
+// 🔥 FIX: Added Home, Info, Briefcase, aur Wrench icons yahan 🔥
+import { Globe, ChevronDown, Phone, MessageSquare, Mail, X, FileText, Settings, Shield, Image as ImageIcon, Layers, Lock, Home, Info, Briefcase, Wrench } from 'lucide-react';
 
 export default function Footer() {
   const [selectedLang, setSelectedLang] = useState('English');
@@ -8,7 +9,6 @@ export default function Footer() {
   const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
 
   useEffect(() => {
-    // Prevent adding script multiple times on re-renders
     if (!document.querySelector('script[src*="translate.google.com"]')) {
       const addScript = document.createElement('script');
       addScript.src = '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
@@ -23,7 +23,6 @@ export default function Footer() {
       };
     }
 
-    // CSS to completely hide Google's default UI and tooltips
     if (!document.getElementById('google-translate-styles')) {
       const style = document.createElement('style');
       style.id = 'google-translate-styles';
@@ -56,19 +55,16 @@ export default function Footer() {
     
     const domain = window.location.hostname;
 
-    // 1. FORCE CLEAR OLD COOKIES FIRST (This fixes the stuck language issue)
     document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
     document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${domain};`;
     document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${domain};`;
 
-    // 2. SET NEW COOKIE ONLY IF NOT ENGLISH
     if (langCode !== 'en') {
       document.cookie = `googtrans=/en/${langCode}; path=/;`;
       document.cookie = `googtrans=/en/${langCode}; path=/; domain=${domain};`;
       document.cookie = `googtrans=/en/${langCode}; path=/; domain=.${domain};`;
     }
 
-    // 3. RELOAD PAGE TO APPLY
     window.location.reload();
   };
 
@@ -106,13 +102,24 @@ export default function Footer() {
               </div>
             </div>
 
+            {/* 🔥 ICONS ADDED HERE 🔥 */}
             <div className="flex flex-col gap-3">
               <h4 className="text-white font-bold tracking-wider mb-2 text-xs uppercase">Quick Links</h4>
-              <Link href="/" className="hover:text-white transition">Home</Link>
-              <Link href="/about" className="hover:text-white transition">About us</Link>
-              <Link href="/services" className="hover:text-white transition">Services</Link>
-              <button onClick={() => setIsToolsModalOpen(true)} className="text-left hover:text-white transition">
-                All PDF Tools
+              <Link href="/" className="flex items-center gap-2 hover:text-white transition">
+                <Home size={16} className="text-[#E5322D]" />
+                <span>Home</span>
+              </Link>
+              <Link href="/about" className="flex items-center gap-2 hover:text-white transition">
+                <Info size={16} className="text-[#E5322D]" />
+                <span>About us</span>
+              </Link>
+              <Link href="/services" className="flex items-center gap-2 hover:text-white transition">
+                <Briefcase size={16} className="text-[#E5322D]" />
+                <span>Services</span>
+              </Link>
+              <button onClick={() => setIsToolsModalOpen(true)} className="flex items-center gap-2 text-left hover:text-white transition">
+                <Wrench size={16} className="text-[#E5322D]" />
+                <span>All PDF Tools</span>
               </button>
             </div>
 
@@ -163,6 +170,7 @@ export default function Footer() {
           <div className="border-t border-[#333333] my-6"></div>
 
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 relative">
+            
             <div className="relative">
               <button 
                 onClick={() => setIsLangOpen(!isLangOpen)}
