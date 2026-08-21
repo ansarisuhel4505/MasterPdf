@@ -25,10 +25,8 @@ export default function PdfToJpg() {
     setIsConverting(true);
     
     try {
-      // 1. Upload to Vercel Blob (No size limits)
       const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
 
-      // 2. Send request to backend
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -37,7 +35,14 @@ export default function PdfToJpg() {
       
       const data = await response.json();
       if (response.ok && data.downloadUrl) {
-        window.location.href = data.downloadUrl;
+        // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.setAttribute('download', `MasterPdf_Images_${file.name.split('.')[0]}`);
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
         alert("Conversion Failed: " + data.error);
       }
@@ -49,12 +54,19 @@ export default function PdfToJpg() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>Convert PDF to JPG online - MasterPdf</title>
+        <title>Convert PDF to JPG Online Free | MasterPdf</title>
+        <meta name="description" content="Extract pages from PDF to high-quality JPG images online instantly. 100% Free. Created by Suhel Ansari." />
+        <meta name="keywords" content="pdf to jpg, convert pdf to image, extract images from pdf, free pdf to jpg converter, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Convert PDF to JPG Online Free | MasterPdf" />
+        <meta property="og:description" content="Extract pages from PDF to high-quality JPG images online instantly." />
       </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">PDF to JPG Converter</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
