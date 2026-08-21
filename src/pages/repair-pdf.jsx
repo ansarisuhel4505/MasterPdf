@@ -86,10 +86,18 @@ export default function EnterpriseRepairPdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Enterprise PDF Repair - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Repair Corrupt PDF Files Online | MasterPdf</title>
+        <meta name="description" content="Repair and recover data from corrupted or damaged PDF documents online for free. Deep diagnostic recovery tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="repair pdf, fix corrupt pdf, recover pdf data, broken pdf repair, free pdf repair tool, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Repair Corrupt PDF Files Online | MasterPdf" />
+        <meta property="og:description" content="Repair and recover data from corrupted or damaged PDF documents online for free." />
+      </Head>
+
       <Navbar />
       
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-red-100 text-[#E5322D] px-3 py-1 rounded-full text-xs font-bold mb-4">
             <ShieldCheck size={14} /> Ultimate Multi-Tier Recovery
@@ -173,7 +181,8 @@ export default function EnterpriseRepairPdf() {
                           </p>
                         </div>
                       </div>
-                      <a href={downloadUrl} download={recoveryLevel.includes('Tier 3') ? `Scavenged_Data_${file.name}.txt` : `Repaired_${file.name}`} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-gray-900 hover:bg-black transition shadow-lg">
+                      {/* 🔥 SUPERFAST BROWSER DOWNLOAD TRICK ALREADY IMPLEMENTED VIA <a> TAG 🔥 */}
+                      <a href={downloadUrl} target="_blank" download={recoveryLevel.includes('Tier 3') ? `Scavenged_Data_${file.name}.txt` : `Repaired_${file.name}`} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-gray-900 hover:bg-black transition shadow-lg">
                         <Download size={22} /> {recoveryLevel.includes('Tier 3') ? "Download Text Data" : "Download Recovered PDF"}
                       </a>
                     </div>
