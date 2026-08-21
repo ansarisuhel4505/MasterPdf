@@ -36,7 +36,14 @@ export default function UnlockPdf() {
       
       const data = await response.json();
       if (response.ok && data.downloadUrl) {
-        window.location.href = data.downloadUrl;
+        // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.setAttribute('download', `MasterPdf_Unlocked_${file.name}`);
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
         setErrorMsg(data.error || "Incorrect password.");
       }
@@ -48,11 +55,20 @@ export default function UnlockPdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Unlock PDF files online - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Unlock PDF Files Online Free | MasterPdf</title>
+        <meta name="description" content="Remove PDF passwords securely and instantly. Free online PDF unlocker tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="unlock pdf, remove pdf password, free pdf unlocker, decrypt pdf, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Unlock PDF Files Online Free | MasterPdf" />
+        <meta property="og:description" content="Remove PDF passwords securely and instantly. Free online PDF unlocker tool." />
+      </Head>
+
       <Navbar />
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Unlock PDF</h1>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">Remove password security from your PDF documents instantly.</p>
         </div>
         <div className="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[450px] flex flex-col items-center justify-center relative">
           {!file ? (
@@ -73,7 +89,7 @@ export default function UnlockPdf() {
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Enter Document Password</h3>
                   <div className="flex flex-col gap-4">
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password..." className="w-full border rounded-md p-3 focus:outline-none" />
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password..." className="w-full border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-[#E5322D]" />
                     {errorMsg && <p className="text-red-500 text-sm font-medium">{errorMsg}</p>}
                   </div>
                 </div>
