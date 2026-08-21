@@ -5,13 +5,12 @@ import Footer from '../components/Footer';
 import { UploadCloud, FileText, X, ArrowRight, Settings } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
 
-// 🛑 HAR FILE KE LIYE BAS YEH 3 CHEEZEIN CHANGE KARNI HAIN 🛑
 const TOOL_TITLE = "JPG to PDF";
-const TOOL_DESC = "Convert JPG images to PDF documents.";
+const TOOL_DESC = "Convert JPG and PNG images to PDF documents instantly.";
 const ACTION_NAME = "jpg-to-pdf";
 const ACCEPT_FORMAT = ".jpg,.jpeg,.png";
 
-export default function GenericTool() {
+export default function JpgToPdf() {
   const [file, setFile] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
 
@@ -25,10 +24,8 @@ export default function GenericTool() {
     setIsConverting(true);
     
     try {
-      // 1. Vercel Blob Upload (Bypasses limit)
       const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
 
-      // 2. Send URL to Backend
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,8 +33,16 @@ export default function GenericTool() {
       });
       
       const data = await response.json();
+      
       if (response.ok && data.downloadUrl) {
-        window.location.href = data.downloadUrl; // Auto Download
+        // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.setAttribute('download', `MasterPdf_Converted_${file.name.split('.')[0]}.pdf`);
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
         alert("Action Failed: " + data.error);
       }
@@ -49,9 +54,17 @@ export default function GenericTool() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>{TOOL_TITLE} - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Convert JPG & PNG to PDF Online Free | MasterPdf</title>
+        <meta name="description" content="Convert your JPG, JPEG, and PNG images to PDF securely and quickly. 100% Free tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="jpg to pdf, image to pdf, png to pdf, convert photo to pdf, free image converter, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Convert JPG & PNG to PDF Online Free | MasterPdf" />
+        <meta property="og:description" content="Convert your JPG, JPEG, and PNG images to PDF securely and quickly." />
+      </Head>
+
       <Navbar />
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">{TOOL_TITLE}</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">{TOOL_DESC}</p>
@@ -74,7 +87,7 @@ export default function GenericTool() {
               <div className="w-full md:w-1/2 flex flex-col h-[350px] justify-between">
                 <div><h3 className="text-xl font-bold border-b pb-2">Ready to Process</h3></div>
                 <div className="mt-6 flex justify-end">
-                   <button onClick={processFile} disabled={isConverting} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 disabled:bg-gray-400">
+                   <button onClick={processFile} disabled={isConverting} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 disabled:bg-gray-400 transition shadow-md hover:shadow-lg">
                      {isConverting ? <><Settings className="animate-spin" size={24} /> Processing...</> : <>Convert Now <ArrowRight size={24} /></>}
                    </button>
                 </div>
