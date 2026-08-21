@@ -7,55 +7,36 @@ export default function Footer() {
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
 
-  // 🔥 Google Translate Aggressive Hide Setup 🔥
   useEffect(() => {
-    // Add Google Translate Script
-    const addScript = document.createElement('script');
-    addScript.src = '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
-    addScript.async = true;
-    document.body.appendChild(addScript);
+    // Prevent adding script multiple times on re-renders
+    if (!document.querySelector('script[src*="translate.google.com"]')) {
+      const addScript = document.createElement('script');
+      addScript.src = '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+      addScript.async = true;
+      document.body.appendChild(addScript);
 
-    window.googleTranslateElementInit = () => {
-      new window.google.translate.TranslateElement(
-        { pageLanguage: 'en', autoDisplay: false },
-        'google_translate_element'
-      );
-    };
+      window.googleTranslateElementInit = () => {
+        new window.google.translate.TranslateElement(
+          { pageLanguage: 'en', autoDisplay: false },
+          'google_translate_element'
+        );
+      };
+    }
 
-    // 🔥 100% BULLETPROOF CSS TO HIDE GOOGLE TRANSLATE BANNER & TOOLTIPS 🔥
-    const style = document.createElement('style');
-    style.innerHTML = `
-      /* Hide the top banner iframe completely */
-      .goog-te-banner-frame.skiptranslate, 
-      .skiptranslate > iframe { 
-        display: none !important; 
-      } 
-      
-      /* Prevent the body from being pushed down by Google */
-      body { 
-        top: 0px !important; 
-        position: static !important; 
-      }
-      
-      /* Hide the original translation widget */
-      #google_translate_element { 
-        display: none !important; 
-      }
-      
-      /* Hide the annoying tooltip that appears when hovering over translated text */
-      .goog-tooltip {
-        display: none !important;
-      }
-      .goog-tooltip:hover {
-        display: none !important;
-      }
-      .goog-text-highlight {
-        background-color: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-      }
-    `;
-    document.head.appendChild(style);
+    // CSS to completely hide Google's default UI and tooltips
+    if (!document.getElementById('google-translate-styles')) {
+      const style = document.createElement('style');
+      style.id = 'google-translate-styles';
+      style.innerHTML = `
+        .goog-te-banner-frame.skiptranslate, .skiptranslate > iframe { display: none !important; } 
+        body { top: 0px !important; position: static !important; }
+        #google_translate_element { display: none !important; }
+        .goog-tooltip { display: none !important; }
+        .goog-tooltip:hover { display: none !important; }
+        .goog-text-highlight { background-color: transparent !important; border: none !important; box-shadow: none !important; }
+      `;
+      document.head.appendChild(style);
+    }
   }, []);
 
   const languages = [
@@ -73,12 +54,21 @@ export default function Footer() {
     setSelectedLang(langName);
     setIsLangOpen(false);
     
-    // Set Google Translate Cookie to force translation
     const domain = window.location.hostname;
-    document.cookie = `googtrans=/en/${langCode}; path=/; domain=${domain}`;
-    document.cookie = `googtrans=/en/${langCode}; path=/; domain=.${domain}`;
-    
-    // Reload page to apply translation instantly
+
+    // 1. FORCE CLEAR OLD COOKIES FIRST (This fixes the stuck language issue)
+    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${domain};`;
+    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${domain};`;
+
+    // 2. SET NEW COOKIE ONLY IF NOT ENGLISH
+    if (langCode !== 'en') {
+      document.cookie = `googtrans=/en/${langCode}; path=/;`;
+      document.cookie = `googtrans=/en/${langCode}; path=/; domain=${domain};`;
+      document.cookie = `googtrans=/en/${langCode}; path=/; domain=.${domain};`;
+    }
+
+    // 3. RELOAD PAGE TO APPLY
     window.location.reload();
   };
 
@@ -104,7 +94,6 @@ export default function Footer() {
           
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-10 mb-12">
             
-            {/* 1. Company Column */}
             <div className="flex flex-col gap-4">
               <h2 className="text-2xl font-black text-white tracking-tight">
                 M<span className="text-[#E5322D]">ASTER</span>PDF
@@ -117,7 +106,6 @@ export default function Footer() {
               </div>
             </div>
 
-            {/* 2. Quick Links Column */}
             <div className="flex flex-col gap-3">
               <h4 className="text-white font-bold tracking-wider mb-2 text-xs uppercase">Quick Links</h4>
               <Link href="/" className="hover:text-white transition">Home</Link>
@@ -128,7 +116,6 @@ export default function Footer() {
               </button>
             </div>
 
-            {/* 3. Contact Column */}
             <div className="flex flex-col gap-3">
               <h4 className="text-white font-bold tracking-wider mb-2 text-xs uppercase">Contact Us</h4>
               <div className="flex items-center gap-2 text-gray-300">
@@ -145,7 +132,6 @@ export default function Footer() {
               </div>
             </div>
 
-            {/* 4. Developer Info Column */}
             <div className="flex flex-col gap-3">
               <h4 className="text-white font-bold tracking-wider mb-2 text-xs uppercase">Developer</h4>
               <div className="bg-[#222222] p-3 rounded-lg border border-[#333333]">
@@ -154,7 +140,6 @@ export default function Footer() {
               </div>
             </div>
 
-            {/* 5. Social Media Icons Column */}
             <div className="flex flex-col gap-3">
               <h4 className="text-white font-bold tracking-wider mb-2 text-xs uppercase">Follow Us</h4>
               <div className="flex flex-col gap-3">
@@ -177,9 +162,7 @@ export default function Footer() {
 
           <div className="border-t border-[#333333] my-6"></div>
 
-          {/* Bottom Bar with Language Selector */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 relative">
-            
             <div className="relative">
               <button 
                 onClick={() => setIsLangOpen(!isLangOpen)}
@@ -212,7 +195,6 @@ export default function Footer() {
         </div>
       </footer>
 
-      {/* 🔥 All Tools Modal Popup 🔥 */}
       {isToolsModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in duration-200">
