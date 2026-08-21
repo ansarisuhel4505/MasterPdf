@@ -12,8 +12,10 @@ import {
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// 🔥 100% WORKING WORKER FOR VERSION 9 🔥
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// 🔥 SAFE WORKER REGISTRATION FOR NEXT.JS 🔥
+if (typeof window !== 'undefined') {
+  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+}
 
 export default function RotatePdf() {
   const [files, setFiles] = useState([]); 
@@ -41,7 +43,6 @@ export default function RotatePdf() {
 
     try {
       let allPages = [];
-      // 🔥 FIX: Loop through ALL uploaded files to get their pages for preview
       for (let fIdx = 0; fIdx < validPdfs.length; fIdx++) {
         const arrayBuffer = await validPdfs[fIdx].arrayBuffer();
         const loadedPdf = await PDFDocument.load(arrayBuffer);
@@ -148,7 +149,6 @@ export default function RotatePdf() {
         const arrayBuffer = await file.arrayBuffer();
         const currentPdfDoc = await PDFDocument.load(arrayBuffer);
         
-        // 🔥 FIX: Apply rotations specifically to the correct file's pages
         const filePages = pages.filter(p => p.fileIndex === fileIndex);
 
         for (let i = 0; i < currentPdfDoc.getPageCount(); i++) {
@@ -165,17 +165,23 @@ export default function RotatePdf() {
       }
 
       if (files.length === 1) {
+        // 🔥 DIRECT DOWNLOAD FOR SINGLE FILE 🔥
         const singleBlob = await zip.file(Object.keys(zip.files)[0]).async('blob');
         const link = document.createElement('a');
         link.href = URL.createObjectURL(singleBlob);
         link.download = Object.keys(zip.files)[0];
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
       } else {
+        // 🔥 DIRECT DOWNLOAD FOR BATCH (ZIP) 🔥
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(zipBlob);
         link.download = `MasterPdf_Rotated_Batch.zip`;
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
       }
       
     } catch (error) {
@@ -187,7 +193,15 @@ export default function RotatePdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Rotate PDF files online - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Rotate PDF Pages Online Free | MasterPdf</title>
+        <meta name="description" content="Rotate individual PDF pages or entire documents online for free. Secure, fast, and easy PDF rotator tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="rotate pdf, rotate pdf pages, pdf rotator online, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Rotate PDF Pages Online Free | MasterPdf" />
+        <meta property="og:description" content="Rotate individual PDF pages or entire documents online for free." />
+      </Head>
+
       <Navbar />
       <main className="flex-grow flex flex-col items-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
@@ -214,7 +228,6 @@ export default function RotatePdf() {
           ) : (
             <div className="flex flex-col md:flex-row h-full relative p-6 gap-8">
               
-              {/* LEFT SIDE: Thumbnail Grid for MULTIPLE FILES */}
               <div className="w-full md:w-3/5 bg-gray-50 border border-gray-200 rounded-xl p-4 overflow-y-auto max-h-[700px] relative custom-scrollbar">
                 <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition z-20"><X size={20} /></button>
                 <div className="mb-6 flex justify-between items-center border-b pb-3">
@@ -232,7 +245,6 @@ export default function RotatePdf() {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-8">
-                    {/* 🔥 Map over all files and display their own grids 🔥 */}
                     {files.map((fileObj, fIndex) => (
                       <div key={fIndex} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                         <h4 className="font-bold text-gray-700 mb-4 truncate pr-10 text-sm">{fileObj.name}</h4>
@@ -244,7 +256,6 @@ export default function RotatePdf() {
                         >
                           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                             {pages.map((pageData, globalIndex) => {
-                              // Only show pages that belong to the current file in the loop
                               if (pageData.fileIndex !== fIndex) return null;
                               
                               return (
@@ -280,7 +291,6 @@ export default function RotatePdf() {
                 )}
               </div>
 
-              {/* RIGHT SIDE: Controls */}
               <div className="w-full md:w-2/5 flex flex-col justify-between">
                 <div className="space-y-5">
                   <h3 className="text-xl font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
