@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Globe, ChevronDown, Phone, MessageSquare, Mail, X, FileText, Settings, Shield, Image as ImageIcon } from 'lucide-react';
+// 🔥 FIX: Added 'Layers' and 'Lock' in the import list below 🔥
+import { Globe, ChevronDown, Phone, MessageSquare, Mail, X, FileText, Settings, Shield, Image as ImageIcon, Layers, Lock } from 'lucide-react';
 
 export default function Footer() {
   const [selectedLang, setSelectedLang] = useState('English');
@@ -32,7 +33,6 @@ export default function Footer() {
     document.head.appendChild(style);
   }, []);
 
-  // Language mapping with ISO codes for Google Translate
   const languages = [
     { name: 'English', code: 'en' }, { name: 'Español', code: 'es' },
     { name: 'Français', code: 'fr' }, { name: 'Deutsch', code: 'de' },
@@ -48,16 +48,13 @@ export default function Footer() {
     setSelectedLang(langName);
     setIsLangOpen(false);
     
-    // Set Google Translate Cookie to force translation
     const domain = window.location.hostname;
     document.cookie = `googtrans=/en/${langCode}; path=/; domain=${domain}`;
     document.cookie = `googtrans=/en/${langCode}; path=/; domain=.${domain}`;
     
-    // Reload page to apply translation
     window.location.reload();
   };
 
-  // Tools Data for Popup
   const toolsData = [
     { title: 'Merge PDF', path: '/merge-pdf', icon: <Layers size={16} /> },
     { title: 'Split PDF', path: '/split-pdf', icon: <FileText size={16} /> },
@@ -73,7 +70,6 @@ export default function Footer() {
 
   return (
     <>
-      {/* Hidden Div required for Google Translate to work */}
       <div id="google_translate_element"></div>
 
       <footer className="bg-[#1A1A1A] text-[#999999] pt-16 pb-8 text-sm font-sans mt-auto border-t border-[#333]">
@@ -100,7 +96,6 @@ export default function Footer() {
               <Link href="/" className="hover:text-white transition">Home</Link>
               <Link href="/about" className="hover:text-white transition">About us</Link>
               <Link href="/services" className="hover:text-white transition">Services</Link>
-              {/* Trigger for All Tools Popup */}
               <button onClick={() => setIsToolsModalOpen(true)} className="text-left hover:text-white transition">
                 All PDF Tools
               </button>
