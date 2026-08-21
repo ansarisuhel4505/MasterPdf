@@ -1,5 +1,6 @@
-import '@/styles/globals.css'; // Make sure path is correct based on your setup
 import Head from 'next/head';
+import '@/styles/globals.css'; // Make sure path is correct based on your setup
+
 function MyApp({ Component, pageProps }) {
   return (
     <>
