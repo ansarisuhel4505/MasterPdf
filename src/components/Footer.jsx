@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-// 🔥 FIX: Added 'Layers' and 'Lock' in the import list below 🔥
 import { Globe, ChevronDown, Phone, MessageSquare, Mail, X, FileText, Settings, Shield, Image as ImageIcon, Layers, Lock } from 'lucide-react';
 
 export default function Footer() {
@@ -8,7 +7,7 @@ export default function Footer() {
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
 
-  // 🔥 Google Translate Setup 🔥
+  // 🔥 Google Translate Aggressive Hide Setup 🔥
   useEffect(() => {
     // Add Google Translate Script
     const addScript = document.createElement('script');
@@ -23,12 +22,38 @@ export default function Footer() {
       );
     };
 
-    // Hide Google Translate Top Banner via CSS
+    // 🔥 100% BULLETPROOF CSS TO HIDE GOOGLE TRANSLATE BANNER & TOOLTIPS 🔥
     const style = document.createElement('style');
     style.innerHTML = `
-      .goog-te-banner-frame.skiptranslate { display: none !important; } 
-      body { top: 0px !important; }
-      #google_translate_element { display: none !important; }
+      /* Hide the top banner iframe completely */
+      .goog-te-banner-frame.skiptranslate, 
+      .skiptranslate > iframe { 
+        display: none !important; 
+      } 
+      
+      /* Prevent the body from being pushed down by Google */
+      body { 
+        top: 0px !important; 
+        position: static !important; 
+      }
+      
+      /* Hide the original translation widget */
+      #google_translate_element { 
+        display: none !important; 
+      }
+      
+      /* Hide the annoying tooltip that appears when hovering over translated text */
+      .goog-tooltip {
+        display: none !important;
+      }
+      .goog-tooltip:hover {
+        display: none !important;
+      }
+      .goog-text-highlight {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
     `;
     document.head.appendChild(style);
   }, []);
@@ -48,10 +73,12 @@ export default function Footer() {
     setSelectedLang(langName);
     setIsLangOpen(false);
     
+    // Set Google Translate Cookie to force translation
     const domain = window.location.hostname;
     document.cookie = `googtrans=/en/${langCode}; path=/; domain=${domain}`;
     document.cookie = `googtrans=/en/${langCode}; path=/; domain=.${domain}`;
     
+    // Reload page to apply translation instantly
     window.location.reload();
   };
 
