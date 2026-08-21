@@ -9,7 +9,6 @@ import { upload } from '@vercel/blob/client';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// 🔥 FIX FOR REACT-PDF VERSION 9 🔥
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function RedactPdf() {
@@ -19,7 +18,6 @@ export default function RedactPdf() {
   const [pageNumber, setPageNumber] = useState(1);
   const [mode, setMode] = useState('auto');
   
-  // 🚀 ULTIMATE ENTERPRISE AUTO-REDACT OPTIONS
   const [autoOptions, setAutoOptions] = useState({ 
     emails: true, phones: true, dob: false,
     cards: true, bankAccounts: false, ifsc: false, upi: false,
@@ -57,18 +55,15 @@ export default function RedactPdf() {
       const text = span.textContent;
       let isSensitive = false;
 
-      // 1. BASIC
       if (autoOptions.emails && /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(text)) isSensitive = true;
       if (autoOptions.phones && /(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3,4}[\s-]?\d{3,4}/.test(text)) isSensitive = true;
       if (autoOptions.dob && /\b(?:0[1-9]|[12][0-9]|3[01])[-/.](?:0[1-9]|1[012])[-/.](?:19|20)\d\d\b/.test(text)) isSensitive = true;
 
-      // 2. FINANCIAL
       if (autoOptions.cards && /\b(?:\d{4}[\s-]?){3}\d{4}\b/.test(text)) isSensitive = true;
       if (autoOptions.bankAccounts && /\b\d{9,18}\b/.test(text)) isSensitive = true; 
       if (autoOptions.ifsc && /\b[A-Z]{4}0[A-Z0-9]{6}\b/.test(text)) isSensitive = true;
       if (autoOptions.upi && /\b[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}\b/.test(text)) isSensitive = true;
 
-      // 3. IDENTITY & BUSINESS
       if (autoOptions.aadhar && /\b\d{4}\s?\d{4}\s?\d{4}\b/.test(text)) isSensitive = true;
       if (autoOptions.pan && /\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b/.test(text)) isSensitive = true;
       if (autoOptions.passport && /\b[A-Z][1-9]\d{6}\b/.test(text)) isSensitive = true; 
@@ -77,7 +72,6 @@ export default function RedactPdf() {
       if (autoOptions.ssn && /\b\d{3}-\d{2}-\d{4}\b/.test(text)) isSensitive = true; 
       if (autoOptions.gstin && /\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b/.test(text)) isSensitive = true;
 
-      // 4. TECH, WEB & CRYPTO (ADVANCED)
       if (autoOptions.ip && /\b(?:\d{1,3}\.){3}\d{1,3}\b/.test(text)) isSensitive = true;
       if (autoOptions.mac && /\b(?:[0-9A-Fa-f]{2}[:-]){5}(?:[0-9A-Fa-f]{2})\b/.test(text)) isSensitive = true;
       if (autoOptions.apikeys && /\b(AKIA[0-9A-Z]{16}|eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*)\b/.test(text)) isSensitive = true; 
@@ -125,8 +119,18 @@ export default function RedactPdf() {
       });
 
       const data = await response.json();
-      if (response.ok && data.downloadUrl) window.location.href = data.downloadUrl;
-      else alert("Error: " + (data.error || "Failed to redact document."));
+      if (response.ok && data.downloadUrl) {
+        // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.setAttribute('download', `MasterPdf_Redacted_${file.name}`);
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        alert("Error: " + (data.error || "Failed to redact document."));
+      }
     } catch (err) {
       console.error(err);
       alert("Server connection failed! Please check your network.");
@@ -136,15 +140,22 @@ export default function RedactPdf() {
 
   const toggleOption = (key) => setAutoOptions({ ...autoOptions, [key]: !autoOptions[key] });
 
-  // Custom styling for checkbox labels to prevent white/blurry text
   const labelClass = "flex items-center gap-2 p-2 bg-white border border-gray-300 shadow-sm rounded-md cursor-pointer text-xs font-bold text-gray-800 hover:bg-gray-50 transition-colors";
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Enterprise PDF Redact - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Redact PDF Online | Hide Sensitive Data | MasterPdf</title>
+        <meta name="description" content="Enterprise-grade PDF redaction tool. Auto-detect and hide sensitive information like emails, phone numbers, and IDs. 100% secure by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="redact pdf, hide text in pdf, pdf black out, secure pdf, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Redact PDF Online | Hide Sensitive Data | MasterPdf" />
+        <meta property="og:description" content="Enterprise-grade PDF redaction tool. Auto-detect and hide sensitive information securely." />
+      </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Enterprise PDF Redaction</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -162,14 +173,12 @@ export default function RedactPdf() {
         ) : (
           <div className="w-full max-w-7xl flex flex-col xl:flex-row gap-6">
             
-            {/* LEFT SIDE: CONTROLS */}
             <div className="w-full xl:w-1/3 bg-white p-6 rounded-2xl shadow-sm border border-gray-200 h-fit max-h-[850px] overflow-y-auto custom-scrollbar">
               <div className="flex justify-between items-center mb-6 border-b pb-4">
                 <p className="font-bold text-gray-800 truncate pr-4">{file.name}</p>
                 <button onClick={() => setFile(null)} className="text-red-500 hover:bg-red-50 p-1 rounded"><X size={20}/></button>
               </div>
 
-              {/* Mode Switcher */}
               <div className="flex bg-gray-100 rounded-lg p-1 mb-6">
                 <button onClick={() => setMode('auto')} className={`flex-1 py-2 text-sm font-bold rounded-md flex items-center justify-center gap-2 ${mode === 'auto' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>
                   <Sparkles size={16}/> Auto-Detect
@@ -179,7 +188,6 @@ export default function RedactPdf() {
                 </button>
               </div>
 
-              {/* Auto Mode Settings */}
               {mode === 'auto' && (
                 <div className="space-y-6 animate-in fade-in duration-300">
                   
@@ -221,7 +229,6 @@ export default function RedactPdf() {
                 </div>
               )}
 
-              {/* Manual Mode Settings */}
               {mode === 'manual' && (
                 <div className="space-y-4 animate-in fade-in duration-300">
                   <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-sm flex gap-2">
@@ -234,7 +241,6 @@ export default function RedactPdf() {
                 </div>
               )}
 
-              {/* Action Button */}
               <button 
                 onClick={handleProcess}
                 disabled={isProcessing}
@@ -244,7 +250,6 @@ export default function RedactPdf() {
               </button>
             </div>
 
-            {/* RIGHT SIDE: PDF VIEWER & CANVAS */}
             <div className="w-full xl:w-2/3 bg-gray-300 rounded-2xl overflow-hidden flex flex-col items-center p-4 relative min-h-[600px]">
               {boxes.length > 0 && (
                 <div className="absolute top-2 right-2 bg-black text-white text-xs px-3 py-1 rounded-full z-50 shadow-lg">
