@@ -319,7 +319,16 @@ export default function PdfForms() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Fill PDF Forms & Sign - MasterPdf</title></Head>
+      
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Fill PDF Forms, Add Text & Sign Online Free | MasterPdf</title>
+        <meta name="description" content="Easily fill out PDF forms, add text, insert signatures, and batch process PDFs online for free. Secure automation tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="fill pdf form, sign pdf online, add text to pdf, pdf overlay, batch fill pdf, free pdf filler, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Fill PDF Forms & Sign Online Free | MasterPdf" />
+        <meta property="og:description" content="Easily fill out PDF forms, add text, insert signatures, and batch process PDFs online for free." />
+      </Head>
+
       <Navbar />
       <main className="flex-grow flex flex-col items-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
