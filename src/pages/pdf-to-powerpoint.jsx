@@ -35,7 +35,14 @@ export default function PdfToPowerpoint() {
       
       const data = await response.json();
       if (response.ok && data.downloadUrl) {
-        window.location.href = data.downloadUrl;
+        // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.setAttribute('download', `MasterPdf_Converted_${file.name.split('.')[0]}.pptx`);
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
         alert("Conversion Failed: " + data.error);
       }
@@ -47,12 +54,19 @@ export default function PdfToPowerpoint() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>Convert PDF to PowerPoint online - MasterPdf</title>
+        <title>Convert PDF to PowerPoint Online Free | MasterPdf</title>
+        <meta name="description" content="Turn your PDF files into easy to edit PPT and PPTX slideshows online for free. No watermarks. Created by Suhel Ansari." />
+        <meta name="keywords" content="pdf to powerpoint, pdf to ppt, pdf to pptx, convert pdf to powerpoint, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Convert PDF to PowerPoint Online Free | MasterPdf" />
+        <meta property="og:description" content="Turn your PDF files into easy to edit PPT and PPTX slideshows online for free." />
       </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">PDF to PowerPoint</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
