@@ -11,7 +11,7 @@ export default function OcrPdf() {
   const [extractedText, setExtractedText] = useState('');
   const [downloadLink, setDownloadLink] = useState('');
   const [copied, setCopied] = useState(false);
-  const [outputFormat, setOutputFormat] = useState('txt'); // txt, pdfa (searchable), docx, xlsx
+  const [outputFormat, setOutputFormat] = useState('txt');
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -55,14 +55,13 @@ export default function OcrPdf() {
     try {
       const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
 
-      // Pass the selected format to the backend
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'ocr-pdf', 
           fileUrl: blob.url,
-          format: outputFormat // Tells backend what to generate
+          format: outputFormat 
         }),
       });
       
@@ -74,8 +73,15 @@ export default function OcrPdf() {
           const textContent = await textResponse.text();
           setExtractedText(textContent || "No text could be found or extracted from this document.");
         } else {
-          // For Word, Excel, or Searchable PDF, we provide a direct download link
-          setDownloadLink(data.downloadUrl);
+          // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+          setDownloadLink(data.downloadUrl); // Update UI
+          const link = document.createElement('a');
+          link.href = data.downloadUrl;
+          link.setAttribute('download', `MasterPdf_OCR_Result.${outputFormat}`);
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
         }
       } else {
         alert(data.error || "OCR processing failed.");
@@ -88,12 +94,19 @@ export default function OcrPdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>Enterprise OCR PDF - MasterPdf</title>
+        <title>OCR PDF Online | Extract Text from Scanned PDFs Free | MasterPdf</title>
+        <meta name="description" content="Use Enterprise-grade OCR to convert scanned PDFs into searchable PDF, Word, Excel, or Text formats. 100% Free. Created by Suhel Ansari." />
+        <meta name="keywords" content="ocr pdf, extract text from pdf, scanned pdf to word, image to text, searchable pdf, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="OCR PDF Online | Extract Text from Scanned PDFs Free | MasterPdf" />
+        <meta property="og:description" content="Convert scanned PDFs into searchable PDF, Word, Excel, or Text formats instantly." />
       </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold mb-4">
             <ScanText size={14} /> Enterprise OCR Engine
@@ -115,7 +128,6 @@ export default function OcrPdf() {
           ) : (
             <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start pt-4">
               
-              {/* Left Side: Setup & Settings */}
               <div className="w-full md:w-1/3 flex flex-col justify-between bg-gray-50 border border-gray-200 rounded-lg p-6 relative">
                 <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition">
                   <X size={20} />
@@ -177,7 +189,6 @@ export default function OcrPdf() {
                 </button>
               </div>
 
-              {/* Right Side: OCR Output Display */}
               <div className="w-full md:w-2/3 flex flex-col min-h-[450px]">
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                   <h3 className="text-xl font-bold text-gray-900">Output Result</h3>
@@ -209,13 +220,13 @@ export default function OcrPdf() {
                     <div className="flex flex-col items-center justify-center text-center">
                       <CheckCircle2 size={60} className="text-green-500 mb-4" />
                       <h3 className="text-2xl font-bold text-gray-900 mb-2">Conversion Successful!</h3>
-                      <p className="text-gray-500 mb-6">Your scanned document has been converted and is ready for download.</p>
+                      <p className="text-gray-500 mb-6">Your scanned document has been converted and downloaded securely.</p>
                       <a 
                         href={downloadLink}
                         download={`MasterPdf_OCR_Result.${outputFormat}`}
                         className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:-translate-y-1"
                       >
-                        <Download size={20} /> Download Final File
+                        <Download size={20} /> Download Manually
                       </a>
                     </div>
                   )}
