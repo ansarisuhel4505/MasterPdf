@@ -120,6 +120,8 @@ export default async function handler(req, res) {
         }
       }
     }
+    
+    // BASIC RAW TEXT EXTRACTION
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     
     else if (action === 'ocr-pdf') {
@@ -149,7 +151,6 @@ export default async function handler(req, res) {
     else if (action === 'sign-pdf') {
       const { signerName, signerEmail, lockDocument } = req.body;
       try {
-        // STEP 1: Apply Visual Digital Stamp (Audit Info embedded in PDF)
         let stampResult = await convertapi.convert('watermark', {
           File: fileUrl,
           Text: `SECURELY SIGNED BY: ${signerName.toUpperCase()}\nEMAIL: ${signerEmail}\nTIMESTAMP: ${new Date().toISOString()}`,
@@ -179,7 +180,11 @@ export default async function handler(req, res) {
       }
     }
 
-    else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare') {
+    // ==========================================
+    // 🧠 CATEGORY 3: AI TOOLS (GROQ / LLAMA 3)
+    // ==========================================
+    // 🔥 FIX: Added 'pdf-to-enterprise-md' to the AI array
+    else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare' || action === 'pdf-to-enterprise-md') {
       if (!process.env.GROQ_API_KEY) return res.status(200).json({ success: false, textResult: "⚠️ Groq API Key is missing." });
 
       try {
@@ -195,7 +200,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               model: activeModel,
               messages: [{ role: "user", content: promptText }],
-              temperature: 0.5
+              temperature: action === 'pdf-to-enterprise-md' ? 0.2 : 0.5 // Keep factual for Markdown
             })
           });
 
@@ -222,6 +227,22 @@ export default async function handler(req, res) {
           const txt2 = await convertapi.convert('txt', { File: req.body.fileUrl2 }, 'pdf');
           const text2 = await (await fetch(txt2.response.Files[0].Url)).text();
           return res.status(200).json({ success: true, textResult: await callGroqAI(`Compare:\n\nDOC1:\n${text1.substring(0, 7000)}\n\nDOC2:\n${text2.substring(0, 7000)}`) });
+        }
+        // 🔥 NEW ENTERPRISE MARKDOWN ENDPOINT 🔥
+        else if (action === 'pdf-to-enterprise-md') {
+          const options = req.body.options || {};
+          const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+          const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
+
+          let systemPrompt = `You are an expert Enterprise Document Parser. Convert the following raw text extracted from a PDF into clean, beautifully structured Markdown (.md).\n\nGuidelines:\n1. Create proper Markdown headings (# H1, ## H2) based on context.\n2. Format lists correctly using bullets (-) or numbers.\n3. Identify code snippets and wrap them in triple backticks.\n`;
+          
+          if (options.tables) systemPrompt += `4. If you see data that looks like a table, reconstruct it perfectly using standard Markdown table syntax (| Header | Header |).\n`;
+          if (options.clean) systemPrompt += `5. Aggressively remove noise: delete repetitive page numbers, footers, headers, and document watermarks.\n`;
+          
+          systemPrompt += `\nRaw Text to Parse:\n\n${extractedText.substring(0, 15000)}`;
+
+          const markdownContent = await callGroqAI(systemPrompt);
+          return res.status(200).json({ success: true, textResult: markdownContent });
         }
 
       } catch (aiError) {
