@@ -6,7 +6,7 @@ import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import { 
   UploadCloud, FileText, X, Scissors, Settings, 
-  Layers, Download, AlertTriangle, ArrowRightCircle
+  Layers, Download, AlertTriangle
 } from 'lucide-react';
 
 export default function SplitPdf() {
@@ -27,7 +27,6 @@ export default function SplitPdf() {
   // Mode 3: Custom Groups (e.g., 1-5, 7, 9-12)
   const [customInput, setCustomInput] = useState('');
 
-  // File Upload Handle
   const handleFileChange = async (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
@@ -58,7 +57,6 @@ export default function SplitPdf() {
     setIsProcessing(false);
   };
 
-  // Core Splitting Logic
   const getPageGroups = () => {
     let groups = [];
 
@@ -99,7 +97,6 @@ export default function SplitPdf() {
     return groups;
   };
 
-  // Main Process
   const splitPdf = async () => {
     if (!file) return;
     setIsProcessing(true);
@@ -127,16 +124,15 @@ export default function SplitPdf() {
         pdfFiles.push({ bytes: pdfBytes, name: fileName });
       }
 
-      // 📦 ZIP LOGIC (Pro Feature)
       if (pdfFiles.length === 1) {
-        // अगर सिर्फ 1 फाइल बनी है, तो सीधे डाउनलोड करें
         const blob = new Blob([pdfFiles[0].bytes], { type: 'application/pdf' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = pdfFiles[0].name;
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
       } else if (pdfFiles.length > 1) {
-        // अगर 1 से ज्यादा फाइलें हैं, तो ZIP बनाएं और डाउनलोड करें
         const zip = new JSZip();
         for (const pdf of pdfFiles) {
           zip.file(pdf.name, pdf.bytes);
@@ -146,7 +142,9 @@ export default function SplitPdf() {
         const link = document.createElement('a');
         link.href = URL.createObjectURL(zipBlob);
         link.download = `MasterPdf_Split_Parts.zip`;
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
       }
 
     } catch (error) {
@@ -158,7 +156,14 @@ export default function SplitPdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Split PDF files online - MasterPdf</title></Head>
+      <Head>
+        <title>Split PDF Files Online Free | MasterPdf</title>
+        <meta name="description" content="Separate and extract specific pages from PDF documents online for free. Download single or multiple pages in a ZIP file securely with MasterPdf." />
+        <meta name="keywords" content="split pdf, extract pdf pages, separate pdf pages, free pdf splitter, masterpdf" />
+        <meta property="og:title" content="Split PDF Files Online Free | MasterPdf" />
+        <meta property="og:description" content="Separate and extract specific pages from PDF documents online for free." />
+      </Head>
+
       <Navbar />
       <main className="flex-grow flex flex-col items-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
@@ -180,8 +185,6 @@ export default function SplitPdf() {
             </div>
           ) : (
             <div className="w-full h-full flex flex-col md:flex-row gap-8 md:items-start pt-4">
-              
-              {/* Left: File Preview */}
               <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-xl p-8 relative min-h-[280px]">
                 <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition"><X size={20} /></button>
                 <FileText size={80} className="text-[#E5322D] mb-4 opacity-90" />
@@ -191,15 +194,12 @@ export default function SplitPdf() {
                 </div>
               </div>
 
-              {/* Right: Split Options (No Blurry Text) */}
               <div className="w-full md:w-1/2 flex flex-col h-full justify-between">
-                
                 <div className="space-y-4">
                   <h3 className="text-lg font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
                     <Scissors size={20} className="text-[#E5322D]" /> Splitting Mode
                   </h3>
 
-                  {/* Mode Selector */}
                   <div className="flex flex-wrap bg-gray-100 p-1 rounded-lg gap-1 text-sm font-semibold">
                     {['extract', 'every', 'custom'].map((mode) => (
                       <button
@@ -216,10 +216,7 @@ export default function SplitPdf() {
                     ))}
                   </div>
 
-                  {/* Mode Specific Inputs */}
                   <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 space-y-4 mt-2">
-                    
-                    {/* 1. EXTRACT RANGE */}
                     {splitMode === 'extract' && (
                       <div className="flex items-center gap-4">
                         <div className="flex-1">
@@ -241,7 +238,6 @@ export default function SplitPdf() {
                       </div>
                     )}
 
-                    {/* 2. SPLIT EVERY N */}
                     {splitMode === 'every' && (
                       <div className="flex items-center gap-4">
                         <div className="flex-1">
@@ -258,7 +254,6 @@ export default function SplitPdf() {
                       </div>
                     )}
 
-                    {/* 3. CUSTOM GROUPS */}
                     {splitMode === 'custom' && (
                       <div>
                         <label className="block text-sm font-bold text-gray-800 mb-1">Custom Page Groups</label>
@@ -274,7 +269,6 @@ export default function SplitPdf() {
                       </div>
                     )}
 
-                    {/* Info Note */}
                     <div className="flex items-start gap-2 text-xs text-gray-600 bg-white p-3 rounded border border-gray-200 mt-2">
                       <AlertTriangle size={14} className="text-orange-500 mt-0.5" />
                       <span>
@@ -284,7 +278,6 @@ export default function SplitPdf() {
                   </div>
                 </div>
 
-                {/* Action Button */}
                 <div className="mt-8 flex justify-end">
                    <button 
                      onClick={splitPdf}
