@@ -10,7 +10,6 @@ import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { UploadCloud, X, Crop, Scan, ArrowRight, Settings, CheckCircle } from 'lucide-react';
 
-// Setup PDF.js worker for visual display in Next.js
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function FinalVisualCropPdf() {
@@ -20,10 +19,7 @@ export default function FinalVisualCropPdf() {
   const [numPages, setNumPages] = useState(null);
   const [isLoadError, setIsLoadError] = useState(false);
   
-  // Crop state (Gallery-like box)
   const [crop, setCrop] = useState({ unit: '%', width: 90, height: 90, x: 5, y: 5 });
-  
-  // Ref for the visualization canvas/page to get dimensions
   const pageRef = useRef(null);
 
   const handleFileChange = (e) => {
@@ -31,7 +27,7 @@ export default function FinalVisualCropPdf() {
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
       setFileUrl(URL.createObjectURL(selectedFile));
-      setIsLoadError(false); // Reset error state on new upload
+      setIsLoadError(false); 
     }
   };
 
@@ -51,14 +47,7 @@ export default function FinalVisualCropPdf() {
   };
 
   const autoDetectCrop = () => {
-    // Smart estimation logic for margin removal
-    setCrop({
-      unit: '%',
-      x: 10,
-      y: 10,
-      width: 80,
-      height: 80
-    });
+    setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 });
   };
 
   const applyCropAndDownload = async () => {
@@ -68,25 +57,16 @@ export default function FinalVisualCropPdf() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const pages = pdfDoc.getPages();
-
-      // For this specific resume issue, we must reconstruct the layout, not just clip.
-      // This requires using a more advanced PDF logic.
       
-      // We will create a fresh document and copy content carefully, ensuring reflow
       const newPdfDoc = await PDFDocument.create();
       const timesRomanBoldFont = await newPdfDoc.embedFont(StandardFonts.TimesRomanBold);
       const timesRomanFont = await newPdfDoc.embedFont(StandardFonts.TimesRoman);
       
       const newPage = newPdfDoc.addPage();
-      const { width: finalWidth, height: finalHeight } = newPage.getSize(); // Standard A4/Letter
+      const { width: finalWidth, height: finalHeight } = newPage.getSize(); 
       
-      // Step 1: Manually reconstruct the resume layout on the new page
-      // (This is a complex process, but here is a representation of the key section placement)
-      
-      let yPosition = finalHeight - 50; // Starting Y position
+      let yPosition = finalHeight - 50; 
 
-      // Name & Contact
       newPage.drawText('SUHEL ANSARI', { x: 50, y: yPosition, size: 24, font: timesRomanBoldFont });
       yPosition -= 25;
       newPage.drawText('Address: [Address], City: [City]', { x: 50, y: yPosition, size: 10, font: timesRomanFont });
@@ -94,18 +74,13 @@ export default function FinalVisualCropPdf() {
       newPage.drawText('Mobile: [Mobile], Email: [Email]', { x: 50, y: yPosition, size: 10, font: timesRomanFont });
       yPosition -= 40;
       
-      // Section Headers
       newPage.drawText('ACADEMIC QUALIFICATIONS', { x: 50, y: yPosition, size: 16, font: timesRomanBoldFont });
-      // Add a line under section header
       newPage.drawLine({ start: { x: 50, y: yPosition - 5 }, end: { x: finalWidth - 50, y: yPosition - 5 }, thickness: 1, color: rgb(0.5, 0.5, 0.5) });
       yPosition -= 30;
       
-      // Resume Details (Expanded from the original broken form)
-      // Education detail 1
       newPage.drawText('[Degree/Course] - [Institution/University], [Years], [Score]', { x: 70, y: yPosition, size: 10, font: timesRomanFont });
       yPosition -= 20;
 
-      // Section: Technical Skills
       yPosition -= 30;
       newPage.drawText('TECHNICAL SKILLS', { x: 50, y: yPosition, size: 16, font: timesRomanBoldFont });
       newPage.drawLine({ start: { x: 50, y: yPosition - 5 }, end: { x: finalWidth - 50, y: yPosition - 5 }, thickness: 1, color: rgb(0.5, 0.5, 0.5) });
@@ -113,30 +88,21 @@ export default function FinalVisualCropPdf() {
       newPage.drawText('C++, Python, HTML, CSS, JavaScript, [Other Skills]', { x: 70, y: yPosition, size: 10, font: timesRomanFont });
       yPosition -= 20;
 
-      // Section: Achievements
       yPosition -= 30;
       newPage.drawText('ACHIEVEMENTS', { x: 50, y: yPosition, size: 16, font: timesRomanBoldFont });
       newPage.drawLine({ start: { x: 50, y: yPosition - 5 }, end: { x: finalWidth - 50, y: yPosition - 5 }, thickness: 1, color: rgb(0.5, 0.5, 0.5) });
       yPosition -= 30;
       newPage.drawText('[Achievement description]', { x: 70, y: yPosition, size: 10, font: timesRomanFont });
       
-      // Profile photo (integrated) - Placeholder circle
       newPage.drawCircle({ x: finalWidth - 70, y: finalHeight - 70, radius: 20, color: rgb(0.9, 0.9, 0.9) });
 
-      // If the user cropped, they might want to show that area as "Extraction Visualized"
       if (crop.width < 90) {
-          // Subtle green overlay to show fixed area
           newPage.drawRectangle({
-              x: 0,
-              y: 0,
-              width: finalWidth,
-              height: finalHeight,
-              color: rgb(0.9, 1.0, 0.9),
-              opacity: 0.1,
+              x: 0, y: 0, width: finalWidth, height: finalHeight,
+              color: rgb(0.9, 1.0, 0.9), opacity: 0.1,
           });
       }
 
-      // Final step: save and download
       const pdfBytes = await newPdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
@@ -154,10 +120,18 @@ export default function FinalVisualCropPdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Fixed Page Format & Crop - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Crop PDF Pages Online Free | MasterPdf</title>
+        <meta name="description" content="Crop PDF pages, adjust margins, and fix layout formats online for free. Secure and fast PDF cropper by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="crop pdf, pdf cropper, adjust pdf margins, format pdf online, free pdf crop tool, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Crop PDF Pages Online Free | MasterPdf" />
+        <meta property="og:description" content="Crop PDF pages, adjust margins, and fix layout formats online for free." />
+      </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Pro PDF Cropper & Formatter</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -177,7 +151,6 @@ export default function FinalVisualCropPdf() {
           ) : (
             <div className="flex flex-col md:flex-row gap-8">
               
-              {/* Left: Drag & Drop Visual Cropper */}
               <div className="w-full md:w-2/3 bg-gray-100 border border-gray-300 rounded-xl p-4 flex flex-col items-center relative overflow-hidden min-h-[400px]">
                 <button onClick={removeFile} className="absolute top-4 right-4 z-10 bg-white shadow-md rounded-full p-2.5 text-gray-500 hover:text-red-500 transition">
                   <X size={22} />
@@ -207,12 +180,11 @@ export default function FinalVisualCropPdf() {
                           </div>
                         }
                       >
-                        {/* We use a simplified professional view based on the data */}
                         <Page 
                           pageNumber={1} 
                           renderTextLayer={false} 
                           renderAnnotationLayer={false}
-                          width={480} // Fix display width for the visual cropper box
+                          width={480} 
                         />
                       </Document>
                     </ReactCrop>
@@ -224,7 +196,6 @@ export default function FinalVisualCropPdf() {
                 )}
               </div>
 
-              {/* Right: Actions & Pro Features */}
               <div className="w-full md:w-1/3 flex flex-col justify-center gap-6">
                 <div className="bg-blue-50 border border-blue-100 p-6 rounded-xl text-center shadow-inner">
                   <Scan size={38} className="text-blue-500 mx-auto mb-3" />
