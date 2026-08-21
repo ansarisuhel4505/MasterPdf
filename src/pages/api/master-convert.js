@@ -89,7 +89,19 @@ export default async function handler(req, res) {
       result = await convertapi.convert('pdf', { File: fileUrl }, fromFormat);
     }
     
-    else if (action === 'pdf-to-pdfa') result = await convertapi.convert('pdfa', { File: fileUrl }, 'pdf');
+    else if (action === 'pdf-to-pdfa') {
+      const options = req.body.options || {};
+      
+      // Frontend se aane wale level ko ConvertAPI ke format mein map karna
+      let formatLevel = 'pdfa1b'; // Default ISO standard
+      if (options.level === 'pdfa2') formatLevel = 'pdfa2b';
+      if (options.level === 'pdfa3') formatLevel = 'pdfa3b';
+
+      result = await convertapi.convert('pdfa', { 
+        File: fileUrl,
+        PdfaFormat: formatLevel
+      }, 'pdf');
+    }
     else if (action === 'compress-pdf') result = await convertapi.convert('compress', { File: fileUrl }, 'pdf');
     
     else if (action === 'repair-pdf') {
