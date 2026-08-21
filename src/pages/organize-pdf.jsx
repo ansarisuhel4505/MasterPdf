@@ -179,7 +179,6 @@ export default function OrganizePdf() {
         const insertPdf = await PDFDocument.load(arrayBuffer);
         const totalInsertPages = insertPdf.getPageCount();
         
-        // 🔥 FIX: Inserted PDF ke liye ab hum Preview URL bana rahe hain taaki "Lock/Failed" error na aaye
         const previewUrl = URL.createObjectURL(selectedFile);
         
         setUploadedFiles(prev => [...prev, { id: uniqueId, bytes: arrayBuffer, type: 'pdf', previewUrl }]);
@@ -307,7 +306,15 @@ export default function OrganizePdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Organize PDF Pages - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Organize PDF Pages Online Free | MasterPdf</title>
+        <meta name="description" content="Reorder, delete, rotate, and extract PDF pages online for free. Securely organize your PDF files with MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="organize pdf, reorder pdf pages, delete pdf pages, rotate pdf, extract pdf, free pdf organizer, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Organize PDF Pages Online Free | MasterPdf" />
+        <meta property="og:description" content="Reorder, delete, rotate, and extract PDF pages online for free." />
+      </Head>
+
       <Navbar />
       <main className="flex-grow flex flex-col items-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
@@ -395,7 +402,7 @@ export default function OrganizePdf() {
                              <div className="text-gray-300 font-bold tracking-widest uppercase text-xs w-full h-full flex items-center justify-center bg-white">Blank</div>
                           )}
                           
-                          {/* 🔥 THE FIX: Now using previewUrl to display all inserted PDF pages smoothly 🔥 */}
+                          {/* Display inserted pages */}
                           {pageData.type === 'upload' && (() => {
                              const uploaded = uploadedFiles.find(f => f.id === pageData.uploadId);
                              if (!uploaded) return null;
