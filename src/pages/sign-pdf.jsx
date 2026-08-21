@@ -99,7 +99,15 @@ export default function EnterpriseSignPdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Enterprise e-Signature - MasterPdf</title></Head>
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Enterprise e-Sign PDF Online | MasterPdf</title>
+        <meta name="description" content="Securely sign PDF documents online with cryptographic seals and audit trails. Free e-signature tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="sign pdf, e-sign pdf online, digital signature pdf, secure pdf sign, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Enterprise e-Sign PDF Online | MasterPdf" />
+        <meta property="og:description" content="Securely sign PDF documents online with cryptographic seals and audit trails." />
+      </Head>
+
       <Navbar />
       
       <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
@@ -219,10 +227,11 @@ export default function EnterpriseSignPdf() {
                     </div>
                     
                     <div className="flex flex-col gap-4 mt-2">
-                      <a href={downloadUrl} download={`Signed_${file.name}`} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-lg">
+                      {/* 🔥 INSTANT DOWNLOAD TRICK APPLIED HERE 🔥 */}
+                      <a href={downloadUrl} target="_blank" rel="noopener noreferrer" download={`Signed_${file.name}`} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-lg">
                         <Download size={22} /> Download Signed PDF
                       </a>
-                      <a href={auditLogUrl} download={`Audit_Trail_${file.name}.txt`} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-gray-700 font-bold text-lg bg-white border-2 border-gray-200 hover:bg-gray-50 transition shadow-sm">
+                      <a href={auditLogUrl} target="_blank" rel="noopener noreferrer" download={`Audit_Trail_${file.name}.txt`} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-gray-700 font-bold text-lg bg-white border-2 border-gray-200 hover:bg-gray-50 transition shadow-sm">
                         <History size={22} /> Download Audit Trail (Log)
                       </a>
                     </div>
