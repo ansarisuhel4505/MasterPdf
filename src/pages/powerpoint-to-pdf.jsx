@@ -5,13 +5,12 @@ import Footer from '../components/Footer';
 import { UploadCloud, FileText, X, ArrowRight, Settings } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
 
-// 🛑 HAR FILE KE LIYE BAS YEH 3 CHEEZEIN CHANGE KARNI HAIN 🛑
 const TOOL_TITLE = "PowerPoint to PDF";
 const TOOL_DESC = "Convert PPT files to PDF easily.";
 const ACTION_NAME = "powerpoint-to-pdf";
 const ACCEPT_FORMAT = ".ppt,.pptx";
 
-export default function GenericTool() {
+export default function PowerpointToPdf() {
   const [file, setFile] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
 
@@ -25,10 +24,8 @@ export default function GenericTool() {
     setIsConverting(true);
     
     try {
-      // 1. Vercel Blob Upload (Bypasses limit)
       const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
 
-      // 2. Send URL to Backend
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -37,7 +34,14 @@ export default function GenericTool() {
       
       const data = await response.json();
       if (response.ok && data.downloadUrl) {
-        window.location.href = data.downloadUrl; // Auto Download
+        // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.setAttribute('download', `MasterPdf_Converted_${file.name.split('.')[0]}.pdf`);
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
         alert("Action Failed: " + data.error);
       }
@@ -49,9 +53,19 @@ export default function GenericTool() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>{TOOL_TITLE} - MasterPdf</title></Head>
+      
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Convert PowerPoint to PDF Online Free | MasterPdf</title>
+        <meta name="description" content="Convert PPT and PPTX files to PDF easily and securely online for free. Created by Suhel Ansari." />
+        <meta name="keywords" content="powerpoint to pdf, ppt to pdf, pptx to pdf, convert powerpoint to pdf, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Convert PowerPoint to PDF Online Free | MasterPdf" />
+        <meta property="og:description" content="Convert PPT and PPTX files to PDF easily and securely online for free." />
+      </Head>
+
       <Navbar />
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">{TOOL_TITLE}</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">{TOOL_DESC}</p>
