@@ -12,7 +12,6 @@ import {
 
 let Tesseract = null;
 
-// 🔥 THE MASTER FIX: DYNAMIC ENCRYPTION ENGINE (No Backend Required) 🔥
 const loadPdfMake = async () => {
   if (window.pdfMake && window.pdfMake.vfs) return window.pdfMake;
   await new Promise((resolve) => {
@@ -228,17 +227,14 @@ export default function ScanToPdf() {
     setIsProcessing(true);
     
     try {
-      // =====================================================================
-      // 1. 🔥 ADVANCED FRONTEND ENCRYPTION (No Backend) 🔥
-      // =====================================================================
       if (password) {
-        const pdfMake = await loadPdfMake(); // Dynamically load encryption engine
+        const pdfMake = await loadPdfMake();
         
         if (outputFormat === 'zip') {
           const passZip = new JSZip();
           for (let i = 0; i < items.length; i++) {
             const canvas = await processImageToCanvas(items[i]);
-            const pageWidth = 595.28; const pageHeight = 841.89; // Strict A4
+            const pageWidth = 595.28; const pageHeight = 841.89; 
             
             const scale = Math.min((pageWidth - 40) / canvas.width, (pageHeight - 40) / canvas.height);
             const w = canvas.width * scale; const h = canvas.height * scale;
@@ -246,7 +242,7 @@ export default function ScanToPdf() {
 
             const docDef = {
               pageSize: 'A4', pageMargins: [0, 0, 0, 0],
-              userPassword: password, ownerPassword: password, // Native Encryption
+              userPassword: password, ownerPassword: password,
               content: [ { image: canvas.toDataURL('image/jpeg', 0.95), width: w, height: h, absolutePosition: { x, y } } ]
             };
 
@@ -264,10 +260,10 @@ export default function ScanToPdf() {
           const link = document.createElement('a'); 
           link.href = URL.createObjectURL(zipBlob);
           link.download = 'MasterPdf_Protected_Scans.zip'; 
+          link.target = '_blank';
           link.click();
 
         } else {
-          // Single Protected PDF Mode
           const content = [];
           for (let i = 0; i < items.length; i++) {
             const canvas = await processImageToCanvas(items[i]);
@@ -295,7 +291,7 @@ export default function ScanToPdf() {
 
           const docDef = {
             pageSize: 'A4', pageMargins: [0, 0, 0, 0],
-            userPassword: password, ownerPassword: password, // Native Encryption
+            userPassword: password, ownerPassword: password,
             content: content
           };
           if (watermarkText.trim()) docDef.watermark = { text: watermarkText, color: watermarkColor, opacity: 0.4, bold: true };
@@ -307,9 +303,6 @@ export default function ScanToPdf() {
         return;
       }
 
-      // =====================================================================
-      // 2. 🔥 NORMAL MODE (pdf-lib) FOR FAST NON-ENCRYPTED PDFS 🔥
-      // =====================================================================
       const zip = new JSZip();
       let singlePdfDoc = null;
       if (outputFormat === 'pdf') singlePdfDoc = await PDFDocument.create();
@@ -361,6 +354,7 @@ export default function ScanToPdf() {
         const link = document.createElement('a'); 
         link.href = URL.createObjectURL(zipBlob);
         link.download = 'MasterPdf_Scanned_Documents.zip'; 
+        link.target = '_blank';
         link.click();
       } else {
         const finalBytes = await singlePdfDoc.save();
@@ -368,6 +362,7 @@ export default function ScanToPdf() {
         const link = document.createElement('a'); 
         link.href = URL.createObjectURL(blob);
         link.download = 'MasterPdf_Scanned.pdf'; 
+        link.target = '_blank';
         link.click();
       }
     } catch (error) {
@@ -395,7 +390,16 @@ export default function ScanToPdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Scan to PDF & OCR - MasterPdf</title></Head>
+      
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Scan Images to PDF & OCR Online Free | MasterPdf</title>
+        <meta name="description" content="Scan JPG/PNG images to PDF, apply filters, and extract text using OCR. Free online scanner tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="scan to pdf, image to pdf, ocr online, extract text from image, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Scan Images to PDF & OCR Online Free | MasterPdf" />
+        <meta property="og:description" content="Scan JPG/PNG images to PDF, apply filters, and extract text using OCR. Free online scanner tool." />
+      </Head>
+
       <Navbar />
       <main className="flex-grow flex flex-col items-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
