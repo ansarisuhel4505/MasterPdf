@@ -67,12 +67,18 @@ export default function AiSummarizer() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>AI PDF Summarizer online - MasterPdf</title>
+        <title>AI PDF Summarizer Online Free | MasterPdf</title>
+        <meta name="description" content="Summarize PDF documents, articles, and essays instantly using AI. Get key insights and bullet points for free. Created by Suhel Ansari." />
+        <meta name="keywords" content="pdf summarizer, ai pdf summary, summarize pdf online, extract key points from pdf, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="AI PDF Summarizer Online Free | MasterPdf" />
+        <meta property="og:description" content="Quickly generate concise summaries from articles, paragraphs, and essays using advanced AI." />
       </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold mb-4">
             <Sparkles size={14} /> AI Powered
@@ -95,7 +101,7 @@ export default function AiSummarizer() {
             <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start pt-4">
               
               {/* Left Side: File Preview */}
-              <div className="w-full md:w-1/3 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-6 relative h-[380px]">
+              <div className="w-full md:w-1/3 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-6 relative min-h-[380px]">
                 <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition">
                   <X size={20} />
                 </button>
@@ -113,7 +119,7 @@ export default function AiSummarizer() {
               </div>
 
               {/* Right Side: AI Output Area */}
-              <div className="w-full md:w-2/3 flex flex-col h-[380px]">
+              <div className="w-full md:w-2/3 flex flex-col min-h-[380px]">
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                   <h3 className="text-xl font-bold text-gray-900">AI Summary Result</h3>
                   {summary && (
