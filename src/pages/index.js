@@ -65,10 +65,10 @@ export default function Home() {
       <main className="max-w-[1400px] mx-auto px-4 pt-28 pb-12">
         <div className="text-center mb-10">
           <h1 className="text-4xl md:text-[42px] font-bold text-gray-900 mb-4 tracking-tight">
-            Every tool you need to work with PDFs in one place
+            👉 Everything you need to work with PDFs, all in one place
           </h1>
           <p className="text-lg md:text-xl text-gray-600 max-w-4xl mx-auto font-medium">
-            Every tool you need to use PDFs, at your fingertips. All are 100% FREE and easy to use! Merge, split, compress, convert, rotate, unlock and watermark PDFs with just a few clicks.
+            All the PDF tools you need, in one place. 100% free and super easy to use! Merge, split, compress, convert, rotate, unlock and watermark PDFs in just a few clicks.
           </p>
         </div>
 
