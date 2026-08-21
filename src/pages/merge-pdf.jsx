@@ -13,34 +13,25 @@ import {
   Lock, Unlock, Download, FileOutput
 } from 'lucide-react';
 
-// 📄 Document/Page dynamic import (Next.js SSR Error बचाने के लिए)
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-// 🛡️ PDF Worker Setup
 export default function MergePdf() {
-  // ================= STATES =================
-  const [items, setItems] = useState([]); // [{id, name, type: 'pdf'|'blank'|'image', file, previewUrl, pages}]
+  const [items, setItems] = useState([]); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   
-  // PRO Settings
-  const [outputFormat, setOutputFormat] = useState('pdf'); // 'pdf' or 'zip'
+  const [outputFormat, setOutputFormat] = useState('pdf'); 
   const [compressAfter, setCompressAfter] = useState(false);
   const [author, setAuthor] = useState('');
   const [title, setTitle] = useState('');
 
-  // Drag & Drop State
   const [draggedIndex, setDraggedIndex] = useState(null);
 
-  // 🛡️ Setup Worker
   useEffect(() => {
     pdfjs.GlobalWorkerOptions.workerSrc = '//unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js';
   }, []);
 
-  // ================= FILE HANDLERS =================
-
-  // 1. PDF Upload
   const handlePDFUpload = async (e) => {
     const selectedFiles = Array.from(e.target.files);
     const validPdfs = selectedFiles.filter(f => f.type === 'application/pdf');
@@ -61,16 +52,14 @@ export default function MergePdf() {
       });
     }
     setItems(prev => [...prev, ...newItems]);
-    e.target.value = null; // Reset input
+    e.target.value = null; 
   };
 
-  // 2. Image Upload (Insert Image as PDF Page)
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) return alert("Please upload JPG or PNG image.");
 
-    // Convert image to PDF bytes on the fly
     try {
       const arrayBuffer = await file.arrayBuffer();
       const tempPdf = await PDFDocument.create();
@@ -87,7 +76,7 @@ export default function MergePdf() {
         id: `img-${Date.now()}`,
         name: file.name.replace(/\.[^/.]+$/, "") + ".pdf",
         type: 'image',
-        file: pdfBlob, // हम इसे PDF की तरह सेव कर रहे हैं
+        file: pdfBlob, 
         previewUrl: URL.createObjectURL(pdfBlob),
         pages: 1,
         originalType: file.type
@@ -100,7 +89,6 @@ export default function MergePdf() {
     e.target.value = null;
   };
 
-  // 3. Insert Blank A4 Page
   const handleInsertBlank = async () => {
     const tempPdf = await PDFDocument.create();
     tempPdf.addPage([595.28, 841.89]);
@@ -117,18 +105,15 @@ export default function MergePdf() {
     }]);
   };
 
-  // Remove Item
   const removeItem = (index) => {
     const newItems = items.filter((_, i) => i !== index);
     setItems(newItems);
   };
 
-  // Reverse Order
   const reverseOrder = () => {
     setItems(prev => [...prev].reverse());
   };
 
-  // ================= DRAG & DROP LOGIC (REORDER) =================
   const onDragStart = (e, index) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
@@ -151,7 +136,6 @@ export default function MergePdf() {
     setDraggedIndex(null);
   };
 
-  // ================= MAIN MERGE LOGIC =================
   const processMerge = async () => {
     if (items.length < 1) return alert("Please upload at least one file.");
     setIsProcessing(true);
@@ -166,58 +150,69 @@ export default function MergePdf() {
         copiedPages.forEach((page) => mergedPdf.addPage(page));
       }
 
-      // ✅ Apply Custom Metadata
       if (title) mergedPdf.setTitle(title);
       if (author) mergedPdf.setAuthor(author);
 
       let finalBytes = await mergedPdf.save();
 
-      // ✅ Option 1: ZIP Output
       if (outputFormat === 'zip') {
         const zip = new JSZip();
         zip.file('Merged_Document.pdf', finalBytes);
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         
+        const url = URL.createObjectURL(zipBlob);
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(zipBlob);
+        link.href = url;
         link.download = 'MasterPdf_Merged.zip';
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
         setIsProcessing(false);
         return;
       }
 
-      // ✅ Option 2: Single PDF (with optional compression)
       if (compressAfter) {
-        // Step 1: Upload to Vercel Blob
         const blobToUpload = new Blob([finalBytes], { type: 'application/pdf' });
         const blob = await upload('merged_temp.pdf', blobToUpload, { 
           access: 'public', 
           handleUploadUrl: '/api/upload' 
         });
 
-        // Step 2: Send to backend for compression
         const response = await fetch('/api/master-convert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             action: 'compress-pdf', 
             fileUrl: blob.url,
-            quality: 70 // डिफॉल्ट क्वालिटी
+            quality: 70 
           }),
         });
         const data = await response.json();
+        
         if (response.ok && data.downloadUrl) {
-          window.location.href = data.downloadUrl;
+          // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+          const link = document.createElement('a');
+          link.href = data.downloadUrl;
+          link.setAttribute('download', `MasterPdf_Merged_Compressed.pdf`);
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
         } else {
           alert("Compression failed: " + (data.error || "Unknown error"));
         }
       } else {
-        // No compression: Direct Download
+        // 🔥 FAST LOCAL BLOB DOWNLOAD TRICK 🔥
         const blob = new Blob([finalBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
+        link.href = url;
         link.download = 'MasterPdf_Merged.pdf';
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
       }
       
     } catch (error) {
@@ -229,7 +224,16 @@ export default function MergePdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      <Head><title>Merge PDF files online - MasterPdf</title></Head>
+      
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
+      <Head>
+        <title>Merge PDF Files Online Free | MasterPdf</title>
+        <meta name="description" content="Combine multiple PDF files into one document instantly. Add blank pages, images, and reorder pages. Free, secure, and fast PDF merger tool by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="merge pdf, combine pdf, join pdf, free pdf merger, add images to pdf, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Merge PDF Files Online Free | MasterPdf" />
+        <meta property="og:description" content="Combine multiple PDF files into one document instantly. Add blank pages, images, and reorder pages." />
+      </Head>
+
       <Navbar />
       <main className="flex-grow flex flex-col items-center p-6 mt-16 mb-10">
         <div className="text-center mb-8">
@@ -251,7 +255,6 @@ export default function MergePdf() {
           ) : (
             <div className="flex flex-col h-full relative p-6 gap-6">
               
-              {/* 🔥 List of Uploaded Files with Drag & Drop */}
               <div className="w-full border border-gray-200 rounded-xl bg-gray-50 p-4">
                 <div className="flex justify-between items-center mb-3 border-b pb-2">
                   <h4 className="text-sm font-bold text-gray-800">{items.length} File(s) Loaded</h4>
@@ -273,12 +276,10 @@ export default function MergePdf() {
                       className={`flex items-center justify-between bg-white border p-3 rounded-lg shadow-sm transition cursor-grab active:cursor-grabbing ${draggedIndex === index ? 'border-[#E5322D] ring-2 ring-red-100 opacity-50' : 'border-gray-200 hover:border-gray-300'}`}
                     >
                       <div className="flex items-center gap-4 flex-1 min-w-0">
-                        {/* Drag Handle */}
                         <div className="text-gray-400 hover:text-gray-600 px-1">
                           <Layers size={18} className="rotate-90" />
                         </div>
 
-                        {/* Icon / Preview */}
                         <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center shrink-0">
                           {item.type === 'image' ? <ImageIcon size={20} className="text-green-500" /> : 
                            item.type === 'blank' ? <Layers size={20} className="text-purple-500" /> : 
@@ -303,10 +304,8 @@ export default function MergePdf() {
                 </div>
               </div>
 
-              {/* 🔥 Action & Insert Toolbar (Below List) */}
               <div className="flex flex-wrap items-center gap-3 bg-gray-50 p-3 border border-gray-200 rounded-lg">
                 
-                {/* Add More PDF */}
                 <div className="relative">
                   <input type="file" id="add-pdf" multiple accept=".pdf" onChange={handlePDFUpload} className="hidden" />
                   <label htmlFor="add-pdf" className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-800 font-bold text-xs rounded-lg cursor-pointer hover:bg-gray-100 transition">
@@ -314,7 +313,6 @@ export default function MergePdf() {
                   </label>
                 </div>
 
-                {/* Insert Image */}
                 <div className="relative">
                   <input type="file" id="add-image" accept=".jpg,.jpeg,.png" onChange={handleImageUpload} className="hidden" />
                   <label htmlFor="add-image" className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-800 font-bold text-xs rounded-lg cursor-pointer hover:bg-gray-100 transition">
@@ -322,12 +320,10 @@ export default function MergePdf() {
                   </label>
                 </div>
 
-                {/* Insert Blank */}
                 <button onClick={handleInsertBlank} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-800 font-bold text-xs rounded-lg hover:bg-gray-100 transition">
                   <Layers size={16} /> Insert Blank
                 </button>
 
-                {/* Advanced Settings Toggle */}
                 <button 
                   onClick={() => setShowAdvanced(!showAdvanced)}
                   className="ml-auto px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold text-xs rounded-lg transition"
@@ -336,11 +332,9 @@ export default function MergePdf() {
                 </button>
               </div>
 
-              {/* 🔥 Pro Settings Panel (Metadata, Format, Compress) */}
               {showAdvanced && (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
                   
-                  {/* Left Column: Metadata */}
                   <div className="space-y-3">
                     <h5 className="font-bold text-sm text-gray-900 border-b pb-1">Document Metadata</h5>
                     <div>
@@ -353,7 +347,6 @@ export default function MergePdf() {
                     </div>
                   </div>
 
-                  {/* Right Column: Output Options */}
                   <div className="space-y-3">
                     <h5 className="font-bold text-sm text-gray-900 border-b pb-1">Output & Compression</h5>
                     
@@ -382,7 +375,6 @@ export default function MergePdf() {
                 </div>
               )}
 
-              {/* 📥 FINAL ACTION BUTTON */}
               <div className="mt-auto flex justify-end pt-4 border-t border-gray-200">
                  <button 
                    onClick={processMerge}
