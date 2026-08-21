@@ -60,18 +60,14 @@ export default function PdfToPdfA() {
       if (response.ok && data.downloadUrl) {
         setLoadingStatus('Finalizing Archival PDF...');
         
-        // Safe Download Method
-        const fileRes = await fetch(data.downloadUrl);
-        const fileBlob = await fileRes.blob();
-        const url = URL.createObjectURL(fileBlob);
-        
+        // Safe Download Method (Instant Download Fix)
         const link = document.createElement('a');
-        link.href = url;
-        link.download = `MasterPdf_Archive_${file.name.split('.')[0]}_PDFA.pdf`;
+        link.href = data.downloadUrl;
+        link.setAttribute('download', `MasterPdf_Archive_${file.name.split('.')[0]}_PDFA.pdf`);
+        link.target = '_blank';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url);
       } else {
         alert("Action Failed: " + (data.error || "Unknown error"));
       }
@@ -86,9 +82,15 @@ export default function PdfToPdfA() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>Enterprise PDF to PDF/A - MasterPdf</title>
+        <title>Convert PDF to PDF/A Online Free | MasterPdf</title>
+        <meta name="description" content="Transform your PDFs into ISO 19005 compliance-ready, long-term archival PDF/A documents online. 100% Free. Created by Suhel Ansari." />
+        <meta name="keywords" content="pdf to pdf/A, convert pdf to pdfa, iso 19005 archiving, pdf compliance, pdf archive tool, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Convert PDF to PDF/A Online Free | MasterPdf" />
+        <meta property="og:description" content="Transform your PDFs into ISO 19005 compliance-ready PDF/A documents online." />
       </Head>
+
       <Navbar />
       
       <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
