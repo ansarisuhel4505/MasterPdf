@@ -11,8 +11,8 @@ import {
   UploadCloud, X, PenTool, Lock, Download, Settings, 
   User, Calendar, Type, Stamp, PlusCircle, ChevronLeft, 
   ChevronRight, Shield, Upload, Scan, CheckCircle2, Palette,
-  Layers, Globe, FileText, ArrowRight,
-  MessageSquare, Users, ListOrdered, ImageIcon, ScanText
+  Layers, Globe, FileText, ArrowLeft, ArrowRightCircle,
+  MessageSquare, Users, ListOrdered, ImageIcon, ScanText, GripVertical, HardDrive, Link2, Trash2
 } from 'lucide-react';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -27,6 +27,15 @@ const signatureFonts = [
   "Neucha", "Rock Salt", "Reenie Beanie", "Nothing You Could Do", "Schoolbell", "Nanum Pen Script", "Comic Sans MS"
 ];
 
+// Colors for Multiple Signers
+const signerColors = [
+  { bg: 'bg-red-200', border: 'border-red-400', fill: 'bg-red-50' },
+  { bg: 'bg-orange-200', border: 'border-orange-400', fill: 'bg-orange-50' },
+  { bg: 'bg-green-200', border: 'border-green-400', fill: 'bg-green-50' },
+  { bg: 'bg-purple-200', border: 'border-purple-400', fill: 'bg-purple-50' },
+  { bg: 'bg-yellow-200', border: 'border-yellow-400', fill: 'bg-yellow-50' }
+];
+
 export default function VisualSignPdf() {
   const [isMounted, setIsMounted] = useState(false);
   const [file, setFile] = useState(null);
@@ -35,10 +44,10 @@ export default function VisualSignPdf() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // App Flow: 1(Upload) -> 1.5(Who) -> 2(Solo) OR 'request_form'(Multiple) -> 4(Download)
+  // Flow Steps: 1(Upload) -> 1.5(Who) -> 2(Solo Editor) OR 'request_form'(Multiple Settings) -> '2_several'(Multiple Editor) -> 4(Download/Success)
   const [step, setStep] = useState(1);
   
-  // Modal & Signature Preferences (Solo Editor)
+  // --- SOLO EDITOR STATES ---
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [hTab, setHTab] = useState('Signature'); 
   const [vTab, setVTab] = useState('Type'); 
@@ -56,18 +65,18 @@ export default function VisualSignPdf() {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  // --- SEVERAL PEOPLE REQUEST FORM STATES ---
-  const [receivers, setReceivers] = useState([{ id: 1, name: '', email: '', role: 'Signer', color: 'bg-red-200' }]);
+  // --- SEVERAL PEOPLE STATES ---
+  const [receivers, setReceivers] = useState([{ id: 1, name: '', email: '', role: 'Signer', colorIdx: 0 }]);
   const [reqSettings, setReqSettings] = useState({
     order: false, expiration: false, expDays: 15, multiple: false, 
     emailNotif: true, reminders: true, reminderDays: 1, digitalSig: false, 
     verifyCode: true, emailBranding: false, companyName: '', logo: null
   });
   const [expiryDate, setExpiryDate] = useState("");
+  const [activeSignerId, setActiveSignerId] = useState(null);
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // Safe Date Calculation to prevent Server/Client crash
   useEffect(() => {
     if (isMounted) {
       const d = new Date(Date.now() + (Number(reqSettings.expDays) || 15) * 86400000);
@@ -82,6 +91,7 @@ export default function VisualSignPdf() {
     }
   }, [showSignatureModal, vTab, sigColor]);
 
+  // --- FILE HANDLING ---
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile && (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf'))) {
@@ -96,11 +106,12 @@ export default function VisualSignPdf() {
 
   const removeFile = () => {
     setFile(null); setFileUrl(null); setElements([]); setCurrentPage(1); setStep(1);
+    setReceivers([{ id: 1, name: '', email: '', role: 'Signer', colorIdx: 0 }]);
   };
 
   const onDocumentLoadSuccess = ({ numPages }) => setNumPages(numPages);
 
-  // --- SOLO EDITOR LOGIC ---
+  // --- DRAWING LOGIC ---
   const startDrawing = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
     const ctx = canvasRef.current.getContext('2d');
@@ -142,6 +153,7 @@ export default function VisualSignPdf() {
     setShowSignatureModal(false);
   };
 
+  // --- ADD ELEMENTS (SOLO) ---
   const addElement = (type) => {
     let value = ''; let fontStyle = 'Arial, sans-serif';
     let isImage = false; let imgData = null; let isDigital = false;
@@ -173,6 +185,31 @@ export default function VisualSignPdf() {
       width: isDigital ? 260 : (isImage ? 200 : (type === 'signature' ? 200 : 150)),
       height: isDigital ? 90 : (isImage ? 100 : (type === 'signature' ? 60 : 40)),
       value, fontStyle, isImage, imgData, isDigital, color: finalColor
+    };
+    setElements([...elements, newElement]);
+  };
+
+  // --- ADD PLACEHOLDERS (SEVERAL PEOPLE) ---
+  const addPlaceholder = (type) => {
+    const signer = receivers.find(r => r.id === activeSignerId);
+    if (!signer) return;
+
+    let displayValue = '';
+    if (type === 'signature') displayValue = 'Signature';
+    if (type === 'initials') displayValue = 'Initials';
+    if (type === 'name') displayValue = 'Name';
+    if (type === 'date') displayValue = 'Date';
+    if (type === 'text') displayValue = 'Text';
+    if (type === 'stamp') displayValue = 'Company Stamp';
+
+    const newElement = {
+      id: Date.now(), type, page: currentPage, x: 100, y: 150,
+      width: 160, height: 50,
+      value: displayValue,
+      isPlaceholder: true,
+      signerId: signer.id,
+      signerName: signer.name || signer.email || 'Signer',
+      colorIdx: signer.colorIdx
     };
     setElements([...elements, newElement]);
   };
@@ -210,6 +247,8 @@ export default function VisualSignPdf() {
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
       for (const el of elements) {
+        if(el.isPlaceholder) continue; // Safety check
+
         const page = pdfDoc.getPages()[el.page - 1];
         const { width: pdfWidth, height: pdfHeight } = page.getSize();
         const scaleX = pdfWidth / pdfDimensions.width;
@@ -245,25 +284,34 @@ export default function VisualSignPdf() {
       setStep(4);
     } catch (error) {
       console.error("Error signing PDF:", error);
-      alert("Failed to sign document.");
+      alert("Failed to sign document. File might be restricted.");
     }
     setIsProcessing(false);
   };
 
   // --- SEVERAL PEOPLE REQUEST LOGIC ---
-  const handleSendRequest = () => {
+  const handleProceedToWorkspace = () => {
+    if(receivers.length > 0) setActiveSignerId(receivers[0].id);
+    setElements([]); // Clear any old solo elements
+    setStep('2_several');
+  };
+
+  const handleSendToSign = () => {
+    if(elements.length === 0) {
+      alert("Please place at least one signature field on the document.");
+      return;
+    }
     setIsProcessing(true);
     setTimeout(() => {
       setIsProcessing(false);
       setStep('request_sent');
-    }, 1500);
+    }, 2000);
   };
 
   const addReceiver = () => {
-    const colors = ['bg-red-200', 'bg-orange-200', 'bg-yellow-200', 'bg-green-200', 'bg-purple-200'];
     setReceivers([...receivers, { 
       id: Date.now(), name: '', email: '', role: 'Signer', 
-      color: colors[receivers.length % colors.length] 
+      colorIdx: receivers.length % signerColors.length 
     }]);
   };
   const removeReceiver = (id) => setReceivers(receivers.filter(r => r.id !== id));
@@ -282,7 +330,7 @@ export default function VisualSignPdf() {
 
       <main className="flex-grow flex flex-col items-center justify-center pt-24 pb-10 px-4">
         
-        {/* STEP 1: UPLOAD SCREEN WITH DRIVE/DROPBOX ICONS */}
+        {/* STEP 1: UPLOAD SCREEN WITH EXACT ILOVEPDF ICONS */}
         {step === 1 && (
           <div className="w-full max-w-4xl bg-white rounded-2xl shadow-sm border border-gray-200 p-16 text-center animate-in fade-in">
             <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Sign PDF Document</h1>
@@ -313,12 +361,12 @@ export default function VisualSignPdf() {
         {step === 1.5 && (
           <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="text-center p-8 border-b border-gray-100 relative">
-              <button onClick={removeFile} className="absolute right-6 top-8 text-gray-400 hover:text-red-500"><X size={24}/></button>
+              <button onClick={removeFile} className="absolute right-6 top-8 text-gray-400 hover:text-[#E5322D]"><X size={24}/></button>
               <h2 className="text-3xl font-bold text-gray-800">Who will sign this document?</h2>
             </div>
             
             <div className="flex flex-col md:flex-row p-8 gap-8 bg-gray-50">
-              <div onClick={() => { setStep(2); setShowSignatureModal(true); }} className="flex-1 bg-white border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center cursor-pointer hover:shadow-xl hover:border-red-200 transition-all group">
+              <div onClick={() => { setStep(2); setShowSignatureModal(true); }} className="flex-1 bg-white border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center cursor-pointer hover:shadow-xl hover:border-[#E5322D] transition-all group">
                 <div className="w-32 h-32 bg-gray-100 rounded-2xl mb-6 flex items-center justify-center group-hover:scale-105 transition-transform">
                   <FileText size={60} className="text-gray-400 opacity-80" />
                   <PenTool size={30} className="text-[#E5322D] absolute ml-8 mt-8" />
@@ -327,7 +375,7 @@ export default function VisualSignPdf() {
                 <p className="text-gray-500 text-sm font-medium">Sign this document</p>
               </div>
 
-              <div onClick={() => setStep('request_form')} className="flex-1 bg-white border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center cursor-pointer hover:shadow-xl hover:border-red-200 transition-all group">
+              <div onClick={() => setStep('request_form')} className="flex-1 bg-white border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center cursor-pointer hover:shadow-xl hover:border-[#E5322D] transition-all group">
                 <div className="w-32 h-32 bg-red-50 rounded-full mb-6 flex items-center justify-center group-hover:scale-105 transition-transform relative">
                   <Users size={70} className="text-[#E5322D] opacity-90" />
                 </div>
@@ -338,22 +386,23 @@ export default function VisualSignPdf() {
           </div>
         )}
 
-        {/* STEP 'request_form': SEVERAL PEOPLE COMPLEX FORM */}
+        {/* STEP 'request_form': SEVERAL PEOPLE COMPLEX SETTINGS FORM */}
         {step === 'request_form' && (
           <div className="w-full max-w-4xl bg-white rounded-xl shadow-2xl animate-in fade-in flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-gray-200 bg-white sticky top-0 z-10 shrink-0 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-gray-900">Create your signature request</h2>
-              <button onClick={removeFile} className="text-gray-400 hover:text-red-500"><X size={24}/></button>
+              <button onClick={removeFile} className="text-gray-400 hover:text-[#E5322D]"><X size={24}/></button>
             </div>
             
             <div className="p-8 overflow-y-auto flex-grow bg-gray-50/50">
+              {/* Receivers Array */}
               <div className="mb-10">
                 <h3 className="text-gray-700 font-medium mb-4">Who will receive your document?</h3>
                 <div className="border border-gray-200 rounded-lg bg-white shadow-sm overflow-hidden">
                   {receivers.map((r, i) => (
                     <div key={r.id} className="flex flex-wrap items-center gap-3 p-4 border-b border-gray-100 hover:bg-gray-50 transition">
-                      <div className="text-gray-400 cursor-grab px-1 text-lg font-bold">⋮</div>
-                      <div className={`w-6 h-6 rounded-full shrink-0 ${r.color}`}></div>
+                      <div className="text-gray-400 cursor-grab px-1 text-lg font-bold"><GripVertical size={16}/></div>
+                      <div className={`w-6 h-6 rounded-full shrink-0 ${signerColors[r.colorIdx].bg}`}></div>
                       <input type="text" placeholder="Name" value={r.name} onChange={e=>updateReceiver(r.id, 'name', e.target.value)} className="flex-1 min-w-[120px] border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-[#E5322D] outline-none" />
                       <input type="email" placeholder="Email" value={r.email} onChange={e=>updateReceiver(r.id, 'email', e.target.value)} className="flex-1 min-w-[120px] border border-gray-300 rounded p-2 text-sm focus:ring-1 focus:ring-[#E5322D] outline-none" />
                       <select value={r.role} onChange={e=>updateReceiver(r.id, 'role', e.target.value)} className="border border-gray-300 rounded p-2 text-sm bg-white focus:ring-1 focus:ring-[#E5322D] outline-none w-[110px]">
@@ -366,7 +415,7 @@ export default function VisualSignPdf() {
                         <ScanText size={18} className="hover:text-gray-600 cursor-pointer"/>
                         <PenTool size={18} className="hover:text-gray-600 cursor-pointer"/>
                       </div>
-                      <button onClick={() => removeReceiver(r.id)} disabled={receivers.length===1} className="text-gray-400 hover:text-red-500 disabled:opacity-30 shrink-0"><X size={20}/></button>
+                      <button onClick={() => removeReceiver(r.id)} disabled={receivers.length===1} className="text-gray-400 hover:text-[#E5322D] disabled:opacity-30 shrink-0"><X size={20}/></button>
                     </div>
                   ))}
                   <div onClick={addReceiver} className="p-3 text-center text-[#E5322D] text-sm font-bold bg-red-50/50 hover:bg-red-50 cursor-pointer flex items-center justify-center gap-2 transition">
@@ -375,6 +424,7 @@ export default function VisualSignPdf() {
                 </div>
               </div>
 
+              {/* Exact Settings Replicated */}
               <div>
                 <h3 className="text-xl font-bold text-gray-900 mb-6 mt-8">Settings</h3>
                 <div className="space-y-6 border-t border-gray-100 pt-6">
@@ -392,7 +442,7 @@ export default function VisualSignPdf() {
                     <div>
                       <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors"><Calendar size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Change expiration date</div>
                       <div className="text-sm text-gray-700 mt-2 flex items-center gap-2" onClick={e=>e.preventDefault()}>
-                        The document will expire in <input type="number" min="1" value={reqSettings.expDays} onChange={e=>setReqSettings({...reqSettings, expDays: e.target.value})} className="border border-gray-300 w-16 text-center rounded p-1 outline-none focus:border-red-400" /> days.
+                        The document will expire in <input type="number" min="1" value={reqSettings.expDays} onChange={e=>setReqSettings({...reqSettings, expDays: e.target.value})} className="border border-gray-300 w-16 text-center rounded p-1 outline-none focus:border-[#E5322D]" /> days.
                       </div>
                       <p className="text-xs text-gray-500 mt-1">Expires on: {expiryDate}</p>
                     </div>
@@ -422,7 +472,7 @@ export default function VisualSignPdf() {
                     <div>
                       <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors"><Calendar size={18} className="text-gray-400 group-hover:text-[#E5322D]"/> Enable reminders</div>
                       <div className="text-sm text-gray-700 mt-2 flex items-center gap-2" onClick={e=>e.preventDefault()}>
-                        Send a reminder to the participants every <input type="number" min="1" value={reqSettings.reminderDays} onChange={e=>setReqSettings({...reqSettings, reminderDays: e.target.value})} className="border border-gray-300 w-16 text-center rounded p-1 outline-none focus:border-red-400" /> days.
+                        Send a reminder to the participants every <input type="number" min="1" value={reqSettings.reminderDays} onChange={e=>setReqSettings({...reqSettings, reminderDays: e.target.value})} className="border border-gray-300 w-16 text-center rounded p-1 outline-none focus:border-[#E5322D]" /> days.
                       </div>
                     </div>
                   </label>
@@ -463,7 +513,7 @@ export default function VisualSignPdf() {
                             {reqSettings.logo ? (
                               <>
                                 <img src={reqSettings.logo} alt="Logo" className="max-h-[80px] object-contain" />
-                                <button onClick={()=>setReqSettings({...reqSettings, logo: null})} className="absolute top-2 right-2 text-gray-400 hover:text-red-500"><X size={16}/></button>
+                                <button onClick={()=>setReqSettings({...reqSettings, logo: null})} className="absolute top-2 right-2 text-gray-400 hover:text-[#E5322D]"><X size={16}/></button>
                               </>
                             ) : (
                               <>
@@ -484,10 +534,111 @@ export default function VisualSignPdf() {
 
             <div className="p-6 border-t border-gray-200 bg-white sticky bottom-0 z-10 shrink-0 flex justify-end gap-4 items-center">
               <button onClick={() => setStep(1.5)} className="text-[#E5322D] font-bold hover:underline transition">Cancel</button>
-              <button onClick={handleSendRequest} disabled={isProcessing} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition disabled:bg-gray-400 flex items-center gap-2">
-                {isProcessing ? <Settings className="animate-spin" size={20}/> : 'Apply'}
+              <button onClick={handleProceedToWorkspace} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition flex items-center gap-2">
+                Apply
               </button>
             </div>
+          </div>
+        )}
+
+        {/* STEP '2_several': EDITOR WORKSPACE FOR MULTIPLE PEOPLE */}
+        {step === '2_several' && (
+          <div className="w-full max-w-[1600px] h-[80vh] flex flex-col lg:flex-row bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden animate-in fade-in">
+            
+            <div className="w-full lg:w-24 bg-gray-50 border-r border-gray-200 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex">
+               <h4 className="text-[10px] font-bold text-gray-500 uppercase">Pages</h4>
+               {Array.from({ length: numPages }, (_, i) => i + 1).map(page => (
+                 <button key={page} onClick={() => setCurrentPage(page)} className={`w-14 h-20 rounded shadow-sm border-2 flex items-center justify-center text-xs font-bold transition-all ${currentPage === page ? 'border-[#E5322D] bg-white text-[#E5322D]' : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'}`}>
+                   {page}
+                 </button>
+               ))}
+            </div>
+
+            <div className="flex-grow bg-[#EFEFEF] p-6 flex flex-col items-center justify-start overflow-y-auto relative border-r border-gray-200">
+               <div className="relative shadow-xl bg-white select-none">
+                 <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-gray-500 font-medium">Loading PDF Document...</div>}>
+                   <Page pageNumber={currentPage} renderTextLayer={false} renderAnnotationLayer={false} width={600} onLoadSuccess={(pageInfo) => setPdfDimensions({ width: pageInfo.width, height: pageInfo.height })} />
+                 </Document>
+
+                 {/* Placeholders for assigned receivers */}
+                 {elements.filter(el => el.page === currentPage).map((el) => {
+                   const colorData = signerColors[el.colorIdx] || signerColors[0];
+                   return (
+                     <Rnd
+                       key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
+                       onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
+                       onResizeStop={(e, dir, ref, delta, position) => { updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...position }); }}
+                       className={`group border-2 ${colorData.border} border-dashed flex items-center justify-center ${colorData.fill}/70 hover:${colorData.fill} transition-colors touch-none cursor-move`}
+                     >
+                       <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"><X size={14} /></button>
+                       <div className="flex flex-col items-center justify-center w-full h-full p-2 text-center pointer-events-none">
+                         <span className="font-bold text-gray-800 text-sm truncate w-full">{el.value}</span>
+                         <span className="text-xs text-gray-500 truncate w-full">{el.signerName}</span>
+                       </div>
+                     </Rnd>
+                   );
+                 })}
+               </div>
+            </div>
+
+            {/* Right Sidebar for Several People */}
+            <div className="w-full lg:w-[350px] bg-white flex flex-col h-full">
+              <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-xl font-bold text-gray-800">Signing options</h3>
+                <button onClick={removeFile} className="text-gray-500 hover:text-[#E5322D]"><X size={20}/></button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-grow">
+                {/* Signers Selection */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-bold text-gray-800 mb-3">Signers</h4>
+                  <div className="flex flex-col gap-2">
+                    {receivers.map(r => {
+                      const colorData = signerColors[r.colorIdx] || signerColors[0];
+                      return (
+                        <div 
+                          key={r.id} onClick={() => setActiveSignerId(r.id)}
+                          className={`p-3 rounded-lg flex items-center gap-3 cursor-pointer border-2 transition-all ${activeSignerId === r.id ? `${colorData.border} ${colorData.fill}` : 'border-transparent bg-gray-50 hover:bg-gray-100'}`}
+                        >
+                          <div className={`w-4 h-4 rounded-full ${colorData.bg}`}></div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-gray-800 leading-tight">{r.name || r.email || 'Unnamed Signer'}</span>
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">{r.role}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <h4 className="text-sm font-bold text-gray-800 mb-3">Required fields</h4>
+                  <div onClick={() => addPlaceholder('signature')} className="border border-gray-200 rounded-lg p-3 bg-gray-50 hover:bg-gray-100 cursor-pointer flex items-center justify-between group transition-colors shadow-sm">
+                    <div className="flex items-center gap-3"><PenTool size={16} className="text-gray-60"/><span className="text-sm font-bold text-gray-700">Signature</span></div>
+                    <PlusCircle size={18} className="text-gray-400 group-hover:text-gray-800"/>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <h4 className="text-sm font-bold text-gray-800 mb-3">Optional fields</h4>
+                  <div className="space-y-2">
+                    <button onClick={() => addPlaceholder('initials')} className="w-full border border-gray-200 rounded-lg p-3 bg-white hover:bg-gray-50 flex items-center gap-3 transition-colors text-sm font-bold text-gray-700 shadow-sm"><span className="text-[10px] bg-gray-200 px-1 rounded">AC</span> Initials</button>
+                    <button onClick={() => addPlaceholder('name')} className="w-full border border-gray-200 rounded-lg p-3 bg-white hover:bg-gray-50 flex items-center gap-3 transition-colors text-sm font-bold text-gray-700 shadow-sm"><User size={14} className="text-gray-500"/> Name</button>
+                    <button onClick={() => addPlaceholder('date')} className="w-full border border-gray-200 rounded-lg p-3 bg-white hover:bg-gray-50 flex items-center gap-3 transition-colors text-sm font-bold text-gray-700 shadow-sm"><Calendar size={14} className="text-gray-500"/> Date</button>
+                    <button onClick={() => addPlaceholder('text')} className="w-full border border-gray-200 rounded-lg p-3 bg-white hover:bg-gray-50 flex items-center gap-3 transition-colors text-sm font-bold text-gray-700 shadow-sm"><Type size={14} className="text-gray-500"/> Text</button>
+                    <button onClick={() => addPlaceholder('stamp')} className="w-full border border-gray-200 rounded-lg p-3 bg-white hover:bg-gray-50 flex items-center gap-3 transition-colors text-sm font-bold text-gray-700 shadow-sm"><Stamp size={14} className="text-gray-500"/> Company Stamp</button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-200 bg-gray-50 flex flex-col items-center">
+                <button onClick={handleSendToSign} disabled={isProcessing} className="w-full flex items-center justify-center gap-2 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-md disabled:bg-gray-400">
+                  {isProcessing ? <><Settings className="animate-spin" size={20} /> Processing...</> : <>Send to Sign <ArrowRightCircle size={20}/></>}
+                </button>
+                <div className="flex items-center gap-2 mt-4 text-xs font-bold text-gray-500 cursor-pointer hover:text-gray-800"><Shield size={14}/> Trust level</div>
+              </div>
+            </div>
+
           </div>
         )}
 
@@ -499,7 +650,7 @@ export default function VisualSignPdf() {
             <p className="text-lg text-gray-600 mb-8">
               Your document has been sent to the recipients securely. You will be notified via email once they sign.
             </p>
-            <button onClick={() => setStep(1)} className="text-[#E5322D] font-bold hover:underline">Return to Home</button>
+            <button onClick={() => setStep(1)} className="text-[#E5322D] font-bold hover:underline border border-[#E5322D] px-6 py-2 rounded-lg">Return to Home</button>
           </div>
         )}
 
@@ -510,22 +661,13 @@ export default function VisualSignPdf() {
             <div className="w-full lg:w-24 bg-gray-50 border-r border-gray-200 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex">
                <h4 className="text-[10px] font-bold text-gray-500 uppercase">Pages</h4>
                {Array.from({ length: numPages }, (_, i) => i + 1).map(page => (
-                 <button 
-                   key={page} onClick={() => setCurrentPage(page)}
-                   className={`w-14 h-20 rounded shadow-sm border-2 flex items-center justify-center text-xs font-bold transition-all ${currentPage === page ? 'border-[#E5322D] bg-white text-[#E5322D]' : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'}`}
-                 >
+                 <button key={page} onClick={() => setCurrentPage(page)} className={`w-14 h-20 rounded shadow-sm border-2 flex items-center justify-center text-xs font-bold transition-all ${currentPage === page ? 'border-[#E5322D] bg-white text-[#E5322D]' : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'}`}>
                    {page}
                  </button>
                ))}
             </div>
 
             <div className="flex-grow bg-[#EFEFEF] p-6 flex flex-col items-center justify-start overflow-y-auto relative border-r border-gray-200">
-               <div className="lg:hidden flex items-center justify-between w-full max-w-[600px] mb-4 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
-                 <button disabled={currentPage <= 1} onClick={() => setCurrentPage(p => p - 1)} className="p-2 text-gray-600 disabled:opacity-50"><ChevronLeft size={20}/></button>
-                 <span className="font-bold text-sm text-gray-800">Page {currentPage} of {numPages}</span>
-                 <button disabled={currentPage >= numPages} onClick={() => setCurrentPage(p => p + 1)} className="p-2 text-gray-600 disabled:opacity-50"><ChevronRight size={20}/></button>
-               </div>
-
                <div className="relative shadow-xl bg-white select-none">
                  <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-gray-500 font-medium">Loading PDF Document...</div>}>
                    <Page pageNumber={currentPage} renderTextLayer={false} renderAnnotationLayer={false} width={600} onLoadSuccess={(pageInfo) => setPdfDimensions({ width: pageInfo.width, height: pageInfo.height })} />
@@ -659,22 +801,22 @@ export default function VisualSignPdf() {
 
         {/* STEP 4: DOWNLOAD SCREEN WITH 4 EXACT ICONS */}
         {step === 4 && (
-          <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in slide-in-from-bottom-8 fade-in">
-            <h1 className="text-4xl font-bold text-gray-900 mb-8 tracking-tight">PDF files have been signed!</h1>
+          <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in slide-in-from-bottom-8 fade-in text-center mt-10">
+            <h1 className="text-4xl font-bold text-gray-800 mb-8 tracking-tight">PDF files have been signed!</h1>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <div className="flex items-center gap-3">
-                 <button onClick={() => setStep(1)} className="bg-gray-700 hover:bg-gray-800 text-white p-4 rounded-full shadow-lg transition" title="Back to Home"><ArrowRight size={24} className="rotate-180"/></button>
-                 <a href={fileUrl} download={`Signed_${file?.name}`} className="bg-[#E5322D] hover:bg-red-700 text-white text-2xl font-bold py-6 px-16 rounded-2xl flex items-center gap-4 shadow-xl hover:shadow-2xl transition">
-                   <Download size={28}/> Download signed PDFs
+                 <button onClick={() => setStep(1)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded-full shadow-md transition" title="Back to Home"><ArrowLeft size={24}/></button>
+                 <a href={fileUrl} download={`Signed_${file?.name}`} className="bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-5 px-10 rounded-xl flex items-center gap-3 shadow-lg transition">
+                   <Download size={24}/> Download signed PDFs
                  </a>
               </div>
               
-              <div className="grid grid-cols-2 gap-3 mt-4 sm:mt-0">
-                <button onClick={() => alert('Saved to Google Drive!')} className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105" title="Save to Google Drive"><UploadCloud size={24}/></button>
-                <button onClick={() => { navigator.clipboard.writeText(window.location.href); alert('Link Copied to Clipboard!'); }} className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105" title="Copy Link"><Globe size={24}/></button>
-                <button onClick={() => alert('Saved to Dropbox!')} className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105" title="Save to Dropbox"><Layers size={24}/></button>
-                <button onClick={removeFile} className="bg-[#E5322D] hover:bg-red-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105" title="Delete File"><X size={24}/></button>
+              <div className="grid grid-cols-2 gap-2 mt-4 sm:mt-0">
+                <button onClick={() => alert('Saved to Google Drive!')} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Google Drive"><UploadCloud size={20}/></button>
+                <button onClick={() => { navigator.clipboard.writeText(window.location.href); alert('Link Copied!'); }} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Copy Link"><Link2 size={20}/></button>
+                <button onClick={() => alert('Saved to Dropbox!')} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Dropbox"><Layers size={20}/></button>
+                <button onClick={removeFile} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Delete File"><Trash2 size={20}/></button>
               </div>
             </div>
           </div>
@@ -683,7 +825,7 @@ export default function VisualSignPdf() {
       </main>
       <Footer />
 
-      {/* 🔥 SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
+      {/* 🔥 SOLO SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
       {showSignatureModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
@@ -699,11 +841,11 @@ export default function VisualSignPdf() {
                   <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
                     <div className="bg-gray-200 p-1 rounded-full text-gray-600"><User size={14}/></div> Full name:
                   </label>
-                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-gray-400 outline-none font-medium text-gray-800 transition" />
+                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-[#E5322D] outline-none font-medium text-gray-800 transition" />
                 </div>
                 <div className="w-full md:w-32">
                   <label className="block text-sm font-bold text-gray-700 mb-2">Initials:</label>
-                  <input type="text" value={initials} onChange={(e) => setInitials(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 focus:ring-1 focus:ring-gray-400 outline-none font-medium text-gray-800 text-center" />
+                  <input type="text" value={initials} onChange={(e) => setInitials(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 focus:ring-1 focus:ring-[#E5322D] outline-none font-medium text-gray-800 text-center" />
                 </div>
               </div>
 
@@ -772,7 +914,7 @@ export default function VisualSignPdf() {
                         {uploadedSig ? (
                            <>
                              <img src={uploadedSig} alt="Uploaded" className="max-h-[120px] max-w-full object-contain mb-4" />
-                             <button onClick={() => setUploadedSig(null)} className="text-xs text-gray-500 hover:text-red-500 underline">Remove Image</button>
+                             <button onClick={() => setUploadedSig(null)} className="text-xs text-gray-500 hover:text-[#E5322D] underline">Remove Image</button>
                            </>
                         ) : (
                            <>
@@ -794,7 +936,7 @@ export default function VisualSignPdf() {
                         {uploadedStamp ? (
                            <>
                              <img src={uploadedStamp} alt="Stamp" className="max-h-[140px] max-w-full object-contain mb-4" />
-                             <button onClick={() => setUploadedStamp(null)} className="text-xs text-gray-500 hover:text-red-500 underline">Remove Image</button>
+                             <button onClick={() => setUploadedStamp(null)} className="text-xs text-gray-500 hover:text-[#E5322D] underline">Remove Image</button>
                            </>
                         ) : (
                            <>
@@ -812,7 +954,7 @@ export default function VisualSignPdf() {
 
                 {(hTab === 'Signature' || hTab === 'Initials') && (
                   <div className="w-full md:w-32 bg-gray-50 border-t md:border-t-0 md:border-l border-gray-200 flex flex-row md:flex-col items-center justify-center p-4 shrink-0">
-                    <Scan size={50} className="text-gray-300 mb-0 md:mb-2 hidden md:block"/>
+                    <QrCode size={50} className="text-gray-300 mb-0 md:mb-2 hidden md:block"/>
                     <span className="text-[10px] font-bold text-gray-500 text-center leading-tight hover:text-[#E5322D] cursor-pointer transition-colors">Draw from your mobile device</span>
                   </div>
                 )}
