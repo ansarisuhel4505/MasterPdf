@@ -1,25 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { UploadCloud, FileText, X, PenTool, ShieldCheck, Lock, History, FileKey, CheckCircle2, Download, Settings, User, Mail } from 'lucide-react';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { Document, Page, pdfjs } from 'react-pdf';
+import { Rnd } from 'react-rnd';
 import { upload } from '@vercel/blob/client';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
+import { 
+  UploadCloud, X, PenTool, ShieldCheck, Lock, History, 
+  Settings, User, Calendar, Image as ImageIcon, ChevronLeft, ChevronRight, CheckCircle2, Download 
+} from 'lucide-react';
 
-export default function EnterpriseSignPdf() {
+// Setup PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+export default function AdvancedSignPdf() {
   const [file, setFile] = useState(null);
+  const [fileUrl, setFileUrl] = useState(null);
   const [step, setStep] = useState(1);
-  const [signerName, setSignerName] = useState('');
-  const [signerEmail, setSignerEmail] = useState('');
-  const [lockDocument, setLockDocument] = useState(true);
-  
+  const [isProcessing, setIsProcessing] = useState(false);
   const [logs, setLogs] = useState([]);
   const [downloadUrl, setDownloadLink] = useState('');
   const [auditLogUrl, setAuditLogUrl] = useState('');
+
+  // PDF Viewer State
+  const [numPages, setNumPages] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pdfWrapperRef = useRef(null);
+
+  // Drag & Drop Elements State
+  const [elements, setElements] = useState([]);
+  
+  // Signature Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalTab, setModalTab] = useState('type'); // type, draw, upload
+  const [signatureData, setSignatureData] = useState({ text: 'Suhel Ansari', type: 'text', image: null });
+  
+  // Canvas Ref for Drawing
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  // Constants
+  const PREVIEW_WIDTH = 600;
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
+      setFileUrl(URL.createObjectURL(selectedFile));
       setStep(2);
     } else {
       alert("Please upload a valid PDF document.");
@@ -27,223 +57,370 @@ export default function EnterpriseSignPdf() {
   };
 
   const removeFile = () => {
-    setFile(null);
-    setStep(1);
-    setSignerName('');
-    setSignerEmail('');
+    setFile(null); setFileUrl(null); setElements([]); setStep(1); setCurrentPage(1);
   };
 
-  const addLog = (message, delay) => {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        setLogs(prev => [...prev, message]);
-        resolve();
-      }, delay);
-    });
+  const onDocumentLoadSuccess = ({ numPages }) => setNumPages(numPages);
+
+  // --- CANVAS DRAWING LOGIC ---
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
   };
 
-  const processSignature = async () => {
-    if (!signerName || !signerEmail) {
-      alert("Please enter your legal name and email for the Audit Trail.");
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#E5322D';
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => setIsDrawing(false);
+  
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const saveSignature = () => {
+    if (modalTab === 'draw') {
+      const dataUrl = canvasRef.current.toDataURL('image/png');
+      setSignatureData({ type: 'image', image: dataUrl });
+    }
+    setIsModalOpen(false);
+    addElement('signature');
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setSignatureData({ type: 'image', image: event.target.result });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // --- DRAG & DROP LOGIC ---
+  const addElement = (type) => {
+    const newElement = {
+      id: Date.now().toString(),
+      type,
+      x: 50,
+      y: 50,
+      width: type === 'signature' ? 200 : 150,
+      height: type === 'signature' ? 60 : 30,
+      page: currentPage,
+      value: type === 'date' ? new Date().toLocaleDateString() : 
+             type === 'name' ? 'Suhel Ansari' : 
+             type === 'signature' ? signatureData : 'Text'
+    };
+    setElements([...elements, newElement]);
+  };
+
+  const updateElement = (id, newProps) => {
+    setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
+  };
+
+  const deleteElement = (id) => {
+    setElements(elements.filter(el => el.id !== id));
+  };
+
+  // --- VISUAL STAMPING & BACKEND CRYPTO LOGIC ---
+  const addLog = (message, delay) => new Promise(resolve => setTimeout(() => { setLogs(prev => [...prev, message]); resolve(); }, delay));
+
+  const processAndSign = async () => {
+    if (elements.length === 0) {
+      alert("Please place at least one signature or element on the document.");
       return;
     }
     
     setStep(3);
-    setLogs(["[SYSTEM] Initiating Enterprise e-Signature Protocol..."]);
-    
+    setLogs(["[SYSTEM] Initiating Visual Integration & Cryptographic Protocol..."]);
+    setIsProcessing(true);
+
     try {
-      await addLog(`[IDENTITY] Verifying signer: ${signerName} (${signerEmail})...`, 800);
-      const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
+      await addLog("[VISUAL] Mapping coordinates and applying visual stamps...", 800);
       
-      await addLog("[PKI] Generating 2048-bit RSA Cryptographic Key...", 1200);
-      await addLog("[HASH] Calculating SHA-256 Document Checksum...", 900);
+      // 1. Visually stamp the PDF using pdf-lib
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const cursiveFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+
+      for (const el of elements) {
+        const page = pdfDoc.getPages()[el.page - 1];
+        const { width: pdfWidth, height: pdfHeight } = page.getSize();
+        
+        // Map screen coordinates (PREVIEW_WIDTH) to actual PDF coordinates
+        const scale = pdfWidth / PREVIEW_WIDTH;
+        const actualX = el.x * scale;
+        // PDF origin is bottom-left, screen origin is top-left
+        const actualY = pdfHeight - (el.y * scale) - (el.height * scale); 
+        const actualWidth = el.width * scale;
+        const actualHeight = el.height * scale;
+
+        if (el.type === 'signature') {
+          if (el.value.type === 'image' && el.value.image) {
+            const isPng = el.value.image.includes('data:image/png');
+            const imgBytes = await fetch(el.value.image).then(res => res.arrayBuffer());
+            const pdfImage = isPng ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
+            page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualWidth, height: actualHeight });
+          } else {
+            page.drawText(el.value.text, { x: actualX, y: actualY + 10, size: actualHeight * 0.6, font: cursiveFont, color: rgb(0.9, 0.2, 0.18) });
+          }
+        } else {
+          page.drawText(el.value, { x: actualX, y: actualY + 5, size: actualHeight * 0.7, font: font, color: rgb(0.1, 0.1, 0.1) });
+        }
+      }
+
+      const visualPdfBytes = await pdfDoc.save();
+      const visualBlob = new Blob([visualPdfBytes], { type: 'application/pdf' });
+
+      await addLog("[CLOUD] Uploading visually stamped document to secure vault...", 1000);
       
+      // 2. Upload to Vercel
+      const cloudBlob = await upload(`stamped_${file.name}`, visualBlob, { access: 'public', handleUploadUrl: '/api/upload' });
+      
+      await addLog("[PKI] Generating 2048-bit RSA Cryptographic Key...", 900);
+      
+      // 3. Send to backend for cryptographic lock (Tamper Seal)
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'sign-pdf', 
-          fileUrl: blob.url,
-          signerName: signerName,
-          signerEmail: signerEmail,
-          lockDocument: lockDocument
+          fileUrl: cloudBlob.url,
+          signerName: "Suhel Ansari", // In real app, fetch from auth/profile
+          signerEmail: "ansarisuhel4505@gmail.com",
+          lockDocument: true
         }),
       });
 
       const data = await response.json();
-
-      if (!response.ok || !data.downloadUrl) {
-        throw new Error(data.error || "Backend processing failed");
-      }
+      if (!response.ok || !data.downloadUrl) throw new Error(data.error);
       
-      await addLog("[SIGNATURE] Embedding visual signature and digital certificate...", 1000);
-      
-      if (lockDocument) {
-        await addLog("[TAMPER-SEAL] Locking document to prevent future modifications...", 800);
-      }
-      
-      await addLog("[COMPLIANCE] Generating ESIGN / IT Act compliant Audit Trail...", 900);
+      await addLog("[TAMPER-SEAL] Document locked against future modifications...", 800);
       await addLog("[SUCCESS] Document legally signed and sealed.", 600);
 
       setDownloadLink(data.downloadUrl);
       
-      const auditText = `CERTIFICATE OF COMPLETION\n\nDocument: ${file.name}\nSigner: ${signerName}\nEmail: ${signerEmail}\nTimestamp: ${new Date().toISOString()}\nIP Address: Captured securely\nSecurity: 2048-bit RSA, SHA-256 Hash\nTamper Seal: ${lockDocument ? 'Active (Locked)' : 'Inactive'}\nCompliance: IT Act 2000, ESIGN Act\n\nGenerated by MasterPdf Enterprise Engine.`;
-      const auditBlob = new Blob([auditText], { type: 'text/plain' });
-      setAuditLogUrl(URL.createObjectURL(auditBlob));
+      // Generate Audit Trail
+      const auditText = `CERTIFICATE OF COMPLETION\n\nDocument: ${file.name}\nSigner: Suhel Ansari\nTimestamp: ${new Date().toISOString()}\nSecurity: 2048-bit RSA\nTamper Seal: Active (Locked)\nElements Placed: ${elements.length}\nCompliance: IT Act 2000\n\nGenerated by MasterPdf Enterprise Engine.`;
+      const auditBlobUrl = URL.createObjectURL(new Blob([auditText], { type: 'text/plain' }));
+      setAuditLogUrl(auditBlobUrl);
       
       setStep(4);
     } catch (error) {
-      await addLog("[FATAL ERROR] Cryptographic signing failed. Server error.", 500);
+      await addLog("[FATAL ERROR] Processing failed. Check console.", 500);
     }
+    setIsProcessing(false);
   };
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>Enterprise e-Sign PDF Online | MasterPdf</title>
-        <meta name="description" content="Securely sign PDF documents online with cryptographic seals and audit trails. Free e-signature tool by MasterPdf. Created by Suhel Ansari." />
-        <meta name="keywords" content="sign pdf, e-sign pdf online, digital signature pdf, secure pdf sign, masterpdf, Suhel Ansari" />
-        <meta property="og:title" content="Enterprise e-Sign PDF Online | MasterPdf" />
-        <meta property="og:description" content="Securely sign PDF documents online with cryptographic seals and audit trails." />
+        <title>Pro e-Sign PDF Online | MasterPdf</title>
+        <meta name="description" content="Visually place signatures and cryptographically lock your PDFs online for free." />
       </Head>
-
       <Navbar />
       
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold mb-4">
-            <ShieldCheck size={14} /> Legally Binding e-Signature
+      <main className="flex-grow flex flex-col items-center justify-center p-4 mt-16 mb-10">
+        
+        {step === 1 && (
+          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center mt-10">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Sign PDF Document</h1>
+            <p className="text-gray-600 mb-8">Securely sign, add your initials, name, and date with cryptographic protection.</p>
+            <div className="border-2 border-dashed border-gray-300 rounded-xl p-12 bg-gray-50 hover:bg-gray-100 transition">
+              <PenTool size={60} className="text-[#E5322D] mx-auto mb-4" />
+              <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
+              <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-lg font-bold py-4 px-10 rounded-xl inline-flex items-center gap-3 shadow-md transition">
+                <UploadCloud size={24} /> Upload Document
+              </label>
+            </div>
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Sign PDF Document</h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Securely sign contracts and agreements with cryptographic seals and comprehensive audit trails.
-          </p>
-        </div>
+        )}
 
-        <div className="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[550px] flex flex-col relative">
-          
-          {step === 1 && (
-            <div className="flex-grow flex items-center justify-center p-12 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 transition">
-              <div className="text-center w-full">
-                <PenTool size={60} className="text-blue-500 mx-auto mb-4" />
-                <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
-                <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-lg font-bold py-4 px-10 rounded-xl inline-flex items-center gap-3 shadow-md transition">
-                  <UploadCloud size={24} /> Upload Document to Sign
-                </label>
-                <p className="mt-4 text-sm text-gray-500 font-medium">Supports high-security PKI and Tamper-Evident sealing.</p>
+        {step === 2 && (
+          <div className="w-full max-w-[1400px] bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col lg:flex-row overflow-hidden min-h-[700px]">
+            
+            {/* LEFT: Live PDF Visualizer */}
+            <div className="w-full lg:w-3/4 bg-gray-100 p-6 flex flex-col items-center relative overflow-hidden">
+              <div className="w-full flex justify-between items-center mb-4">
+                <h3 className="font-bold text-gray-700">Document Preview</h3>
+                <div className="flex items-center gap-4">
+                  <button disabled={currentPage <= 1} onClick={() => setCurrentPage(p=>p-1)} className="p-1 bg-white rounded shadow disabled:opacity-50"><ChevronLeft/></button>
+                  <span className="text-sm font-bold">Page {currentPage} of {numPages}</span>
+                  <button disabled={currentPage >= numPages} onClick={() => setCurrentPage(p=>p+1)} className="p-1 bg-white rounded shadow disabled:opacity-50"><ChevronRight/></button>
+                </div>
+              </div>
+
+              <div 
+                ref={pdfWrapperRef} 
+                className="relative bg-white shadow-xl border border-gray-300 overflow-hidden" 
+                style={{ width: PREVIEW_WIDTH }}
+              >
+                <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-20 text-center animate-pulse">Loading Document...</div>}>
+                  <Page pageNumber={currentPage} width={PREVIEW_WIDTH} renderTextLayer={false} renderAnnotationLayer={false} />
+                </Document>
+
+                {/* Draggable Elements Overlay */}
+                {elements.filter(el => el.page === currentPage).map(el => (
+                  <Rnd
+                    key={el.id}
+                    bounds="parent"
+                    position={{ x: el.x, y: el.y }}
+                    size={{ width: el.width, height: el.height }}
+                    onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
+                    onResizeStop={(e, direction, ref, delta, position) => {
+                      updateElement(el.id, { width: ref.style.width, height: ref.style.height, ...position });
+                    }}
+                    className={`border-2 border-dashed border-blue-500 bg-blue-50/40 group flex items-center justify-center cursor-move`}
+                  >
+                    <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"><X size={12}/></button>
+                    
+                    {el.type === 'signature' ? (
+                      el.value.type === 'image' ? <img src={el.value.image} className="w-full h-full object-contain pointer-events-none" /> :
+                      <span className="font-bold text-red-600 text-2xl" style={{ fontFamily: "'Brush Script MT', cursive" }}>{el.value.text}</span>
+                    ) : (
+                      <span className="font-bold text-gray-800 pointer-events-none whitespace-nowrap">{el.value}</span>
+                    )}
+                  </Rnd>
+                ))}
               </div>
             </div>
-          )}
 
-          {step > 1 && (
-            <div className="w-full flex flex-col md:flex-row gap-8 items-start h-full">
-              
-              <div className="w-full md:w-1/3 flex flex-col gap-4">
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 relative">
-                  {step === 2 && (
-                    <button onClick={removeFile} className="absolute top-4 right-4 bg-white border text-gray-500 hover:text-red-500 rounded-full p-2"><X size={18} /></button>
-                  )}
-                  <div className="flex flex-col items-center mt-2 mb-4">
-                    <FileText size={50} className={`${step === 4 ? 'text-green-500' : 'text-blue-600'} mb-3 opacity-90`} />
-                    <p className="text-sm font-bold text-center break-words w-full text-gray-800">{file.name}</p>
-                  </div>
-                </div>
-
-                <div className="bg-white border border-gray-200 rounded-lg p-5">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Enterprise Security</h4>
-                  <ul className="space-y-3">
-                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><FileKey size={16} className="text-blue-500"/> Cryptographic Hash (SHA-256)</li>
-                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><Lock size={16} className="text-red-500"/> Tamper-Evident Lock</li>
-                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><History size={16} className="text-purple-500"/> Comprehensive Audit Trail</li>
-                    <li className="flex items-center gap-3 text-sm font-medium text-gray-700"><ShieldCheck size={16} className="text-green-500"/> IT Act / ESIGN Compliant</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div className="w-full md:w-2/3 flex flex-col h-full min-h-[400px]">
+            {/* RIGHT: Tools Panel */}
+            <div className="w-full lg:w-1/4 bg-white border-l border-gray-200 p-6 flex flex-col justify-between">
+              <div>
+                <h3 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2"><Settings size={20} className="text-[#E5322D]"/> Signing Options</h3>
                 
-                {step === 2 && (
-                  <div className="flex-grow flex flex-col animate-in fade-in">
-                    <h3 className="text-xl font-bold text-gray-900 border-b pb-3 mb-6">Signer Identity & Protocol</h3>
-                    
-                    <div className="space-y-5">
-                      <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Legal Full Name</label>
-                        <div className="relative">
-                          <User size={18} className="absolute left-3 top-3.5 text-gray-400" />
-                          <input type="text" value={signerName} onChange={(e) => setSignerName(e.target.value)} placeholder="e.g. Suhel Ansari" className="w-full border border-gray-300 rounded-lg p-3 pl-10 focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Email Address (For Audit Trail)</label>
-                        <div className="relative">
-                          <Mail size={18} className="absolute left-3 top-3.5 text-gray-400" />
-                          <input type="email" value={signerEmail} onChange={(e) => setSignerEmail(e.target.value)} placeholder="email@company.com" className="w-full border border-gray-300 rounded-lg p-3 pl-10 focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                      </div>
-
-                      <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mt-4">
-                        <label className="flex items-start gap-3 cursor-pointer">
-                          <input type="checkbox" checked={lockDocument} onChange={(e) => setLockDocument(e.target.checked)} className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300" />
-                          <div>
-                            <p className="text-sm font-bold text-gray-900">Lock Document with Tamper Seal</p>
-                            <p className="text-xs text-gray-600 mt-1">Prevents anyone from editing the PDF after you sign it. If modified, the signature will instantly break and show as invalid.</p>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-
-                    <button onClick={processSignature} className="mt-8 w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-md">
-                      Apply Cryptographic Signature <PenTool size={22} />
+                <div className="space-y-4">
+                  <div className="border border-gray-200 p-4 rounded-xl bg-gray-50">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Add Elements</h4>
+                    <button onClick={() => setIsModalOpen(true)} className="w-full mb-3 flex items-center justify-center gap-2 bg-white border-2 border-blue-200 text-blue-700 hover:border-blue-400 font-bold py-3 rounded-lg transition shadow-sm">
+                      <PenTool size={18}/> Create Signature
                     </button>
-                  </div>
-                )}
-
-                {step === 3 && (
-                  <div className="flex-grow flex flex-col">
-                    <div className="flex justify-between items-center mb-3 border-b pb-2">
-                      <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Lock size={20} className="text-gray-700" /> Security Protocol Terminal</h3>
-                      <span className="flex items-center gap-2 text-xs font-bold text-blue-600 animate-pulse"><Settings size={14} className="animate-spin" /> Signing...</span>
-                    </div>
-                    <div className="flex-grow bg-[#0D1117] rounded-xl p-5 overflow-y-auto shadow-inner font-mono text-[13px] leading-relaxed border border-gray-800">
-                      {logs.map((log, index) => (
-                        <div key={index} className={`mb-1 ${log.includes('[SUCCESS]') ? 'text-green-400' : log.includes('[FATAL') ? 'text-red-500' : log.includes('[PKI]') || log.includes('[HASH]') ? 'text-purple-400' : 'text-gray-300'}`}>
-                          <span className="text-gray-500 mr-2">{new Date().toISOString().split('T')[1].split('.')[0]}</span>{log}
-                        </div>
-                      ))}
-                      <div className="text-gray-500 animate-pulse mt-1">_</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => addElement('name')} className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-100 font-bold text-sm py-2 px-3 rounded-lg"><User size={16}/> Name</button>
+                      <button onClick={() => addElement('date')} className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-100 font-bold text-sm py-2 px-3 rounded-lg"><Calendar size={16}/> Date</button>
                     </div>
                   </div>
-                )}
 
-                {step === 4 && (
-                  <div className="flex-grow flex flex-col justify-center animate-in fade-in">
-                    <div className="bg-green-50 border border-green-200 text-green-900 p-6 rounded-2xl flex flex-col items-center text-center gap-3 mb-6">
-                      <CheckCircle2 size={50} className="text-green-500 mb-2" />
-                      <h3 className="text-2xl font-bold">Document Signed & Sealed</h3>
-                      <p className="text-sm">The cryptographic hash has been embedded. The document is legally binding and locked against future modifications.</p>
-                    </div>
-                    
-                    <div className="flex flex-col gap-4 mt-2">
-                      {/* 🔥 INSTANT DOWNLOAD TRICK APPLIED HERE 🔥 */}
-                      <a href={downloadUrl} target="_blank" rel="noopener noreferrer" download={`Signed_${file.name}`} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-lg">
-                        <Download size={22} /> Download Signed PDF
-                      </a>
-                      <a href={auditLogUrl} target="_blank" rel="noopener noreferrer" download={`Audit_Trail_${file.name}.txt`} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-gray-700 font-bold text-lg bg-white border-2 border-gray-200 hover:bg-gray-50 transition shadow-sm">
-                        <History size={22} /> Download Audit Trail (Log)
-                      </a>
-                    </div>
+                  <div className="border border-green-200 p-4 rounded-xl bg-green-50">
+                    <h4 className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2 flex items-center gap-1"><ShieldCheck size={14}/> Enterprise Security</h4>
+                    <p className="text-xs text-green-800 font-medium">After visual placement, document will be Cryptographically Locked with an Audit Trail.</p>
                   </div>
-                )}
+                </div>
+              </div>
 
+              <div className="mt-8">
+                <button 
+                  onClick={processAndSign} 
+                  disabled={isProcessing || elements.length === 0} 
+                  className="w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-lg disabled:bg-gray-400"
+                >
+                  {isProcessing ? <><Settings className="animate-spin" size={24} /> Sealing...</> : <>Finish & Sign <Lock size={20} /></>}
+                </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* STEP 3 & 4: Terminal & Success (Same as before) */}
+        {step === 3 && (
+          <div className="w-full max-w-4xl bg-[#0D1117] rounded-xl p-8 min-h-[400px] flex flex-col shadow-2xl mt-10">
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2 border-b border-gray-800 pb-3"><Lock size={20}/> Cryptographic Terminal</h3>
+            <div className="flex-grow font-mono text-[14px] leading-relaxed">
+              {logs.map((log, i) => (
+                <div key={i} className={log.includes('[SUCCESS]') ? 'text-green-400 font-bold' : log.includes('[FATAL') ? 'text-red-500' : 'text-gray-300'}>
+                  <span className="text-gray-600 mr-3">{new Date().toISOString().split('T')[1].split('.')[0]}</span>{log}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-gray-200 p-12 text-center mt-10 animate-in zoom-in duration-500">
+            <CheckCircle2 size={80} className="text-green-500 mx-auto mb-6" />
+            <h3 className="text-3xl font-black text-gray-900 mb-2">Document Legally Signed!</h3>
+            <p className="text-gray-500 mb-8">The cryptographic hash has been embedded. Tamper Seal is Active.</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <a href={downloadUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold bg-[#E5322D] hover:bg-red-700 transition shadow-lg"><Download size={20}/> Download Signed PDF</a>
+              <a href={auditLogUrl} target="_blank" rel="noopener noreferrer" download={`Audit_Trail.txt`} className="flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-gray-700 font-bold bg-gray-100 hover:bg-gray-200 transition"><History size={20}/> Download Audit Log</a>
+            </div>
+          </div>
+        )}
+
       </main>
       <Footer />
+
+      {/* 🔥 SIGNATURE CREATION MODAL (iLovePDF Style) 🔥 */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center bg-gray-50 px-6 py-4 border-b border-gray-200">
+              <h3 className="font-bold text-lg text-gray-800">Set your signature details</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-red-500"><X size={20}/></button>
+            </div>
+            
+            <div className="p-6">
+              {/* Tabs */}
+              <div className="flex border-b border-gray-200 mb-6 gap-6">
+                <button onClick={() => setModalTab('type')} className={`pb-3 font-bold text-sm flex items-center gap-2 transition-colors ${modalTab==='type' ? 'text-[#E5322D] border-b-2 border-[#E5322D]' : 'text-gray-500 hover:text-gray-800'}`}><Type size={16}/> Type</button>
+                <button onClick={() => setModalTab('draw')} className={`pb-3 font-bold text-sm flex items-center gap-2 transition-colors ${modalTab==='draw' ? 'text-[#E5322D] border-b-2 border-[#E5322D]' : 'text-gray-500 hover:text-gray-800'}`}><PenTool size={16}/> Draw</button>
+                <button onClick={() => setModalTab('upload')} className={`pb-3 font-bold text-sm flex items-center gap-2 transition-colors ${modalTab==='upload' ? 'text-[#E5322D] border-b-2 border-[#E5322D]' : 'text-gray-500 hover:text-gray-800'}`}><ImageIcon size={16}/> Upload Image</button>
+              </div>
+
+              {/* Tab Contents */}
+              <div className="bg-gray-50 rounded-xl p-8 border border-gray-200 flex justify-center items-center min-h-[250px]">
+                {modalTab === 'type' && (
+                  <div className="w-full">
+                    <input type="text" value={signatureData.text} onChange={(e) => setSignatureData({ ...signatureData, text: e.target.value, type: 'text' })} className="w-full border-2 border-gray-300 rounded-lg p-4 text-center text-4xl text-[#E5322D] bg-white outline-none focus:border-red-400" style={{ fontFamily: "'Brush Script MT', cursive" }} placeholder="Type your name" />
+                  </div>
+                )}
+                {modalTab === 'draw' && (
+                  <div className="w-full flex flex-col items-center">
+                    <canvas ref={canvasRef} onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} width={400} height={150} className="bg-white border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair shadow-sm"></canvas>
+                    <button onClick={clearCanvas} className="mt-3 text-sm font-bold text-gray-500 hover:text-red-500">Clear Canvas</button>
+                  </div>
+                )}
+                {modalTab === 'upload' && (
+                  <div className="text-center w-full">
+                    <input type="file" id="sig-upload" accept="image/*" onChange={handleImageUpload} className="hidden"/>
+                    <label htmlFor="sig-upload" className="cursor-pointer bg-white border-2 border-dashed border-gray-300 hover:border-red-400 rounded-lg w-full py-12 flex flex-col items-center justify-center transition">
+                      <UploadCloud size={40} className="text-gray-400 mb-3" />
+                      <span className="font-bold text-gray-600">Upload signature or stamp image</span>
+                      <span className="text-xs text-gray-400 mt-1">PNG, JPG formats supported</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button onClick={saveSignature} className="px-8 py-3 bg-[#E5322D] hover:bg-red-700 text-white font-bold rounded-xl transition shadow-md">Apply Signature</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
