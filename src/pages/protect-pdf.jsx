@@ -42,13 +42,11 @@ export default function ProtectPdf() {
     setIsProtecting(true);
 
     try {
-      // 1. Seedha Vercel Blob par upload (Bypasses 4.5MB limit)
       const blob = await upload(file.name, file, { 
         access: 'public', 
         handleUploadUrl: '/api/upload' 
       });
 
-      // 2. Sirf URL backend ko bhejo (Tiny JSON Request)
       const res = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,7 +60,14 @@ export default function ProtectPdf() {
       const data = await res.json();
 
       if (res.ok && data.downloadUrl) {
-        window.location.href = data.downloadUrl;
+        // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.setAttribute('download', `MasterPdf_Protected_${file.name}`);
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else {
         alert("Error: " + data.error);
       }
@@ -76,14 +81,19 @@ export default function ProtectPdf() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
-        <title>Protect PDF files online - MasterPdf</title>
+        <title>Protect PDF Files Online Free | MasterPdf</title>
+        <meta name="description" content="Encrypt your PDF with a strong password to prevent unauthorized access. 100% secure and free PDF protector by MasterPdf. Created by Suhel Ansari." />
+        <meta name="keywords" content="protect pdf, encrypt pdf, add password to pdf, secure pdf, masterpdf, Suhel Ansari" />
+        <meta property="og:title" content="Protect PDF Files Online Free | MasterPdf" />
+        <meta property="og:description" content="Encrypt your PDF with a strong password to prevent unauthorized access. 100% secure." />
       </Head>
+
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16">
+      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
         
-        {/* Tool Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">Protect PDF file</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -91,11 +101,9 @@ export default function ProtectPdf() {
           </p>
         </div>
 
-        {/* Workspace Area */}
         <div className="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[450px] flex flex-col items-center justify-center relative">
           
           {!file ? (
-            // Upload State
             <div className="text-center w-full">
               <input 
                 type="file" 
@@ -118,10 +126,8 @@ export default function ProtectPdf() {
               </div>
             </div>
           ) : (
-            // File Selected State
             <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start pt-4">
               
-              {/* Left Side: File Preview */}
               <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-8 relative h-[350px]">
                 <button 
                   onClick={removeFile}
@@ -135,7 +141,6 @@ export default function ProtectPdf() {
                 </p>
               </div>
 
-              {/* Right Side: Password Setup Options */}
               <div className="w-full md:w-1/2 flex flex-col h-[350px] justify-between">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Set up a password</h3>
