@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
-import Navbar from '../components/Navbar';   // ✅ यहाँ बदलाव किया
-import Footer from '../components/Footer';   // ✅ यहाँ बदलाव किया
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
 import { 
   UploadCloud, X, Edit3, Lock, Share2, History, Shield, Stamp, FileText, Trash2, 
   Users, Settings, MessageSquare, Save, Eye, Download, Loader2, Printer 
@@ -27,11 +27,10 @@ export default function EditPdf() {
   const [ocrEnabled, setOcrEnabled] = useState(false);
   const [activities, setActivities] = useState([]);
   
-  // Adobe Embed API
   const adobeDCView = useRef(null);
-  const adobeClientId = process.env.NEXT_PUBLIC_ADOBE_CLIENT_ID || "PASTE_YOUR_CLIENT_ID";
+  const adobeClientId = process.env.NEXT_PUBLIC_ADOBE_CLIENT_ID || "";
 
-  // Adobe Script Load
+  // Adobe Script Load (Error Handling ke saath)
   useEffect(() => {
     if (window.AdobeDC) {
       setIsSdkReady(true);
@@ -40,38 +39,47 @@ export default function EditPdf() {
     const script = document.createElement('script');
     script.src = 'https://acrobatservices.adobe.com/view-sdk/viewer.js';
     script.onload = () => setIsSdkReady(true);
+    script.onerror = () => {
+      console.error("Adobe SDK Load Failed!");
+      alert("Adobe SDK load nahi ho paya. Internet check karein.");
+    };
     document.body.appendChild(script);
   }, []);
 
-  // Initialize Adobe Viewer when file is selected
+  // Initialize Adobe Viewer (Try-Catch ke saath)
   useEffect(() => {
     if (isSdkReady && file && window.AdobeDC && !adobeDCView.current) {
-      adobeDCView.current = new window.AdobeDC.View({
-        clientId: adobeClientId,
-        divId: 'adobe-dc-view',
-      });
+      try {
+        // ✅ Safety Check: Client ID valid hona chahiye
+        if (!adobeClientId || adobeClientId === "PASTE_YOUR_CLIENT_ID") {
+          alert("Adobe Client ID set nahi hai. Vercel Environment Variables me valid ID daalein.");
+          return;
+        }
 
-      const filePromise = file.arrayBuffer();
+        adobeDCView.current = new window.AdobeDC.View({
+          clientId: adobeClientId,
+          divId: 'adobe-dc-view',
+        });
 
-      adobeDCView.current.previewFile({
-        content: { promise: filePromise },
-        metaData: { fileName: file.name }
-      }, {
-        showAnnotationTools: true,
-        showLeftHandPanel: false,
-        showDownloadPDF: true,
-        showPrintPDF: true,
-        enableFormFilling: true,
-        includePDFAnnotations: true,
-        defaultViewMode: "FIT_WIDTH",
-        showBookmarks: true,
-        showThumbnails: true,
-      });
+        const filePromise = file.arrayBuffer();
 
-      // Save Event Handler
-      adobeDCView.current.registerEvent(
-        'SAVE',
-        async (event) => {
+        adobeDCView.current.previewFile({
+          content: { promise: filePromise },
+          metaData: { fileName: file.name }
+        }, {
+          showAnnotationTools: true,
+          showLeftHandPanel: false,
+          showDownloadPDF: true,
+          showPrintPDF: true,
+          enableFormFilling: true,
+          includePDFAnnotations: true,
+          defaultViewMode: "FIT_WIDTH",
+          showBookmarks: true,
+          showThumbnails: true,
+        });
+
+        // Save Event Handler
+        adobeDCView.current.registerEvent('SAVE', async (event) => {
           setIsSaving(true);
           try {
             const updatedFile = event.options.pdfData;
@@ -83,16 +91,8 @@ export default function EditPdf() {
             const token = await getToken();
             const res = await fetch('/api/edit-pdf', {
               method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({ 
-                action: 'save-version', 
-                fileId: fileId,
-                fileUrl: newBlob.url,
-                fileName: file.name
-              })
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ action: 'save-version', fileId: fileId, fileUrl: newBlob.url, fileName: file.name })
             });
             const data = await res.json();
             if (data.success) {
@@ -106,14 +106,17 @@ export default function EditPdf() {
           } finally {
             setIsSaving(false);
           }
-        }
-      );
-      
-      // Track Activity
-      adobeDCView.current.registerEvent('PAGE_VIEW', (event) => {
-        const page = event.pageNumber;
-        logActivity(`Viewed page ${page}`);
-      });
+        });
+        
+        // Track Activity
+        adobeDCView.current.registerEvent('PAGE_VIEW', (event) => {
+          logActivity(`Viewed page ${event.pageNumber}`);
+        });
+
+      } catch (error) {
+        console.error("Adobe Init Error:", error);
+        alert("Adobe Viewer start nahi ho paya. Client ID check karein.");
+      }
     }
   }, [file, isSdkReady]);
 
@@ -133,16 +136,8 @@ export default function EditPdf() {
         const token = await getToken();
         const res = await fetch('/api/edit-pdf', {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ 
-            action: 'create-file', 
-            fileUrl: blob.url,
-            fileName: selectedFile.name,
-            fileSize: selectedFile.size
-          })
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ action: 'create-file', fileUrl: blob.url, fileName: selectedFile.name, fileSize: selectedFile.size })
         });
         const data = await res.json();
         if (data.success) {
@@ -150,11 +145,11 @@ export default function EditPdf() {
           setFile(selectedFile);
           logActivity('Uploaded file');
         } else {
-          alert("Failed to create file record.");
+          alert("File record nahi bana. Backend API /api/edit-pdf check karein.");
         }
       } catch (error) {
         console.error('Upload error:', error);
-        alert("Upload failed. Check /api/upload and middleware.js");
+        alert("Upload failed. Check /api/upload route and middleware.js");
       } finally {
         setIsUploading(false);
       }
@@ -163,21 +158,16 @@ export default function EditPdf() {
     }
   };
 
-  // Function to log activity
   const logActivity = async (action) => {
     if (!fileId) return;
     const token = await getToken();
     await fetch('/api/edit-pdf', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ action: 'log-activity', fileId, actionText: action })
     });
   };
 
-  // Load History
   const loadHistory = async () => {
     if (!fileId) return;
     setIsLoadingHistory(true);
@@ -190,7 +180,6 @@ export default function EditPdf() {
     setIsLoadingHistory(false);
   };
 
-  // Load Activities
   const loadActivities = async () => {
     if (!fileId) return;
     const token = await getToken();
@@ -201,43 +190,26 @@ export default function EditPdf() {
     if (data.activities) setActivities(data.activities);
   };
 
-  // Share Link Handler
   const handleShare = async () => {
     setIsSharing(true);
     const token = await getToken();
     const res = await fetch('/api/edit-pdf', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ action: 'share-file', fileId, isPublic: true })
     });
     const data = await res.json();
     if (data.shareUrl) {
       navigator.clipboard.writeText(data.shareUrl);
-      alert('Shareable link copied to clipboard!');
+      alert('Shareable link copied!');
     }
     setIsSharing(false);
   };
 
-  // Apply Watermark Handler
-  const handleWatermark = () => {
-    if (!watermarkText) {
-      alert('Please enter watermark text');
-      return;
-    }
-    alert(`Watermark "${watermarkText}" will be applied on next save.`);
-  };
+  const togglePermission = (key) => setPermissions(prev => ({ ...prev, [key]: !prev[key] }));
 
-  // Toggle Permissions
-  const togglePermission = (key) => {
-    setPermissions(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  // Render only if user is signed in
   if (!isLoaded) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" size={48} /></div>;
-  if (!isSignedIn) return <div className="min-h-screen flex items-center justify-center">Please <a href="/sign-in" className="text-blue-500">sign in</a> to use this editor.</div>;
+  if (!isSignedIn) return <div className="min-h-screen flex items-center justify-center">Please <a href="/sign-in" className="text-blue-500">sign in</a></div>;
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
@@ -291,10 +263,8 @@ export default function EditPdf() {
               </div>
               
               <div className="flex flex-1 gap-4">
-                {/* Left Toolbar */}
                 <div className="w-64 bg-gray-50 border-r border-gray-200 p-4 overflow-y-auto">
                   <h3 className="text-lg font-bold text-gray-800 mb-4">Tools</h3>
-                  
                   <div className="mb-6">
                     <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Lock size={16} /> Permissions</h4>
                     <label className="flex items-center gap-2 mb-2">
@@ -309,14 +279,8 @@ export default function EditPdf() {
 
                   <div className="mb-6">
                     <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Shield size={16} /> Watermark</h4>
-                    <input 
-                      type="text" 
-                      value={watermarkText} 
-                      onChange={(e) => setWatermarkText(e.target.value)} 
-                      placeholder="Enter watermark text" 
-                      className="w-full border border-gray-300 rounded-lg p-2 mb-2 text-sm"
-                    />
-                    <button onClick={handleWatermark} className="w-full bg-gray-200 text-gray-800 py-2 rounded-lg text-sm font-bold hover:bg-gray-300">Apply Watermark</button>
+                    <input type="text" value={watermarkText} onChange={(e) => setWatermarkText(e.target.value)} placeholder="Enter watermark text" className="w-full border border-gray-300 rounded-lg p-2 mb-2 text-sm" />
+                    <button className="w-full bg-gray-200 text-gray-800 py-2 rounded-lg text-sm font-bold hover:bg-gray-300">Apply Watermark</button>
                   </div>
 
                   <div className="mb-6">
@@ -331,56 +295,37 @@ export default function EditPdf() {
                     <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Stamp size={16} /> Sign</h4>
                     <button className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-bold hover:bg-blue-700">Add Digital Signature</button>
                   </div>
-
-                  <div className="mb-6">
-                    <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Users size={16} /> Collaboration</h4>
-                    <button className="w-full bg-purple-600 text-white py-2 rounded-lg text-sm font-bold hover:bg-purple-700 mb-2">Add Comment</button>
-                    <button className="w-full bg-purple-100 text-purple-700 py-2 rounded-lg text-sm font-bold hover:bg-purple-200">Invite Teammate</button>
-                  </div>
                 </div>
 
-                {/* Center: Adobe Viewer */}
                 <div id="adobe-dc-view" className="flex-1 border border-gray-300 rounded-lg overflow-hidden"></div>
 
-                {/* Right Panel: History & Activity */}
                 <div className="w-80 bg-gray-50 border-l border-gray-200 p-4 overflow-y-auto">
                   <h3 className="text-lg font-bold text-gray-800 mb-4">Details</h3>
-                  
                   <div className="mb-6">
                     <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><History size={16} /> Version History</h4>
-                    {history.length === 0 ? (
-                      <p className="text-sm text-gray-500">No versions yet</p>
-                    ) : (
-                      history.map((ver, idx) => (
-                        <div key={idx} className="mb-2 p-2 bg-white rounded shadow-sm text-sm">
-                          <p className="font-bold">{ver.version}</p>
-                          <p className="text-gray-500">{new Date(ver.createdAt).toLocaleString()}</p>
-                          <button className="text-blue-500 text-xs font-bold mt-1 hover:underline" onClick={() => window.open(ver.fileUrl)}>Preview</button>
-                        </div>
-                      ))
-                    )}
+                    {history.length === 0 ? <p className="text-sm text-gray-500">No versions yet</p> : history.map((ver, idx) => (
+                      <div key={idx} className="mb-2 p-2 bg-white rounded shadow-sm text-sm">
+                        <p className="font-bold">{ver.version}</p>
+                        <p className="text-gray-500">{new Date(ver.createdAt).toLocaleString()}</p>
+                        <button className="text-blue-500 text-xs font-bold mt-1 hover:underline" onClick={() => window.open(ver.fileUrl)}>Preview</button>
+                      </div>
+                    ))}
                   </div>
-
                   <div>
                     <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><MessageSquare size={16} /> Activity Log</h4>
-                    {activities.length === 0 ? (
-                      <p className="text-sm text-gray-500">No activity yet</p>
-                    ) : (
-                      activities.map((act, idx) => (
-                        <div key={idx} className="mb-2 p-2 bg-white rounded shadow-sm text-xs">
-                          <p className="font-bold">{act.user_email}</p>
-                          <p className="text-gray-600">{act.action_text}</p>
-                          <p className="text-gray-400">{new Date(act.timestamp).toLocaleString()}</p>
-                        </div>
-                      ))
-                    )}
+                    {activities.length === 0 ? <p className="text-sm text-gray-500">No activity yet</p> : activities.map((act, idx) => (
+                      <div key={idx} className="mb-2 p-2 bg-white rounded shadow-sm text-xs">
+                        <p className="font-bold">{act.user_email || act.user_id}</p>
+                        <p className="text-gray-600">{act.action_text}</p>
+                        <p className="text-gray-400">{new Date(act.timestamp).toLocaleString()}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Save Progress Indicator */}
           {isSaving && (
             <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-50">
               <div className="flex flex-col items-center">
