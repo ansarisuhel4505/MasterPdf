@@ -28,6 +28,8 @@ const signatureFonts = [
   "Neucha", "Rock Salt", "Reenie Beanie", "Nothing You Could Do", "Schoolbell", "Nanum Pen Script", "Comic Sans MS"
 ];
 
+const RENDER_SCALE = 1.5; // High Def Resolution Scale for Crisp Text
+
 export default function VisualSignPdf() {
   const [isMounted, setIsMounted] = useState(false);
   
@@ -200,28 +202,23 @@ export default function VisualSignPdf() {
     try {
       const arrayBuffer = await activeFile.file.arrayBuffer();
       
-      // Load PDF bypassing read-locks
-      let pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+      // Step 1: Force Load even if Encrypted
+      const originalDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
       
-      // If document is encrypted/locked by author, copy it to a fresh unencrypted PDF
-      if (pdfDoc.isEncrypted) {
-        const newDoc = await PDFDocument.create();
-        const copiedPages = await newDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
-        copiedPages.forEach((page) => newDoc.addPage(page));
-        pdfDoc = newDoc;
-      }
+      // Step 2: Strip Encryption by creating a Fresh Clone Document
+      const pdfDoc = await PDFDocument.create();
+      const copiedPages = await pdfDoc.copyPages(originalDoc, originalDoc.getPageIndices());
+      copiedPages.forEach((page) => pdfDoc.addPage(page));
 
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const currentFileElements = elements.filter(el => el.fileIndex === activeFileIndex);
 
-      // EXACT RENDER SCALE used in react-pdf (<Page scale={1.5} />)
-      const RENDER_SCALE = 1.5;
-
+      // Step 3: Exact UI mapping to PDF mapping
       for (const el of currentFileElements) {
         const page = pdfDoc.getPages()[el.page - 1];
         const { height: pdfHeight } = page.getSize();
         
-        // Exact 1:1 mapping based on UI scale
+        // Convert screen coordinates to actual PDF coordinates
         const actualX = el.x / RENDER_SCALE;
         const actualY = pdfHeight - (el.y / RENDER_SCALE) - (el.height / RENDER_SCALE);
         const actualW = el.width / RENDER_SCALE;
@@ -245,6 +242,7 @@ export default function VisualSignPdf() {
       pdfDoc.setCreator('MasterPdf Secure Engine');
       pdfDoc.setModificationDate(new Date());
 
+      // Optional Secure Re-Lock
       if (lockDocument) {
         pdfDoc.encrypt({
           userPassword: '', 
@@ -321,6 +319,7 @@ export default function VisualSignPdf() {
         {step === 2 && activeFile && (
           <div className="w-full max-w-[1600px] h-[85vh] flex flex-col bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden animate-in fade-in">
             
+            {/* Top Toolbar */}
             <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 shrink-0 w-full z-10 shadow-sm relative">
                <div className="flex items-center gap-2 border border-gray-300 rounded p-1">
                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronUp size={16}/></button>
@@ -346,7 +345,7 @@ export default function VisualSignPdf() {
                </div>
             </div>
 
-            {/* 🔥 FIX 1: OVERLAP PREVENTED (min-w-0 added) */}
+            {/* 🔥 FIX 1: OVERLAP PREVENTED - All 3 sections perfectly aligned in flex-row */}
             <div className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4]">
               
               {/* Left Sidebar - High Res Thumbnails */}
@@ -366,7 +365,7 @@ export default function VisualSignPdf() {
               {/* Main Document Viewer Workspace */}
               <div className="flex-grow flex flex-col relative min-w-0">
                  
-                 {/* 🔥 FIX 2: Fixed Floating Menu (Outside scroll area) */}
+                 {/* 🔥 FIX 2: Fixed Floating Menu (Does not scroll with PDF) */}
                  <div className="absolute right-6 top-[20%] flex flex-col gap-2 group z-50">
                     <div className="relative">
                       <button className="bg-[#E5322D] text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-110">
@@ -387,10 +386,10 @@ export default function VisualSignPdf() {
                  <div className="flex-grow overflow-y-auto p-6 flex flex-col items-center custom-scrollbar">
                    <div className="relative shadow-2xl bg-white select-none mb-10">
                      <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
-                       {/* 🔥 FIX 4: Scale 1.5 for Sharp Text */}
+                       {/* 🔥 FIX 5: Scale 1.5 for Sharp HD Text */}
                        <Page 
                          pageNumber={currentPage} 
-                         scale={1.5} 
+                         scale={RENDER_SCALE} 
                          renderTextLayer={false} 
                          renderAnnotationLayer={false} 
                        />
@@ -436,7 +435,7 @@ export default function VisualSignPdf() {
                   <button onClick={removeFile} className="text-gray-400 hover:text-[#E5322D]"><X size={20}/></button>
                 </div>
 
-                <div className="p-5 overflow-y-auto flex-grow">
+                <div className="p-5 overflow-y-auto flex-grow custom-scrollbar">
                   
                   {/* Type Selection */}
                   <div className="mb-8">
@@ -488,8 +487,8 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* Optional Fields */}
-                  <div className="mb-4">
+                  {/* Optional Fields (Exact List Style) */}
+                  <div className="mb-6">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Optional fields</h4>
                     <div className="space-y-2">
                       <button onClick={() => addElement('initials')} className="w-full border border-gray-200 border-dashed rounded-lg p-0 bg-white hover:bg-gray-50 flex items-center justify-between transition-colors shadow-sm overflow-hidden group">
@@ -530,7 +529,8 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  <div className="border-t border-gray-200 pt-6">
+                  {/* 🔥 SECURITY: Lock Document Toggle */}
+                  <div className="border-t border-gray-200 pt-6 mb-4">
                     <label className="flex items-start gap-3 cursor-pointer group">
                       <input type="checkbox" checked={lockDocument} onChange={e=>setLockDocument(e.target.checked)} className="mt-1 w-5 h-5 accent-[#E5322D]" />
                       <div>
@@ -541,7 +541,7 @@ export default function VisualSignPdf() {
                   </div>
                 </div>
 
-                <div className="p-5 border-t border-gray-200 bg-gray-50 shrink-0">
+                <div className="p-5 border-t border-gray-200 bg-gray-50 shrink-0 z-20">
                   <button 
                     onClick={applySignatureAndDownload} 
                     disabled={isProcessing || elements.filter(el => el.fileIndex === activeFileIndex).length === 0}
@@ -555,7 +555,7 @@ export default function VisualSignPdf() {
           </div>
         )}
 
-        {/* STEP 4: DOWNLOAD SCREEN */}
+        {/* STEP 4: DOWNLOAD SCREEN WITH 4 EXACT ICONS */}
         {step === 4 && (
           <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in slide-in-from-bottom-8 fade-in text-center mt-10">
             <h1 className="text-4xl font-bold text-gray-800 mb-8 tracking-tight">PDF files have been signed!</h1>
@@ -581,7 +581,7 @@ export default function VisualSignPdf() {
       </main>
       <Footer />
 
-      {/* 🔥 SOLO SIGNATURE MODAL 🔥 */}
+      {/* 🔥 SOLO SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
       {showSignatureModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
@@ -591,7 +591,7 @@ export default function VisualSignPdf() {
               <button onClick={() => setShowSignatureModal(false)} className="text-gray-400 hover:text-[#E5322D] border border-gray-200 px-3 py-1 rounded-md text-sm font-bold bg-white shadow-sm">Cancel</button>
             </div>
 
-            <div className="p-4 sm:p-8 overflow-y-auto flex-grow">
+            <div className="p-4 sm:p-8 overflow-y-auto flex-grow custom-scrollbar">
               <div className="flex flex-col md:flex-row gap-6 mb-6">
                 <div className="flex-grow">
                   <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
@@ -639,7 +639,7 @@ export default function VisualSignPdf() {
                   )}
 
                   {(hTab === 'Signature' || hTab === 'Initials') && vTab === 'Type' && (
-                    <div className="flex flex-col gap-2 bg-gray-100 h-[240px] overflow-y-auto pr-2">
+                    <div className="flex flex-col gap-2 bg-gray-100 h-[240px] overflow-y-auto pr-2 custom-scrollbar">
                       {signatureFonts.map((font, index) => (
                         <label key={index} className={`flex items-center gap-4 px-4 py-3 rounded-md cursor-pointer transition border-b border-gray-200 ${selectedStyle === index ? 'bg-white shadow-sm border-[#E5322D]' : 'hover:bg-gray-50 border-transparent'}`}>
                           <input type="radio" checked={selectedStyle === index} onChange={() => setSelectedStyle(index)} className="w-5 h-5 accent-[#E5322D] shrink-0" />
