@@ -11,9 +11,10 @@ import {
   UploadCloud, X, PenTool, Lock, Download, Settings, 
   User, Calendar, Type, Stamp, Plus, PlusCircle, ChevronLeft, 
   ChevronRight, ChevronUp, ChevronDown, ShieldCheck, Upload, QrCode, Palette,
-  Layers, Globe, ArrowLeft, ArrowRightCircle, HardDrive, Link2, Trash2, Edit3
+  Layers, Globe, ArrowLeft, ArrowRightCircle, HardDrive, Link2, Trash2, Edit3, Monitor
 } from 'lucide-react';
 
+// Stabilized PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 // 🔥 50 Handpicked Signature Fonts
@@ -29,18 +30,16 @@ const signatureFonts = [
 export default function VisualSignPdf() {
   const [isMounted, setIsMounted] = useState(false);
   
-  // Multi-File System States
+  // --- MULTI-FILE SYSTEM STATES ---
   const [files, setFiles] = useState([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [showFileDropdown, setShowFileDropdown] = useState(false);
-
+  
   const activeFile = files[activeFileIndex] || null;
   
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
-  
-  // App Flow: 1 (Upload) -> 2 (Editor) -> 4 (Download)
   const [step, setStep] = useState(1);
   
   // Modal & Signature Preferences
@@ -54,9 +53,7 @@ export default function VisualSignPdf() {
   const [drawnSignature, setDrawnSignature] = useState(null);
   const [uploadedSig, setUploadedSig] = useState(null);
   const [uploadedStamp, setUploadedStamp] = useState(null);
-  
   const [sigMode, setSigMode] = useState('simple'); 
-  const [lockDocument, setLockDocument] = useState(false); 
   
   const [elements, setElements] = useState([]);
   const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
@@ -75,6 +72,7 @@ export default function VisualSignPdf() {
 
   // --- MULTI-FILE HANDLING ---
   const handleFileChange = (e) => {
+    if (!e.target.files) return;
     const selectedFiles = Array.from(e.target.files);
     const validFiles = selectedFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
     
@@ -94,7 +92,6 @@ export default function VisualSignPdf() {
     } else {
       alert("Please upload valid PDF documents (.pdf).");
     }
-    e.target.value = null; 
   };
 
   const removeFile = () => {
@@ -104,6 +101,17 @@ export default function VisualSignPdf() {
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages);
     setCurrentPage(1);
+  };
+
+  // --- CLOUD API PLACEHOLDERS ---
+  const triggerGoogleDrive = () => {
+    alert("DEVELOPER NOTE: To open actual Google Drive here, you need to add the 'Google Picker API' script in your project and provide your Google Cloud Client ID. Currently mapping to local upload.");
+    document.getElementById('floating-upload').click();
+  };
+
+  const triggerDropbox = () => {
+    alert("DEVELOPER NOTE: To open actual Dropbox here, you need to add 'Dropbox Chooser API' and your Dropbox App Key. Currently mapping to local upload.");
+    document.getElementById('floating-upload').click();
   };
 
   // --- DRAWING LOGIC ---
@@ -138,7 +146,7 @@ export default function VisualSignPdf() {
   };
 
   const generateDigitalSig = () => {
-    const uniqueId = Math.random().toString(36).substring(2, 10).toUpperCase() + "-" + Date.now().toString(36).toUpperCase();
+    const uniqueId = Math.random().toString(36).substring(2, 10).toUpperCase();
     return `Digitally Signed By: ${fullName}\nDate: ${new Date().toLocaleString()}\nVerify ID: ${uniqueId}`;
   };
 
@@ -214,14 +222,16 @@ export default function VisualSignPdf() {
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-      // Only apply elements meant for this specific file
       const currentFileElements = elements.filter(el => el.fileIndex === activeFileIndex);
 
       for (const el of currentFileElements) {
         const page = pdfDoc.getPages()[el.page - 1];
         const { width: pdfWidth, height: pdfHeight } = page.getSize();
-        const scaleX = pdfWidth / pdfDimensions.width;
-        const scaleY = pdfHeight / pdfDimensions.height;
+        
+        // Scale handling for HD rendering (scale={1.5})
+        const scaleX = pdfWidth / (pdfDimensions.width / 1.5);
+        const scaleY = pdfHeight / (pdfDimensions.height / 1.5);
+        
         const actualX = el.x * scaleX;
         const actualY = pdfHeight - (el.y * scaleY) - (el.height * scaleY);
 
@@ -243,30 +253,21 @@ export default function VisualSignPdf() {
       pdfDoc.setCreator('MasterPdf Secure Engine');
       pdfDoc.setModificationDate(new Date());
 
-      if (lockDocument) {
-        pdfDoc.encrypt({
-          userPassword: '', 
-          ownerPassword: Math.random().toString(36).substring(2, 15), 
-          permissions: { modifying: false, copying: false, annotating: false, fillingInteractiveForms: false }
-        });
-      }
-
       const finalPdfBytes = await pdfDoc.save();
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = `Signed_${activeFile.name}`;
       
-      // We only set step 4 for the active file. If they want to download all, they can loop, but standard iLovePDF downloads the active or zipped.
-      // For now, auto-download the active one and go to Success screen
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       
+      setFileUrl(link.href);
       setStep(4);
     } catch (error) {
       console.error("Error signing PDF:", error);
-      alert("Failed to sign document. The original file might be encrypted.");
+      alert("Failed to sign document. The file might be encrypted.");
     }
     setIsProcessing(false);
   };
@@ -282,7 +283,7 @@ export default function VisualSignPdf() {
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head>
         <title>e-Sign PDF Documents | MasterPdf</title>
-        <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Amatic+SC&family=Arizonia&family=Bad+Script&family=Caveat&family=Comic+Neue&family=Cookie&family=Courgette&family=Damion&family=Dancing+Script&family=Engagement&family=Grand+Hotel&family=Handlee&family=Homemade+Apple&family=Indie+Flower&family=Kalam&family=Kaushan+Script&family=Leckerli+One&family=Marck+Script&family=Nanum+Pen+Script&family=Neucha&family=Niconne&family=Norican&family=Nothing+You+Could+Do&family=Oleo+Script&family=Over+the+Rainbow&family=Pacifico&family=Parisienne&family=Patrick+Hand&family=Pinyon+Script&family=Qwigley&family=Rancho&family=Reenie+Beanie&family=Rochester&family=Rock+Salt&family=Rouge+Script&family=Ruge+Boogie&family=Sacramento&family=Satisfy&family=Schoolbell&family=Shadows+Into+Light&family=Sofia&family=Stalemate&family=Tangerine&family=Vibur&family=Yellowtail&family=Yesteryear&family=Zeyada&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Amatic+SC&family=Arizonia&family=Bad+Script&family=Caveat&family=Comic+Neue&family=Cookie&family=Courgette&family=Damion&family=Dancing+Script&family=Engagement&family=Grand+Hotel&family=Handlee&family=Homemade+Apple&family=Indie+Flower&family=Kalam&family=Kaushan+Script&family=Leckerli+One&family=Marck+Script&family=Niconne&family=Norican&family=Nothing+You+Could+Do&family=Oleo+Script&family=Over+the+Rainbow&family=Pacifico&family=Parisienne&family=Patrick+Hand&family=Pinyon+Script&family=Qwigley&family=Rancho&family=Reenie+Beanie&family=Rochester&family=Rock+Salt&family=Rouge+Script&family=Ruge+Boogie&family=Sacramento&family=Satisfy&family=Schoolbell&family=Shadows+Into+Light&family=Sofia&family=Stalemate&family=Tangerine&family=Vibur&family=Yellowtail&family=Yesteryear&family=Zeyada&display=swap" rel="stylesheet" />
       </Head>
 
       <Navbar />
@@ -304,11 +305,10 @@ export default function VisualSignPdf() {
               </label>
               
               <div className="flex sm:flex-col gap-2">
-                {/* Simulated Drive/Dropbox clicks mapped to local upload so no external website opens */}
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Google Drive">
+                <button onClick={triggerGoogleDrive} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Google Drive">
                   <UploadCloud size={22} />
                 </button>
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Dropbox">
+                <button onClick={triggerDropbox} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Dropbox">
                   <Layers size={22} />
                 </button>
               </div>
@@ -317,25 +317,24 @@ export default function VisualSignPdf() {
           </div>
         )}
 
-        {/* STEP 2: SOLO VISUAL EDITOR */}
+        {/* STEP 2: MULTI-FILE VISUAL EDITOR */}
         {step === 2 && activeFile && (
           <div className="w-full max-w-[1600px] h-[85vh] flex flex-col bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden animate-in fade-in">
             
-            {/* EXACT Top Toolbar (Pagination & File Dropdown) */}
+            {/* Top Toolbar (Exact Copy of Image 4) */}
             <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 shrink-0 w-full z-10 shadow-sm relative">
                <div className="flex items-center gap-2 border border-gray-300 rounded p-1">
                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronUp size={16}/></button>
                  <input type="text" value={currentPage} readOnly className="w-8 text-center bg-transparent text-sm font-bold text-gray-800 outline-none" />
-                 <button onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronDown size={16}/></button>
+                 <button onClick={() => setCurrentPage(p => Math.min(numPages || 1, p + 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronDown size={16}/></button>
                </div>
-               <span className="text-sm font-bold text-gray-500 ml-2">/ {numPages}</span>
+               <span className="text-sm font-bold text-gray-500 ml-2">/ {numPages || '...'}</span>
                
                <div className="ml-6 flex-1 max-w-sm hidden sm:block relative">
                  <div onClick={() => setShowFileDropdown(!showFileDropdown)} className="border border-gray-300 rounded px-3 py-1.5 text-sm font-bold text-gray-700 flex items-center justify-between cursor-pointer hover:bg-gray-50">
                    <span className="truncate">{activeFile.name}</span>
                    <ChevronDown size={16} className="text-gray-500 shrink-0 ml-2"/>
                  </div>
-                 {/* Dropdown for multiple files */}
                  {showFileDropdown && (
                    <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 shadow-lg rounded z-50">
                      {files.map((f, i) => (
@@ -350,13 +349,13 @@ export default function VisualSignPdf() {
 
             <div className="flex-grow flex flex-row overflow-hidden relative">
               
-              {/* EXACT Left Sidebar - Real PDF Thumbnails */}
+              {/* Left Sidebar - High Res Thumbnails */}
               <div className="w-48 bg-gray-100 border-r border-gray-200 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex custom-scrollbar">
                  <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess}>
-                   {Array.from({ length: numPages }, (_, i) => (
+                   {/* SAFE HYDRATION MAP: Fallback to 0 if numPages is null */}
+                   {Array.from({ length: numPages || 0 }, (_, i) => (
                      <div key={i} onClick={() => setCurrentPage(i + 1)} className="flex flex-col items-center mb-4 cursor-pointer group">
                        <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
-                         {/* Scale 0.4 keeps thumbnails small but crisp */}
                          <Page pageNumber={i + 1} width={120} scale={1} renderTextLayer={false} renderAnnotationLayer={false} />
                        </div>
                        <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
@@ -368,22 +367,27 @@ export default function VisualSignPdf() {
               {/* Main Document Viewer Workspace */}
               <div className="flex-grow bg-[#E4E4E4] p-6 flex flex-col items-center justify-start overflow-y-auto relative border-r border-gray-200">
                  
-                 {/* Floating + Menu with multi-file add */}
+                 {/* Right Floating + Menu with File Counter Badge */}
                  <div className="absolute right-6 top-[20%] flex flex-col gap-2 group z-50">
-                    <button className="bg-[#E5322D] text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-110">
-                      <Plus size={24}/>
-                    </button>
+                    <div className="relative">
+                      <button className="bg-[#E5322D] text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-110">
+                        <Plus size={24}/>
+                      </button>
+                      <span className="absolute -top-1 -left-1 bg-gray-900 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow-sm">
+                        {files.length}
+                      </span>
+                    </div>
                     <div className="absolute top-16 right-0 flex flex-col gap-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all transform translate-x-4 group-hover:translate-x-0">
-                      <input type="file" id="floating-upload" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
+                      <input type="file" id="floating-upload" accept=".pdf" multiple onChange={handleFileChange} onClick={(e)=>(e.target.value=null)} className="hidden" />
                       <button onClick={() => document.getElementById('floating-upload').click()} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Device"><Monitor size={18}/></button>
-                      <button onClick={() => document.getElementById('floating-upload').click()} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Drive"><UploadCloud size={18}/></button>
-                      <button onClick={() => document.getElementById('floating-upload').click()} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Dropbox"><Layers size={18}/></button>
+                      <button onClick={triggerGoogleDrive} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Drive"><UploadCloud size={18}/></button>
+                      <button onClick={triggerDropbox} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Dropbox"><Layers size={18}/></button>
                     </div>
                  </div>
 
                  <div className="relative shadow-2xl bg-white select-none mb-10">
                    <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
-                     {/* Scale 1.5 for High Definition Sharp PDF rendering */}
+                     {/* HD Scaling for crisp texts */}
                      <Page 
                        pageNumber={currentPage} 
                        scale={1.5} 
@@ -425,7 +429,7 @@ export default function VisualSignPdf() {
                  </div>
               </div>
 
-              {/* Exact iLovePDF Right Sidebar Options */}
+              {/* Exact Options Panel */}
               <div className="w-full lg:w-[320px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20">
                 <div className="flex justify-between items-center p-5 border-b border-gray-200">
                   <h3 className="text-xl font-bold text-gray-800">Signing options</h3>
@@ -449,24 +453,24 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* Required Fields (Exact Dotted Box Style) */}
+                  {/* Required Fields Card */}
                   <div className="mb-8">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Required fields</h4>
                     <div 
                       onClick={() => addElement('signature')}
-                      className="border border-[#E5322D] border-dashed rounded-lg bg-[#F8FAFC] hover:bg-red-50 cursor-pointer flex items-center justify-between group transition-colors shadow-sm overflow-hidden min-h-[60px]"
+                      className="border border-[#E5322D] border-dashed rounded-lg p-0 bg-white hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors shadow-sm overflow-hidden min-h-[60px]"
                     >
                       <div className="flex items-center w-full h-full">
                         {sigMode === 'simple' ? (
                           <>
-                            <div className="bg-[#E5322D] text-white p-4 h-full flex items-center justify-center"><PenTool size={18}/></div>
+                            <div className="bg-red-100 p-4 h-full flex items-center justify-center text-[#E5322D] border-r border-dashed border-red-200"><PenTool size={18}/></div>
                             <div className="flex-1 flex justify-center py-2 px-2 overflow-hidden">
                               {vTab === 'Draw' && drawnSignature ? (
-                                <img src={drawnSignature} className="h-10 object-contain" alt="Drawn" />
+                                <img src={drawnSignature} className="h-8 object-contain" alt="Drawn" />
                               ) : vTab === 'Upload' && uploadedSig ? (
-                                <img src={uploadedSig} className="h-10 object-contain" alt="Uploaded" />
+                                <img src={uploadedSig} className="h-8 object-contain" alt="Uploaded" />
                               ) : (
-                                <span className="text-2xl truncate" style={{ fontFamily: signatureFonts[selectedStyle], color: sigColor }}>{fullName}</span>
+                                <span className="text-xl truncate px-2" style={{ fontFamily: signatureFonts[selectedStyle], color: sigColor }}>{fullName}</span>
                               )}
                             </div>
                             <button onClick={(e) => { e.stopPropagation(); setShowSignatureModal(true); }} className="p-3 text-gray-400 hover:text-[#E5322D] transition bg-white border-l border-gray-200 h-full"><Edit3 size={16}/></button>
@@ -484,8 +488,8 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* Optional Fields (Exact List Style) */}
-                  <div className="mb-6">
+                  {/* Optional Fields */}
+                  <div className="mb-4">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Optional fields</h4>
                     <div className="space-y-2">
                       <button onClick={() => addElement('initials')} className="w-full border border-gray-200 border-dashed rounded-lg p-0 bg-white hover:bg-gray-50 flex items-center justify-between transition-colors shadow-sm overflow-hidden group">
@@ -525,23 +529,12 @@ export default function VisualSignPdf() {
                       </button>
                     </div>
                   </div>
-
-                  {/* 🔥 SECURITY: Lock Document Toggle */}
-                  <div className="border-t border-gray-200 pt-6">
-                    <label className="flex items-start gap-3 cursor-pointer group">
-                      <input type="checkbox" checked={lockDocument} onChange={e=>setLockDocument(e.target.checked)} className="mt-1 w-5 h-5 accent-[#E5322D]" />
-                      <div>
-                        <div className="flex items-center gap-2 font-bold text-gray-800 group-hover:text-[#E5322D] transition-colors"><Lock size={16} className="text-gray-400 group-hover:text-[#E5322D]"/> Lock document</div>
-                        <p className="text-xs text-gray-500 mt-1">Prevents further editing after you sign.</p>
-                      </div>
-                    </label>
-                  </div>
                 </div>
 
                 <div className="p-5 border-t border-gray-200 bg-gray-50 shrink-0">
                   <button 
                     onClick={applySignatureAndDownload} 
-                    disabled={isProcessing || elements.length === 0}
+                    disabled={isProcessing || elements.filter(el => el.fileIndex === activeFileIndex).length === 0}
                     className="w-full flex items-center justify-center gap-2 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-md disabled:bg-gray-400"
                   >
                     {isProcessing ? <><Settings className="animate-spin" size={20} /> Processing...</> : <>Sign <ArrowRightCircle size={20}/></>}
@@ -552,7 +545,7 @@ export default function VisualSignPdf() {
           </div>
         )}
 
-        {/* STEP 4: DOWNLOAD SCREEN WITH 4 EXACT ICONS */}
+        {/* STEP 4: DOWNLOAD SCREEN WITH EXACT ICONS */}
         {step === 4 && (
           <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in slide-in-from-bottom-8 fade-in text-center mt-10">
             <h1 className="text-4xl font-bold text-gray-800 mb-8 tracking-tight">PDF files have been signed!</h1>
@@ -566,9 +559,9 @@ export default function VisualSignPdf() {
               </div>
               
               <div className="grid grid-cols-2 gap-2 mt-4 sm:mt-0">
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Google Drive"><HardDrive size={20}/></button>
+                <button onClick={triggerGoogleDrive} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Google Drive"><HardDrive size={20}/></button>
                 <button onClick={handleCopyLink} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Copy Link"><Link2 size={20}/></button>
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Dropbox"><Layers size={20}/></button>
+                <button onClick={triggerDropbox} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Dropbox"><Layers size={20}/></button>
                 <button onClick={removeFile} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Delete File"><Trash2 size={20}/></button>
               </div>
             </div>
@@ -578,7 +571,7 @@ export default function VisualSignPdf() {
       </main>
       <Footer />
 
-      {/* 🔥 SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
+      {/* 🔥 SOLO SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
       {showSignatureModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
