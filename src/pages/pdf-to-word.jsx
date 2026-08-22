@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { UploadCloud, FileText, X, ArrowRight, Settings, ScanText, History, Loader2, Trash2, CheckCircle2 } from 'lucide-react';
+import { UploadCloud, FileText, X, ArrowRight, Settings, ScanText, History, Loader2, Trash2, CheckCircle2, FolderOpen } from 'lucide-react'; // ✅ FolderOpen Imported
 import { upload } from '@vercel/blob/client';
 
 export default function PdfToWord() {
@@ -11,35 +11,29 @@ export default function PdfToWord() {
   const [progress, setProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const [ocrEnabled, setOcrEnabled] = useState(false);
-  const [highQuality, setHighQuality] = useState(true); // 🔥 Blur Fix: High Quality Default On
+  const [highQuality, setHighQuality] = useState(true);
   const [preserveLayout, setPreserveLayout] = useState(true);
   const [recentFiles, setRecentFiles] = useState([]);
   const dragCounter = useRef(0);
   const progressInterval = useRef(null);
 
-  // Load Recent Files
   useEffect(() => {
     const saved = localStorage.getItem('masterpdf-recent');
     if (saved) setRecentFiles(JSON.parse(saved));
     return () => clearInterval(progressInterval.current);
   }, []);
 
-  // File Selection
   const handleFileChange = (e) => {
     if (!e.target.files) return;
     const selectedFiles = Array.from(e.target.files);
     const pdfFiles = selectedFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-    if (pdfFiles.length > 0) {
-      setFiles(prev => [...prev, ...pdfFiles]);
-    } else {
-      alert("Please upload valid PDF files only.");
-    }
+    if (pdfFiles.length > 0) setFiles(prev => [...prev, ...pdfFiles]);
+    else alert("Please upload valid PDF files only.");
   };
 
   const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index));
   const clearAll = () => setFiles([]);
 
-  // Drag & Drop
   const handleDragEnter = (e) => { e.preventDefault(); dragCounter.current++; setDragActive(true); };
   const handleDragLeave = (e) => { e.preventDefault(); dragCounter.current--; if (dragCounter.current === 0) setDragActive(false); };
   const handleDrop = (e) => { e.preventDefault(); setDragActive(false); 
@@ -47,7 +41,6 @@ export default function PdfToWord() {
     if (droppedFiles.length > 0) setFiles(prev => [...prev, ...droppedFiles]);
   };
 
-  // Simulated Progress Bar (UI Feedback)
   const startProgressSimulation = () => {
     setProgress(0);
     progressInterval.current = setInterval(() => {
@@ -58,7 +51,6 @@ export default function PdfToWord() {
     }, 200);
   };
 
-  // Conversion Logic
   const convertToWord = async () => {
     if (files.length === 0) return;
     setIsConverting(true);
@@ -67,14 +59,11 @@ export default function PdfToWord() {
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-
-        // 1. Upload to Vercel Blob (Large Files Support)
         const blob = await upload(file.name, file, {
           access: 'public',
           handleUploadUrl: '/api/upload',
         });
 
-        // 2. Send URL to Backend with Settings
         const response = await fetch('/api/master-convert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -82,7 +71,7 @@ export default function PdfToWord() {
             action: 'pdf-to-word', 
             fileUrl: blob.url,
             ocrEnabled,
-            highQuality, // 🔥 Backend mein quality parameters bhejne ke liye
+            highQuality,
             preserveLayout
           }),
         });
@@ -90,7 +79,6 @@ export default function PdfToWord() {
         const data = await response.json();
         
         if (response.ok && data.downloadUrl) {
-          // 🔥 Blur Fix: Download Trick (target="_blank" hata diya)
           const link = document.createElement('a');
           link.href = data.downloadUrl;
           link.setAttribute('download', `MasterPdf_Converted_${file.name.split('.')[0]}.docx`);
@@ -98,7 +86,6 @@ export default function PdfToWord() {
           link.click();
           document.body.removeChild(link);
 
-          // Save to Recent Files
           const newRecent = [{ name: file.name, time: new Date().toLocaleString() }, ...recentFiles].slice(0, 5);
           setRecentFiles(newRecent);
           localStorage.setItem('masterpdf-recent', JSON.stringify(newRecent));
@@ -141,7 +128,6 @@ export default function PdfToWord() {
         >
           {!isConverting && files.length === 0 && (
             <div className="text-center w-full">
-              {/* Drag & Drop Zone */}
               <input type="file" id="file-upload" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
               <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
                 <UploadCloud size={28} /> Select PDF files
@@ -200,7 +186,6 @@ export default function PdfToWord() {
             </div>
           )}
 
-          {/* Progress Bar */}
           {isConverting && (
             <div className="w-full max-w-lg text-center">
               <Loader2 className="animate-spin text-[#E5322D] mx-auto mb-4" size={48}/>
@@ -212,7 +197,6 @@ export default function PdfToWord() {
             </div>
           )}
 
-          {/* Recent Files History */}
           {recentFiles.length > 0 && !isConverting && files.length === 0 && (
             <div className="mt-8 w-full max-w-lg border-t pt-6">
               <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
