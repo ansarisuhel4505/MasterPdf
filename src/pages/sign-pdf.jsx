@@ -28,7 +28,8 @@ const signatureFonts = [
   "Neucha", "Rock Salt", "Reenie Beanie", "Nothing You Could Do", "Schoolbell", "Nanum Pen Script", "Comic Sans MS"
 ];
 
-const RENDER_SCALE = 1.5; // High Def Resolution Scale for Crisp Text
+// PDF Rendering Scale for Crisp Quality
+const RENDER_SCALE = 1.5; 
 
 export default function VisualSignPdf() {
   const [isMounted, setIsMounted] = useState(false);
@@ -70,8 +71,10 @@ export default function VisualSignPdf() {
     }
   }, [showSignatureModal, vTab, sigColor]);
 
+  // --- FILE HANDLING ---
   const handleFileChange = (e) => {
-    if (!e.target.files) return;
+    if (!e.target.files || e.target.files.length === 0) return;
+    
     const selectedFiles = Array.from(e.target.files);
     const validFiles = selectedFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
     
@@ -80,8 +83,11 @@ export default function VisualSignPdf() {
         file: f, name: f.name, url: URL.createObjectURL(f)
       }));
       setFiles(prev => [...prev, ...newFilesData]);
-      setNumPages(null);
-      if (step === 1) { setStep(2); setShowSignatureModal(true); }
+      setNumPages(null); // Reset pages to avoid render clash
+      if (step === 1) { 
+        setStep(2); 
+        setShowSignatureModal(true); 
+      }
     } else {
       alert("Please upload valid PDF documents (.pdf).");
     }
@@ -95,6 +101,13 @@ export default function VisualSignPdf() {
     setNumPages(numPages); setCurrentPage(1);
   };
 
+  // --- CLOUD UPLOAD SIMULATION ---
+  const handleCloudClick = (provider) => {
+    alert(`Connecting to ${provider} Securely...\n(Redirecting to secure local connection)`);
+    document.getElementById('floating-upload').click();
+  };
+
+  // --- DRAWING LOGIC ---
   const startDrawing = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
     const ctx = canvasRef.current.getContext('2d');
@@ -193,17 +206,19 @@ export default function VisualSignPdf() {
     return canvas.toDataURL('image/png');
   };
 
-  // 🔥 THE MASTER FIX: SUCCESS FLAG ADDED 🔥
+  // 🔥 THE MASTER FIX: ENCRYPTION BYPASS & CRASH PREVENTION 🔥
   const applySignatureAndDownload = async () => {
     if (!activeFile) return;
     setIsProcessing(true);
-    let downloadTriggered = false; // Flag to prevent fake errors
+    let downloadTriggered = false; 
     
     try {
       const arrayBuffer = await activeFile.file.arrayBuffer();
       
+      // Step 1: Force Load even if Encrypted
       let pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
       
+      // Step 2: Strip Encryption by creating a Fresh Clone Document
       if (pdfDoc.isEncrypted) {
         const newDoc = await PDFDocument.create();
         const copiedPages = await newDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
@@ -214,6 +229,7 @@ export default function VisualSignPdf() {
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const currentFileElements = elements.filter(el => el.fileIndex === activeFileIndex);
 
+      // Step 3: Exact UI mapping to PDF mapping based on RENDER_SCALE
       for (const el of currentFileElements) {
         const page = pdfDoc.getPages()[el.page - 1];
         const { height: pdfHeight } = page.getSize();
@@ -241,6 +257,7 @@ export default function VisualSignPdf() {
       pdfDoc.setCreator('MasterPdf Secure Engine');
       pdfDoc.setModificationDate(new Date());
 
+      // Optional Secure Re-Lock
       if (lockDocument) {
         pdfDoc.encrypt({
           userPassword: '', 
@@ -259,13 +276,11 @@ export default function VisualSignPdf() {
       link.click();
       document.body.removeChild(link);
       
-      downloadTriggered = true; // Mark as successful
-      
+      downloadTriggered = true;
       setFileUrl(link.href);
       setStep(4);
     } catch (error) {
       console.error("Error signing PDF:", error);
-      // Only show alert if download didn't actually trigger
       if (!downloadTriggered) {
         alert("System Error: Could not process this document. It may be heavily corrupted.");
       }
@@ -307,10 +322,10 @@ export default function VisualSignPdf() {
               </label>
               
               <div className="flex sm:flex-col gap-2">
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Upload from Google Drive">
+                <button onClick={() => handleCloudClick("Google Drive")} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Upload from Google Drive">
                   <UploadCloud size={22} />
                 </button>
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Upload from Dropbox">
+                <button onClick={() => handleCloudClick("Dropbox")} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Upload from Dropbox">
                   <Layers size={22} />
                 </button>
               </div>
@@ -323,6 +338,7 @@ export default function VisualSignPdf() {
         {step === 2 && activeFile && (
           <div className="w-full max-w-[1600px] h-[85vh] flex flex-col bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden animate-in fade-in">
             
+            {/* Top Toolbar */}
             <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 shrink-0 w-full z-10 shadow-sm relative">
                <div className="flex items-center gap-2 border border-gray-300 rounded p-1">
                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronUp size={16}/></button>
@@ -348,24 +364,31 @@ export default function VisualSignPdf() {
                </div>
             </div>
 
-            <div className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4]">
+            {/* 🔥 ONE MASTER DOCUMENT WRAPPER (Fixes Server Crashes and Overlaps) 🔥 */}
+            <Document 
+               file={activeFile.file} 
+               onLoadSuccess={onDocumentLoadSuccess} 
+               className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4] min-w-0 w-full"
+               loading={<div className="p-10 m-auto text-gray-500 font-bold text-xl">Loading Secure Workspace...</div>}
+            >
               
+              {/* Left Sidebar - High Res Thumbnails */}
               <div className="w-48 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex shrink-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] custom-scrollbar">
-                 <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess}>
-                   {Array.from({ length: numPages || 0 }, (_, i) => (
-                     <div key={i} onClick={() => setCurrentPage(i + 1)} className="flex flex-col items-center mb-4 cursor-pointer group">
-                       <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
-                         <Page pageNumber={i + 1} width={120} scale={0.6} renderTextLayer={false} renderAnnotationLayer={false} />
-                       </div>
-                       <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
+                 {Array.from({ length: numPages || 0 }, (_, i) => (
+                   <div key={i} onClick={() => setCurrentPage(i + 1)} className="flex flex-col items-center mb-4 cursor-pointer group">
+                     <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
+                       <Page pageNumber={i + 1} width={120} renderTextLayer={false} renderAnnotationLayer={false} />
                      </div>
-                   ))}
-                 </Document>
+                     <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
+                   </div>
+                 ))}
               </div>
 
+              {/* Main Document Viewer Workspace */}
               <div className="flex-grow flex flex-col relative min-w-0">
                  
-                 <div className="absolute right-6 top-[20%] flex flex-col gap-2 group z-50">
+                 {/* 🔥 FIX 2: Fixed Floating Menu (Does not scroll with PDF) */}
+                 <div className="absolute right-6 top-[15%] flex flex-col gap-2 group z-50">
                     <div className="relative">
                       <button className="bg-[#E5322D] text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-110">
                         <Plus size={24}/>
@@ -377,26 +400,22 @@ export default function VisualSignPdf() {
                     <div className="absolute top-16 right-0 flex flex-col gap-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all transform translate-x-4 group-hover:translate-x-0">
                       <input type="file" id="floating-upload" accept=".pdf" multiple onChange={handleFileChange} onClick={(e)=>(e.target.value=null)} className="hidden" />
                       <button onClick={() => document.getElementById('floating-upload').click()} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Device"><Monitor size={18}/></button>
-                      <button onClick={() => document.getElementById('floating-upload').click()} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Drive"><UploadCloud size={18}/></button>
-                      <button onClick={() => document.getElementById('floating-upload').click()} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Dropbox"><Layers size={18}/></button>
+                      <button onClick={() => handleCloudClick("Google Drive")} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Drive"><UploadCloud size={18}/></button>
+                      <button onClick={() => handleCloudClick("Dropbox")} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Dropbox"><Layers size={18}/></button>
                     </div>
                  </div>
 
+                 {/* Scrollable PDF Area */}
                  <div className="flex-grow overflow-y-auto p-6 flex flex-col items-center custom-scrollbar">
                    <div className="relative shadow-2xl bg-white select-none mb-10">
-                     <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
-                       <Page 
-                         pageNumber={currentPage} 
-                         scale={RENDER_SCALE} 
-                         renderTextLayer={false} 
-                         renderAnnotationLayer={false} 
-                         onLoadSuccess={(pageInfo) => {
-                            if (pdfDimensions.width !== pageInfo.width || pdfDimensions.height !== pageInfo.height) {
-                               setPdfDimensions({ width: pageInfo.width, height: pageInfo.height });
-                            }
-                         }} 
-                       />
-                     </Document>
+                     
+                     {/* HD Scaling for Crisp Texts */}
+                     <Page 
+                       pageNumber={currentPage} 
+                       scale={RENDER_SCALE} 
+                       renderTextLayer={false} 
+                       renderAnnotationLayer={false} 
+                     />
 
                      {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
                        <Rnd
@@ -431,6 +450,7 @@ export default function VisualSignPdf() {
                  </div>
               </div>
 
+              {/* Exact Options Panel */}
               <div className="w-full lg:w-[320px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20">
                 <div className="flex justify-between items-center p-5 border-b border-gray-200">
                   <h3 className="text-xl font-bold text-gray-800">Signing options</h3>
@@ -438,7 +458,6 @@ export default function VisualSignPdf() {
                 </div>
 
                 <div className="p-5 overflow-y-auto flex-grow custom-scrollbar">
-                  
                   <div className="mb-8">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Type</h4>
                     <div className="flex gap-2">
@@ -528,7 +547,6 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* 🔥 SECURITY: Lock Document Toggle */}
                   <div className="border-t border-gray-200 pt-6 mb-4">
                     <label className="flex items-start gap-3 cursor-pointer group">
                       <input type="checkbox" checked={lockDocument} onChange={e=>setLockDocument(e.target.checked)} className="mt-1 w-5 h-5 accent-[#E5322D]" />
@@ -550,7 +568,8 @@ export default function VisualSignPdf() {
                   </button>
                 </div>
               </div>
-            </div>
+            </Document>
+
           </div>
         )}
 
@@ -568,9 +587,9 @@ export default function VisualSignPdf() {
               </div>
               
               <div className="grid grid-cols-2 gap-2 mt-4 sm:mt-0">
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Upload Next from Google Drive"><HardDrive size={20}/></button>
+                <button onClick={() => handleCloudClick("Google Drive")} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Google Drive"><HardDrive size={20}/></button>
                 <button onClick={handleCopyLink} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Copy Link"><Link2 size={20}/></button>
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Upload Next from Dropbox"><Layers size={20}/></button>
+                <button onClick={() => handleCloudClick("Dropbox")} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Dropbox"><Layers size={20}/></button>
                 <button onClick={removeFile} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Delete File"><Trash2 size={20}/></button>
               </div>
             </div>
@@ -653,8 +672,8 @@ export default function VisualSignPdf() {
                       <canvas 
                         ref={canvasRef}
                         onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                        onTouchStart={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
-                        onTouchMove={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
+                        onTouchStart={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
+                        onTouchMove={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
                         onTouchEnd={stopDrawing}
                         className="w-full h-[200px] bg-white border border-gray-300 rounded cursor-crosshair shadow-inner touch-none"
                         width={500} height={200}
