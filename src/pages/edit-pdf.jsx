@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
-import Navbar from '../../components/Navbar';
-import Footer from '../../components/Footer';
+import Navbar from '../components/Navbar';   // ✅ यहाँ बदलाव किया
+import Footer from '../components/Footer';   // ✅ यहाँ बदलाव किया
 import { 
   UploadCloud, X, Edit3, Lock, Share2, History, Shield, Stamp, FileText, Trash2, 
   Users, Settings, MessageSquare, Save, Eye, Download, Loader2, Printer 
-} from 'lucide-react'; // ✅ Printer Import किया गया
+} from 'lucide-react';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { upload } from '@vercel/blob/client';
 
