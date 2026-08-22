@@ -1,67 +1,116 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { UploadCloud, FileText, X, ArrowRight, Settings, Presentation } from 'lucide-react';
+import { UploadCloud, FileText, X, ArrowRight, Settings, Presentation, Loader2, Trash2, History, CheckCircle2, ScanText, FolderOpen } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
 
 export default function PdfToPowerpoint() {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [isConverting, setIsConverting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [dragActive, setDragActive] = useState(false);
+  
+  // 🔥 Blur Fix: High Quality Default ON
+  const [highQuality, setHighQuality] = useState(true);
+  const [ocrEnabled, setOcrEnabled] = useState(false);
+  const [preserveLayout, setPreserveLayout] = useState(true);
+  
+  const [recentFiles, setRecentFiles] = useState([]);
+  const dragCounter = useRef(0);
+  const progressInterval = useRef(null);
+
+  // Load Recent Files
+  useEffect(() => {
+    const saved = localStorage.getItem('masterpdf-ppt-recent');
+    if (saved) setRecentFiles(JSON.parse(saved));
+    return () => clearInterval(progressInterval.current);
+  }, []);
 
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      setFile(selectedFile);
-    } else {
-      alert("Please upload a valid PDF file.");
-    }
+    if (!e.target.files) return;
+    const selectedFiles = Array.from(e.target.files);
+    const pdfFiles = selectedFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    if (pdfFiles.length > 0) setFiles(prev => [...prev, ...pdfFiles]);
+    else alert("Please upload valid PDF files only.");
   };
 
-  const removeFile = () => setFile(null);
+  const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index));
+  const clearAll = () => setFiles([]);
+
+  // Drag & Drop
+  const handleDragEnter = (e) => { e.preventDefault(); dragCounter.current++; setDragActive(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); dragCounter.current--; if (dragCounter.current === 0) setDragActive(false); };
+  const handleDrop = (e) => { e.preventDefault(); setDragActive(false); 
+    const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    if (droppedFiles.length > 0) setFiles(prev => [...prev, ...droppedFiles]);
+  };
+
+  const startProgressSimulation = () => {
+    setProgress(0);
+    progressInterval.current = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 95) { clearInterval(progressInterval.current); return prev; }
+        return prev + 5;
+      });
+    }, 200);
+  };
 
   const convertToPowerpoint = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setIsConverting(true);
-    
-    try {
-      const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
+    startProgressSimulation();
 
-      const response = await fetch('/api/master-convert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'pdf-to-powerpoint', fileUrl: blob.url }),
-      });
-      
-      const data = await response.json();
-      if (response.ok && data.downloadUrl) {
-        // 🔥 SUPERFAST BROWSER DOWNLOAD TRICK 🔥
-        const link = document.createElement('a');
-        link.href = data.downloadUrl;
-        link.setAttribute('download', `MasterPdf_Converted_${file.name.split('.')[0]}.pptx`);
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        alert("Conversion Failed: " + data.error);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
+
+        const response = await fetch('/api/master-convert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'pdf-to-powerpoint', 
+            fileUrl: blob.url,
+            highQuality,
+            ocrEnabled,
+            preserveLayout
+          }),
+        });
+        
+        const data = await response.json();
+        if (response.ok && data.downloadUrl) {
+          // 🔥 Fix: target="_blank" hata diya taaki direct download ho
+          const link = document.createElement('a');
+          link.href = data.downloadUrl;
+          link.setAttribute('download', `MasterPdf_Converted_${file.name.split('.')[0]}.pptx`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          // Save to Recent
+          const newRecent = [{ name: file.name, time: new Date().toLocaleString() }, ...recentFiles].slice(0, 5);
+          setRecentFiles(newRecent);
+          localStorage.setItem('masterpdf-ppt-recent', JSON.stringify(newRecent));
+        } else {
+          alert(`Conversion Failed for ${file.name}: ${data.error}`);
+        }
       }
     } catch (error) {
-      alert("Server connection failed.");
+      console.error(error);
+      alert("Server connection failed. Check /api/upload and /api/master-convert routes.");
+    } finally {
+      clearInterval(progressInterval.current);
+      setProgress(100);
+      setTimeout(() => { setProgress(0); setIsConverting(false); }, 1000);
     }
-    setIsConverting(false);
   };
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
-      
-      {/* 🔥 EXACT SEO HEAD POSITION 🔥 */}
       <Head>
         <title>Convert PDF to PowerPoint Online Free | MasterPdf</title>
-        <meta name="description" content="Turn your PDF files into easy to edit PPT and PPTX slideshows online for free. No watermarks. Created by Suhel Ansari." />
-        <meta name="keywords" content="pdf to powerpoint, pdf to ppt, pdf to pptx, convert pdf to powerpoint, masterpdf, Suhel Ansari" />
-        <meta property="og:title" content="Convert PDF to PowerPoint Online Free | MasterPdf" />
-        <meta property="og:description" content="Turn your PDF files into easy to edit PPT and PPTX slideshows online for free." />
+        <meta name="description" content="Turn your PDF files into easy to edit PPT and PPTX slideshows online for free. No watermarks." />
       </Head>
 
       <Navbar />
@@ -70,54 +119,99 @@ export default function PdfToPowerpoint() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">PDF to PowerPoint</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Turn your PDF files into easy to edit PPT and PPTX slideshows in seconds.
+            Convert multiple PDF files into editable PPTX slideshows instantly. Supports huge files.
           </p>
         </div>
 
-        <div className="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[450px] flex flex-col items-center justify-center relative">
-          {!file ? (
+        <div 
+          className={`w-full max-w-5xl bg-white rounded-2xl shadow-sm border p-8 min-h-[500px] flex flex-col items-center justify-center relative transition-all ${dragActive ? 'border-dashed border-4 border-[#E5322D] bg-red-50' : 'border-gray-200'}`}
+          onDragEnter={handleDragEnter}
+          onDragOver={(e) => e.preventDefault()}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {!isConverting && files.length === 0 && (
             <div className="text-center w-full">
-              <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
+              <input type="file" id="file-upload" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
               <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
-                <UploadCloud size={28} /> Select PDF file
+                <UploadCloud size={28} /> Select PDF files
               </label>
+              <p className="text-gray-500 mt-4 font-medium">or Drag & Drop your PDFs here</p>
+              <p className="text-gray-400 text-sm mt-2">*No file size limits (100MB max via Blob)</p>
             </div>
-          ) : (
-            <div className="w-full h-full flex flex-col md:flex-row gap-8 items-start pt-4">
-              <div className="w-full md:w-1/2 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-8 relative h-[350px]">
-                <button onClick={removeFile} className="absolute top-4 right-4 bg-white border border-gray-200 text-gray-500 hover:text-red-500 rounded-full p-2 shadow-sm transition">
-                  <X size={20} />
+          )}
+
+          {!isConverting && files.length > 0 && (
+            <div className="w-full h-full flex flex-col gap-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-gray-900">{files.length} PDF File(s) Selected</h3>
+                <button onClick={clearAll} className="text-red-500 hover:text-red-700 font-bold text-sm flex items-center gap-1">
+                  <Trash2 size={16}/> Clear All
                 </button>
-                <div className="relative">
-                  <FileText size={80} className="text-[#E5322D] mb-4 opacity-90" />
-                  <ArrowRight size={24} className="absolute -right-8 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <Presentation size={60} className="absolute -right-28 top-1/2 transform -translate-y-1/2 text-orange-600 opacity-90" />
-                </div>
-                <p className="text-sm text-gray-800 font-bold text-center break-words w-full px-4 mt-8">{file.name}</p>
-                <p className="text-xs text-gray-500 mt-2">Ready to convert to PowerPoint (PPTX)</p>
               </div>
 
-              <div className="w-full md:w-1/2 flex flex-col h-[350px] justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Conversion Options</h3>
-                  <div className="flex flex-col gap-4">
-                    <label className="flex items-start p-4 border border-[#E5322D] bg-red-50 rounded-lg cursor-pointer transition">
-                      <input type="radio" checked readOnly className="mt-1 mr-3 accent-[#E5322D]" />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-gray-900">Convert to PPTX</span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">Transform every PDF page into an editable PowerPoint slide.</p>
-                      </div>
-                    </label>
-                  </div>
-                </div>
+              {/* 🔥 Advanced Settings (No Blur ka asli formula) */}
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={highQuality} onChange={(e) => setHighQuality(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
+                  <CheckCircle2 size={18} className="text-gray-600"/> High Quality (No Blur)
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
+                  <ScanText size={18} className="text-gray-600"/> Enable OCR (Scanned PDFs)
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={preserveLayout} onChange={(e) => setPreserveLayout(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
+                  <Presentation size={18} className="text-gray-600"/> Preserve Layout
+                </label>
+              </div>
 
-                <div className="mt-6 flex justify-end">
-                   <button onClick={convertToPowerpoint} disabled={isConverting} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400">
-                     {isConverting ? <><Settings className="animate-spin" size={24} /> Converting...</> : <>Convert to PPTX <ArrowRight size={24} /></>}
-                   </button>
-                </div>
+              {/* File List */}
+              <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                {files.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <FileText size={24} className="text-[#E5322D] shrink-0"/>
+                      <span className="text-sm font-bold text-gray-800 truncate max-w-[300px]">{file.name}</span>
+                      <span className="text-xs text-gray-500">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                    </div>
+                    <button onClick={() => removeFile(index)} className="text-gray-400 hover:text-red-500 p-1">
+                      <X size={18}/>
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                 <button onClick={convertToPowerpoint} disabled={isConverting} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400">
+                   <FolderOpen size={24}/> Convert All to PPTX <ArrowRight size={24}/>
+                 </button>
+              </div>
+            </div>
+          )}
+
+          {isConverting && (
+            <div className="w-full max-w-lg text-center">
+              <Loader2 className="animate-spin text-[#E5322D] mx-auto mb-4" size={48}/>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Converting...</h3>
+              <div className="w-full bg-gray-200 rounded-full h-4 mb-2">
+                <div className="bg-[#E5322D] h-4 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+              </div>
+              <p className="text-sm text-gray-500 font-bold">Progress: {progress}%</p>
+            </div>
+          )}
+
+          {recentFiles.length > 0 && !isConverting && files.length === 0 && (
+            <div className="mt-8 w-full max-w-lg border-t pt-6">
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <History size={16} className="text-gray-500"/> Recent Conversions
+              </h3>
+              <div className="space-y-2">
+                {recentFiles.map((item, i) => (
+                  <div key={i} className="text-xs text-gray-600 border-l-2 border-gray-300 pl-3">
+                    <span className="font-bold text-gray-800">{item.name}</span> at {item.time}
+                  </div>
+                ))}
               </div>
             </div>
           )}
