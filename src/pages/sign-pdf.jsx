@@ -28,7 +28,8 @@ const signatureFonts = [
   "Neucha", "Rock Salt", "Reenie Beanie", "Nothing You Could Do", "Schoolbell", "Nanum Pen Script", "Comic Sans MS"
 ];
 
-const RENDER_SCALE = 1.5; 
+// 🔥 MAIN PAGE SIZE REDUCED: 1.0 (pehle 1.5 tha)
+const RENDER_SCALE = 1.0; 
 
 export default function VisualSignPdf() {
   const [isMounted, setIsMounted] = useState(false);
@@ -96,7 +97,6 @@ export default function VisualSignPdf() {
   };
 
   const removeFile = () => {
-    // Revoke all object URLs to prevent memory leak
     files.forEach(f => URL.revokeObjectURL(f.url));
     setFiles([]); 
     setElements([]); 
@@ -171,7 +171,6 @@ export default function VisualSignPdf() {
       setDrawnSignature(canvasRef.current.toDataURL('image/png'));
     }
     
-    // If stamp was pending and now uploaded, add stamp element
     if (pendingStampAdd && uploadedStamp) {
       addStampElement();
       setPendingStampAdd(false);
@@ -353,7 +352,6 @@ export default function VisualSignPdf() {
       const arrayBuffer = await activeFile.file.arrayBuffer();
       let pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
       
-      // Bypass author lock by recreating document
       if (pdfDoc.isEncrypted) {
         const newDoc = await PDFDocument.create();
         const copiedPages = await newDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
@@ -523,13 +521,13 @@ export default function VisualSignPdf() {
 
             <div className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4]">
               
-              {/* Left Sidebar */}
-              <div className="w-48 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex shrink-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] custom-scrollbar">
+              {/* 🔥 LEFT SIDEBAR FIXED: Chhota kiya (w-40), Mini Pages chhote (width={80}) aur alag color (bg-slate-200) */}
+              <div className="w-40 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex shrink-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] custom-scrollbar">
                  <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess}>
                    {Array.from({ length: numPages || 0 }, (_, i) => (
                      <div key={i} onClick={() => setCurrentPage(i + 1)} className="flex flex-col items-center mb-4 cursor-pointer group">
-                       <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
-                         <Page pageNumber={i + 1} scale={0.6} renderTextLayer={false} renderAnnotationLayer={false} />
+                       <div className={`border-2 p-1 bg-slate-200 border-gray-300 shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-400'}`}>
+                         <Page pageNumber={i + 1} width={80} renderTextLayer={false} renderAnnotationLayer={false} />
                        </div>
                        <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
                      </div>
@@ -537,8 +535,8 @@ export default function VisualSignPdf() {
                  </Document>
               </div>
 
-              {/* Main Workspace */}
-              <div className="flex-grow flex flex-col relative min-w-0">
+              {/* MAIN WORKSPACE FIXED: min-w-0 aur max-w-full se overlap rukega */}
+              <div className="flex-grow flex flex-col items-center overflow-y-auto p-6 relative min-w-0 custom-scrollbar">
                  
                  {/* Fixed Floating Menu */}
                  <div className="absolute right-6 top-[20%] flex flex-col gap-2 group z-50">
@@ -558,58 +556,57 @@ export default function VisualSignPdf() {
                     </div>
                  </div>
 
-                 <div className="flex-grow overflow-y-auto p-6 flex flex-col items-center custom-scrollbar">
-                   <div className="relative shadow-2xl bg-white select-none mb-10">
-                     <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
-                       <Page 
-                         pageNumber={currentPage} 
-                         scale={RENDER_SCALE} 
-                         renderTextLayer={false} 
-                         renderAnnotationLayer={false} 
-                       />
-                     </Document>
+                 {/* Main Page Container: max-w-[1000px] se page aur chhota hoga */}
+                 <div className="relative shadow-xl bg-white select-none mb-10 w-full max-w-[1000px]">
+                   <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
+                     <Page 
+                       pageNumber={currentPage} 
+                       scale={RENDER_SCALE} 
+                       renderTextLayer={false} 
+                       renderAnnotationLayer={false} 
+                     />
+                   </Document>
 
-                     {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
-                       <Rnd
-                         key={el.id} 
-                         bounds="parent" 
-                         position={{ x: el.x, y: el.y }} 
-                         size={{ width: el.width, height: el.height }}
-                         onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
-                         onResizeStop={(e, dir, ref, delta, position) => { 
-                           updateElement(el.id, { 
-                             width: ref.offsetWidth, 
-                             height: ref.offsetHeight, 
-                             ...position 
-                           }); 
-                         }}
-                         className="group border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed flex items-center justify-center bg-white/40 hover:bg-white/70 transition-colors"
-                       >
-                         <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"><X size={14} /></button>
-                         
-                         {el.isImage && el.imgData ? (
-                           <img src={el.imgData} alt="Signature" className="w-full h-full object-contain pointer-events-none" />
-                         ) : el.isDigital ? (
-                           <div className="border border-[#E5322D] bg-red-50/70 p-3 text-[11px] font-mono leading-tight text-gray-800 w-full h-full relative overflow-hidden flex flex-col justify-center">
-                              {el.value.split('\n').map((l, i) => <div key={i}>{l}</div>)}
-                              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-[#E5322D] rounded-full flex items-center justify-center text-white text-sm font-bold">✓</div>
-                           </div>
-                         ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
-                           <input 
-                             type="text" 
-                             value={el.value} 
-                             onChange={(e) => updateElement(el.id, { value: e.target.value })}
-                             className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-800 resize-none"
-                             style={{ fontSize: `${el.height * 0.4}px`, color: el.color }}
-                           />
-                         ) : (
-                           <div className="w-full h-full flex items-center justify-center" style={{ fontFamily: el.fontStyle, fontSize: `${el.height * 0.6}px`, color: el.color }}>
-                             {el.value}
-                           </div>
-                         )}
-                       </Rnd>
-                     ))}
-                   </div>
+                   {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
+                     <Rnd
+                       key={el.id} 
+                       bounds="parent" 
+                       position={{ x: el.x, y: el.y }} 
+                       size={{ width: el.width, height: el.height }}
+                       onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
+                       onResizeStop={(e, dir, ref, delta, position) => { 
+                         updateElement(el.id, { 
+                           width: ref.offsetWidth, 
+                           height: ref.offsetHeight, 
+                           ...position 
+                         }); 
+                       }}
+                       className="group border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed flex items-center justify-center bg-white/40 hover:bg-white/70 transition-colors"
+                     >
+                       <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"><X size={14} /></button>
+                       
+                       {el.isImage && el.imgData ? (
+                         <img src={el.imgData} alt="Signature" className="w-full h-full object-contain pointer-events-none" />
+                       ) : el.isDigital ? (
+                         <div className="border border-[#E5322D] bg-red-50/70 p-3 text-[11px] font-mono leading-tight text-gray-800 w-full h-full relative overflow-hidden flex flex-col justify-center">
+                            {el.value.split('\n').map((l, i) => <div key={i}>{l}</div>)}
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-[#E5322D] rounded-full flex items-center justify-center text-white text-sm font-bold">✓</div>
+                         </div>
+                       ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
+                         <input 
+                           type="text" 
+                           value={el.value} 
+                           onChange={(e) => updateElement(el.id, { value: e.target.value })}
+                           className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-800 resize-none"
+                           style={{ fontSize: `${el.height * 0.4}px`, color: el.color }}
+                         />
+                       ) : (
+                         <div className="w-full h-full flex items-center justify-center" style={{ fontFamily: el.fontStyle, fontSize: `${el.height * 0.6}px`, color: el.color }}>
+                           {el.value}
+                         </div>
+                       )}
+                     </Rnd>
+                   ))}
                  </div>
               </div>
 
