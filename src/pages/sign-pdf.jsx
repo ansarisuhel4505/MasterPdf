@@ -14,7 +14,6 @@ import {
   Layers, ArrowLeft, ArrowRightCircle, HardDrive, Link2, Trash2, Edit3, Monitor
 } from 'lucide-react';
 
-// Secure Worker for Next.js rendering
 if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 }
@@ -32,11 +31,9 @@ const signatureFonts = [
 export default function VisualSignPdf() {
   const [isMounted, setIsMounted] = useState(false);
   
-  // --- MULTI-FILE SYSTEM STATES ---
   const [files, setFiles] = useState([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [showFileDropdown, setShowFileDropdown] = useState(false);
-  
   const activeFile = files[activeFileIndex] || null;
   
   const [numPages, setNumPages] = useState(null);
@@ -44,7 +41,6 @@ export default function VisualSignPdf() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState(1);
   
-  // Modal & Signature Preferences
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [hTab, setHTab] = useState('Signature'); 
   const [vTab, setVTab] = useState('Type'); 
@@ -59,7 +55,6 @@ export default function VisualSignPdf() {
   const [lockDocument, setLockDocument] = useState(false); 
   
   const [elements, setElements] = useState([]);
-  const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
 
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -73,7 +68,6 @@ export default function VisualSignPdf() {
     }
   }, [showSignatureModal, vTab, sigColor]);
 
-  // --- MULTI-FILE HANDLING ---
   const handleFileChange = (e) => {
     if (!e.target.files) return;
     const selectedFiles = Array.from(e.target.files);
@@ -81,37 +75,25 @@ export default function VisualSignPdf() {
     
     if (validFiles.length > 0) {
       const newFilesData = validFiles.map(f => ({
-        file: f,
-        name: f.name,
-        url: URL.createObjectURL(f)
+        file: f, name: f.name, url: URL.createObjectURL(f)
       }));
-
       setFiles(prev => [...prev, ...newFilesData]);
-      
-      // Infinite Loop Crash Precaution: Reset dimensions on new upload
-      setPdfDimensions({ width: 0, height: 0 });
       setNumPages(null);
-      
-      if (step === 1) {
-        setStep(2); 
-        setShowSignatureModal(true); 
-      }
+      if (step === 1) { setStep(2); setShowSignatureModal(true); }
     } else {
       alert("Please upload valid PDF documents (.pdf).");
     }
   };
 
   const removeFile = () => {
-    setFiles([]); setElements([]); setCurrentPage(1); setStep(1); setActiveFileIndex(0);
-    setPdfDimensions({ width: 0, height: 0 }); setNumPages(null);
+    setFiles([]); setElements([]); setCurrentPage(1); setStep(1); setActiveFileIndex(0); setNumPages(null);
   };
 
   const onDocumentLoadSuccess = ({ numPages }) => {
-    setNumPages(numPages);
-    setCurrentPage(1);
+    setNumPages(numPages); setCurrentPage(1);
   };
 
-  // --- DRAWING LOGIC ---
+  // Drawing Handlers
   const startDrawing = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
     const ctx = canvasRef.current.getContext('2d');
@@ -210,39 +192,52 @@ export default function VisualSignPdf() {
     return canvas.toDataURL('image/png');
   };
 
+  // 🔥 THE MASTER FIX: ENCRYPTION BYPASS & EXACT COORDINATE MAPPING 🔥
   const applySignatureAndDownload = async () => {
     if (!activeFile) return;
     setIsProcessing(true);
     
     try {
       const arrayBuffer = await activeFile.file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-      const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      
+      // Load PDF bypassing read-locks
+      let pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+      
+      // If document is encrypted/locked by author, copy it to a fresh unencrypted PDF
+      if (pdfDoc.isEncrypted) {
+        const newDoc = await PDFDocument.create();
+        const copiedPages = await newDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+        copiedPages.forEach((page) => newDoc.addPage(page));
+        pdfDoc = newDoc;
+      }
 
+      const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const currentFileElements = elements.filter(el => el.fileIndex === activeFileIndex);
+
+      // EXACT RENDER SCALE used in react-pdf (<Page scale={1.5} />)
+      const RENDER_SCALE = 1.5;
 
       for (const el of currentFileElements) {
         const page = pdfDoc.getPages()[el.page - 1];
-        const { width: pdfWidth, height: pdfHeight } = page.getSize();
+        const { height: pdfHeight } = page.getSize();
         
-        // Exact Scaling for our HD UI rendering
-        const scaleX = pdfWidth / (pdfDimensions.width / 1.5);
-        const scaleY = pdfHeight / (pdfDimensions.height / 1.5);
-        
-        const actualX = el.x * scaleX;
-        const actualY = pdfHeight - (el.y * scaleY) - (el.height * scaleY);
+        // Exact 1:1 mapping based on UI scale
+        const actualX = el.x / RENDER_SCALE;
+        const actualY = pdfHeight - (el.y / RENDER_SCALE) - (el.height / RENDER_SCALE);
+        const actualW = el.width / RENDER_SCALE;
+        const actualH = el.height / RENDER_SCALE;
 
         if (el.isImage) {
           const imgBytes = await fetch(el.imgData).then(res => res.arrayBuffer());
           const pdfImage = await pdfDoc.embedPng(imgBytes);
-          page.drawImage(pdfImage, { x: actualX, y: actualY, width: el.width * scaleX, height: el.height * scaleY });
+          page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
         } else if (el.type === 'signature' || el.type === 'initials') {
           const dataUrl = textToImageDataUrl(el.value, el.fontStyle, el.width, el.height, el.color, el.isDigital);
           const imgBytes = await fetch(dataUrl).then(res => res.arrayBuffer());
           const pdfImage = await pdfDoc.embedPng(imgBytes);
-          page.drawImage(pdfImage, { x: actualX, y: actualY, width: el.width * scaleX, height: el.height * scaleY });
+          page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
         } else {
-          page.drawText(el.value, { x: actualX + 5, y: actualY + 15, size: 14 * scaleX, font: helveticaFont, color: rgb(0.2, 0.2, 0.2) });
+          page.drawText(el.value, { x: actualX + 5, y: actualY + 15, size: 14 / RENDER_SCALE, font: helveticaFont, color: rgb(0.2, 0.2, 0.2) });
         }
       }
 
@@ -272,7 +267,7 @@ export default function VisualSignPdf() {
       setStep(4);
     } catch (error) {
       console.error("Error signing PDF:", error);
-      alert("Failed to sign document. The file might be encrypted by the author.");
+      alert("System Error: Could not process this document. It may be heavily corrupted.");
     }
     setIsProcessing(false);
   };
@@ -326,7 +321,6 @@ export default function VisualSignPdf() {
         {step === 2 && activeFile && (
           <div className="w-full max-w-[1600px] h-[85vh] flex flex-col bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden animate-in fade-in">
             
-            {/* Top Toolbar (Exact Copy of Image 4) */}
             <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 shrink-0 w-full z-10 shadow-sm relative">
                <div className="flex items-center gap-2 border border-gray-300 rounded p-1">
                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronUp size={16}/></button>
@@ -343,7 +337,7 @@ export default function VisualSignPdf() {
                  {showFileDropdown && (
                    <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 shadow-lg rounded z-50">
                      {files.map((f, i) => (
-                       <div key={i} onClick={() => { setActiveFileIndex(i); setShowFileDropdown(false); }} className={`p-2 text-sm font-bold cursor-pointer hover:bg-red-50 hover:text-[#E5322D] truncate ${i === activeFileIndex ? 'text-[#E5322D] bg-red-50/50' : 'text-gray-700'}`}>
+                       <div key={i} onClick={() => { setActiveFileIndex(i); setShowFileDropdown(false); setCurrentPage(1); }} className={`p-2 text-sm font-bold cursor-pointer hover:bg-red-50 hover:text-[#E5322D] truncate ${i === activeFileIndex ? 'text-[#E5322D] bg-red-50/50' : 'text-gray-700'}`}>
                          {f.name}
                        </div>
                      ))}
@@ -352,15 +346,16 @@ export default function VisualSignPdf() {
                </div>
             </div>
 
-            <div className="flex-grow flex flex-row overflow-hidden relative">
+            {/* 🔥 FIX 1: OVERLAP PREVENTED (min-w-0 added) */}
+            <div className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4]">
               
               {/* Left Sidebar - High Res Thumbnails */}
-              <div className="w-48 bg-gray-100 border-r border-gray-200 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex custom-scrollbar shrink-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                 <Document file={activeFile.url}>
+              <div className="w-48 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex shrink-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] custom-scrollbar">
+                 <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess}>
                    {Array.from({ length: numPages || 0 }, (_, i) => (
                      <div key={i} onClick={() => setCurrentPage(i + 1)} className="flex flex-col items-center mb-4 cursor-pointer group">
                        <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
-                         <Page pageNumber={i + 1} width={120} renderTextLayer={false} renderAnnotationLayer={false} />
+                         <Page pageNumber={i + 1} width={120} scale={0.6} renderTextLayer={false} renderAnnotationLayer={false} />
                        </div>
                        <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
                      </div>
@@ -369,10 +364,10 @@ export default function VisualSignPdf() {
               </div>
 
               {/* Main Document Viewer Workspace */}
-              <div className="flex-grow bg-[#E4E4E4] p-6 flex flex-col items-center justify-start overflow-y-auto relative border-r border-gray-200">
+              <div className="flex-grow flex flex-col relative min-w-0">
                  
-                 {/* Right Floating + Menu with File Counter Badge */}
-                 <div className="absolute right-6 top-[15%] flex flex-col gap-2 group z-50 fixed">
+                 {/* 🔥 FIX 2: Fixed Floating Menu (Outside scroll area) */}
+                 <div className="absolute right-6 top-[20%] flex flex-col gap-2 group z-50">
                     <div className="relative">
                       <button className="bg-[#E5322D] text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-110">
                         <Plus size={24}/>
@@ -389,51 +384,48 @@ export default function VisualSignPdf() {
                     </div>
                  </div>
 
-                 <div className="relative shadow-2xl bg-white select-none mb-10">
-                   <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
-                     {/* HD Scaling for crisp texts */}
-                     <Page 
-                       pageNumber={currentPage} 
-                       scale={1.5} 
-                       renderTextLayer={false} 
-                       renderAnnotationLayer={false} 
-                       onLoadSuccess={(pageInfo) => {
-                          if (pdfDimensions.width !== pageInfo.width || pdfDimensions.height !== pageInfo.height) {
-                             setPdfDimensions({ width: pageInfo.width, height: pageInfo.height });
-                          }
-                       }} 
-                     />
-                   </Document>
+                 <div className="flex-grow overflow-y-auto p-6 flex flex-col items-center custom-scrollbar">
+                   <div className="relative shadow-2xl bg-white select-none mb-10">
+                     <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
+                       {/* 🔥 FIX 4: Scale 1.5 for Sharp Text */}
+                       <Page 
+                         pageNumber={currentPage} 
+                         scale={1.5} 
+                         renderTextLayer={false} 
+                         renderAnnotationLayer={false} 
+                       />
+                     </Document>
 
-                   {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
-                     <Rnd
-                       key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
-                       onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
-                       onResizeStop={(e, dir, ref, delta, position) => { updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...position }); }}
-                       className="group border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed flex items-center justify-center bg-white/40 hover:bg-white/70 transition-colors touch-none"
-                     >
-                       <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"><X size={14} /></button>
-                       
-                       {el.isImage ? (
-                         <img src={el.imgData} alt="Signature" className="w-full h-full object-contain pointer-events-none" />
-                       ) : el.isDigital ? (
-                         <div className="border border-[#E5322D] bg-red-50/70 p-3 text-[11px] font-mono leading-tight text-gray-800 w-full h-full relative overflow-hidden flex flex-col justify-center">
-                            {el.value.split('\n').map((l, i) => <div key={i}>{l}</div>)}
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-[#E5322D] rounded-full flex items-center justify-center text-white text-sm font-bold">✓</div>
-                         </div>
-                       ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
-                         <input 
-                           type="text" value={el.value} onChange={(e) => updateElement(el.id, { value: e.target.value })}
-                           className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-800 resize-none"
-                           style={{ fontSize: `${el.height * 0.4}px`, color: el.color }}
-                         />
-                       ) : (
-                         <div className="w-full h-full flex items-center justify-center" style={{ fontFamily: el.fontStyle, fontSize: `${el.height * 0.6}px`, color: el.color }}>
-                           {el.value}
-                         </div>
-                       )}
-                     </Rnd>
-                   ))}
+                     {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
+                       <Rnd
+                         key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
+                         onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
+                         onResizeStop={(e, dir, ref, delta, position) => { updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...position }); }}
+                         className="group border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed flex items-center justify-center bg-white/40 hover:bg-white/70 transition-colors touch-none"
+                       >
+                         <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"><X size={14} /></button>
+                         
+                         {el.isImage ? (
+                           <img src={el.imgData} alt="Signature" className="w-full h-full object-contain pointer-events-none" />
+                         ) : el.isDigital ? (
+                           <div className="border border-[#E5322D] bg-red-50/70 p-3 text-[11px] font-mono leading-tight text-gray-800 w-full h-full relative overflow-hidden flex flex-col justify-center">
+                              {el.value.split('\n').map((l, i) => <div key={i}>{l}</div>)}
+                              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-[#E5322D] rounded-full flex items-center justify-center text-white text-sm font-bold">✓</div>
+                           </div>
+                         ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
+                           <input 
+                             type="text" value={el.value} onChange={(e) => updateElement(el.id, { value: e.target.value })}
+                             className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-800 resize-none"
+                             style={{ fontSize: `${el.height * 0.4}px`, color: el.color }}
+                           />
+                         ) : (
+                           <div className="w-full h-full flex items-center justify-center" style={{ fontFamily: el.fontStyle, fontSize: `${el.height * 0.6}px`, color: el.color }}>
+                             {el.value}
+                           </div>
+                         )}
+                       </Rnd>
+                     ))}
+                   </div>
                  </div>
               </div>
 
@@ -496,8 +488,8 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* Optional Fields (Exact List Style) */}
-                  <div className="mb-6">
+                  {/* Optional Fields */}
+                  <div className="mb-4">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Optional fields</h4>
                     <div className="space-y-2">
                       <button onClick={() => addElement('initials')} className="w-full border border-gray-200 border-dashed rounded-lg p-0 bg-white hover:bg-gray-50 flex items-center justify-between transition-colors shadow-sm overflow-hidden group">
@@ -538,7 +530,6 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* 🔥 SECURITY: Lock Document Toggle */}
                   <div className="border-t border-gray-200 pt-6">
                     <label className="flex items-start gap-3 cursor-pointer group">
                       <input type="checkbox" checked={lockDocument} onChange={e=>setLockDocument(e.target.checked)} className="mt-1 w-5 h-5 accent-[#E5322D]" />
@@ -553,7 +544,7 @@ export default function VisualSignPdf() {
                 <div className="p-5 border-t border-gray-200 bg-gray-50 shrink-0">
                   <button 
                     onClick={applySignatureAndDownload} 
-                    disabled={isProcessing || elements.length === 0}
+                    disabled={isProcessing || elements.filter(el => el.fileIndex === activeFileIndex).length === 0}
                     className="w-full flex items-center justify-center gap-2 py-4 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-md disabled:bg-gray-400"
                   >
                     {isProcessing ? <><Settings className="animate-spin" size={20} /> Processing...</> : <>Sign <ArrowRightCircle size={20}/></>}
@@ -564,7 +555,7 @@ export default function VisualSignPdf() {
           </div>
         )}
 
-        {/* STEP 4: DOWNLOAD SCREEN WITH 4 EXACT ICONS */}
+        {/* STEP 4: DOWNLOAD SCREEN */}
         {step === 4 && (
           <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in slide-in-from-bottom-8 fade-in text-center mt-10">
             <h1 className="text-4xl font-bold text-gray-800 mb-8 tracking-tight">PDF files have been signed!</h1>
@@ -590,7 +581,7 @@ export default function VisualSignPdf() {
       </main>
       <Footer />
 
-      {/* 🔥 SOLO SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
+      {/* 🔥 SOLO SIGNATURE MODAL 🔥 */}
       {showSignatureModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
@@ -663,6 +654,9 @@ export default function VisualSignPdf() {
                       <canvas 
                         ref={canvasRef}
                         onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
+                        onTouchStart={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
+                        onTouchMove={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
+                        onTouchEnd={stopDrawing}
                         className="w-full h-[200px] bg-white border border-gray-300 rounded cursor-crosshair shadow-inner touch-none"
                         width={500} height={200}
                       />
