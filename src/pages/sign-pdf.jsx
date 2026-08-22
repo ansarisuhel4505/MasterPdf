@@ -28,7 +28,6 @@ const signatureFonts = [
   "Neucha", "Rock Salt", "Reenie Beanie", "Nothing You Could Do", "Schoolbell", "Nanum Pen Script", "Comic Sans MS"
 ];
 
-// 🔥 MAIN PAGE SIZE REDUCED: 1.0 (pehle 1.5 tha)
 const RENDER_SCALE = 1.0; 
 
 export default function VisualSignPdf() {
@@ -407,10 +406,12 @@ export default function VisualSignPdf() {
       pdfDoc.setCreator('MasterPdf Secure Engine');
       pdfDoc.setModificationDate(new Date());
 
+      // 🔥 FIX: Lock Document Error - Password empty nahi hona chahiye!
       if (lockDocument) {
+        const password = '1234';
         pdfDoc.encrypt({
-          userPassword: '', 
-          ownerPassword: Math.random().toString(36).substring(2, 15), 
+          userPassword: password, 
+          ownerPassword: password, 
           permissions: { 
             modifying: false, 
             copying: false, 
@@ -418,6 +419,7 @@ export default function VisualSignPdf() {
             fillingInteractiveForms: false 
           }
         });
+        alert(`Document locked successfully! Password is: ${password}`);
       }
 
       const finalPdfBytes = await pdfDoc.save();
@@ -521,7 +523,7 @@ export default function VisualSignPdf() {
 
             <div className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4]">
               
-              {/* 🔥 LEFT SIDEBAR FIXED: Chhota kiya (w-40), Mini Pages chhote (width={80}) aur alag color (bg-slate-200) */}
+              {/* LEFT SIDEBAR */}
               <div className="w-40 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex shrink-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] custom-scrollbar">
                  <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess}>
                    {Array.from({ length: numPages || 0 }, (_, i) => (
@@ -535,10 +537,10 @@ export default function VisualSignPdf() {
                  </Document>
               </div>
 
-              {/* MAIN WORKSPACE FIXED: min-w-0 aur max-w-full se overlap rukega */}
-              <div className="flex-grow flex flex-col items-center overflow-y-auto p-6 relative min-w-0 custom-scrollbar">
+              {/* MAIN WORKSPACE */}
+              <div className="flex-grow flex flex-col relative min-w-0">
                  
-                 {/* Fixed Floating Menu */}
+                 {/* 🔥 FIX: Floating Menu को scroll container से बाहर निकाला गया है */}
                  <div className="absolute right-6 top-[20%] flex flex-col gap-2 group z-50">
                     <div className="relative">
                       <button className="bg-[#E5322D] text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-110">
@@ -556,57 +558,58 @@ export default function VisualSignPdf() {
                     </div>
                  </div>
 
-                 {/* Main Page Container: max-w-[1000px] se page aur chhota hoga */}
-                 <div className="relative shadow-xl bg-white select-none mb-10 w-full max-w-[1000px]">
-                   <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
-                     <Page 
-                       pageNumber={currentPage} 
-                       scale={RENDER_SCALE} 
-                       renderTextLayer={false} 
-                       renderAnnotationLayer={false} 
-                     />
-                   </Document>
+                 <div className="flex-grow overflow-y-auto p-6 flex flex-col items-center custom-scrollbar">
+                   <div className="relative shadow-xl bg-white select-none mb-10 w-full max-w-[1000px]">
+                     <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
+                       <Page 
+                         pageNumber={currentPage} 
+                         scale={RENDER_SCALE} 
+                         renderTextLayer={false} 
+                         renderAnnotationLayer={false} 
+                       />
+                     </Document>
 
-                   {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
-                     <Rnd
-                       key={el.id} 
-                       bounds="parent" 
-                       position={{ x: el.x, y: el.y }} 
-                       size={{ width: el.width, height: el.height }}
-                       onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
-                       onResizeStop={(e, dir, ref, delta, position) => { 
-                         updateElement(el.id, { 
-                           width: ref.offsetWidth, 
-                           height: ref.offsetHeight, 
-                           ...position 
-                         }); 
-                       }}
-                       className="group border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed flex items-center justify-center bg-white/40 hover:bg-white/70 transition-colors"
-                     >
-                       <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"><X size={14} /></button>
-                       
-                       {el.isImage && el.imgData ? (
-                         <img src={el.imgData} alt="Signature" className="w-full h-full object-contain pointer-events-none" />
-                       ) : el.isDigital ? (
-                         <div className="border border-[#E5322D] bg-red-50/70 p-3 text-[11px] font-mono leading-tight text-gray-800 w-full h-full relative overflow-hidden flex flex-col justify-center">
-                            {el.value.split('\n').map((l, i) => <div key={i}>{l}</div>)}
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-[#E5322D] rounded-full flex items-center justify-center text-white text-sm font-bold">✓</div>
-                         </div>
-                       ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
-                         <input 
-                           type="text" 
-                           value={el.value} 
-                           onChange={(e) => updateElement(el.id, { value: e.target.value })}
-                           className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-800 resize-none"
-                           style={{ fontSize: `${el.height * 0.4}px`, color: el.color }}
-                         />
-                       ) : (
-                         <div className="w-full h-full flex items-center justify-center" style={{ fontFamily: el.fontStyle, fontSize: `${el.height * 0.6}px`, color: el.color }}>
-                           {el.value}
-                         </div>
-                       )}
-                     </Rnd>
-                   ))}
+                     {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
+                       <Rnd
+                         key={el.id} 
+                         bounds="parent" 
+                         position={{ x: el.x, y: el.y }} 
+                         size={{ width: el.width, height: el.height }}
+                         onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
+                         onResizeStop={(e, dir, ref, delta, position) => { 
+                           updateElement(el.id, { 
+                             width: ref.offsetWidth, 
+                             height: ref.offsetHeight, 
+                             ...position 
+                           }); 
+                         }}
+                         className="group border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed flex items-center justify-center bg-white/40 hover:bg-white/70 transition-colors"
+                       >
+                         <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"><X size={14} /></button>
+                         
+                         {el.isImage && el.imgData ? (
+                           <img src={el.imgData} alt="Signature" className="w-full h-full object-contain pointer-events-none" />
+                         ) : el.isDigital ? (
+                           <div className="border border-[#E5322D] bg-red-50/70 p-3 text-[11px] font-mono leading-tight text-gray-800 w-full h-full relative overflow-hidden flex flex-col justify-center">
+                              {el.value.split('\n').map((l, i) => <div key={i}>{l}</div>)}
+                              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-[#E5322D] rounded-full flex items-center justify-center text-white text-sm font-bold">✓</div>
+                           </div>
+                         ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
+                           <input 
+                             type="text" 
+                             value={el.value} 
+                             onChange={(e) => updateElement(el.id, { value: e.target.value })}
+                             className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-800 resize-none"
+                             style={{ fontSize: `${el.height * 0.4}px`, color: el.color }}
+                           />
+                         ) : (
+                           <div className="w-full h-full flex items-center justify-center" style={{ fontFamily: el.fontStyle, fontSize: `${el.height * 0.6}px`, color: el.color }}>
+                             {el.value}
+                           </div>
+                         )}
+                       </Rnd>
+                     ))}
+                   </div>
                  </div>
               </div>
 
