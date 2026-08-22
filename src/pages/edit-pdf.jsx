@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
-import { UploadCloud, X, Edit3, Lock, Share2, History, Shield, Stamp, FileText, Trash2, Users, Settings, MessageSquare, Save, Eye, Download, Loader2 } from 'lucide-react';
+import Navbar from '../../components/Navbar';
+import Footer from '../../components/Footer';
+import { 
+  UploadCloud, X, Edit3, Lock, Share2, History, Shield, Stamp, FileText, Trash2, 
+  Users, Settings, MessageSquare, Save, Eye, Download, Loader2, Printer 
+} from 'lucide-react'; // ✅ Printer Import किया गया
 import { useUser, useAuth } from '@clerk/nextjs';
 import { upload } from '@vercel/blob/client';
 
@@ -21,9 +24,7 @@ export default function EditPdf() {
   const [history, setHistory] = useState([]);
   const [permissions, setPermissions] = useState({ allowEditing: true, allowPrinting: false });
   const [watermarkText, setWatermarkText] = useState('');
-  const [showWatermark, setShowWatermark] = useState(false);
   const [ocrEnabled, setOcrEnabled] = useState(false);
-  const [formData, setFormData] = useState({});
   const [activities, setActivities] = useState([]);
   
   // Adobe Embed API
@@ -60,27 +61,25 @@ export default function EditPdf() {
         showLeftHandPanel: false,
         showDownloadPDF: true,
         showPrintPDF: true,
-        enableFormFilling: true, // 🔥 Form Filling Feature
+        enableFormFilling: true,
         includePDFAnnotations: true,
         defaultViewMode: "FIT_WIDTH",
         showBookmarks: true,
         showThumbnails: true,
       });
 
-      // 🔥 Save Event Handler
+      // Save Event Handler
       adobeDCView.current.registerEvent(
         'SAVE',
         async (event) => {
           setIsSaving(true);
           try {
-            const updatedFile = event.options.pdfData; // ArrayBuffer
-            // Upload to Blob (new version)
+            const updatedFile = event.options.pdfData;
             const newBlob = await upload(`edited-${Date.now()}-${file.name}`, updatedFile, {
               access: 'public',
               handleUploadUrl: '/api/upload',
             });
             
-            // Save to backend (API)
             const token = await getToken();
             const res = await fetch('/api/edit-pdf', {
               method: 'POST',
@@ -99,7 +98,7 @@ export default function EditPdf() {
             if (data.success) {
               alert("File saved successfully!");
               setFileUrl(newBlob.url);
-              loadHistory(); // Reload history
+              loadHistory();
             }
           } catch (error) {
             console.error('Save error:', error);
@@ -110,7 +109,7 @@ export default function EditPdf() {
         }
       );
       
-      // 🔥 Track Activity
+      // Track Activity
       adobeDCView.current.registerEvent('PAGE_VIEW', (event) => {
         const page = event.pageNumber;
         logActivity(`Viewed page ${page}`);
@@ -125,14 +124,12 @@ export default function EditPdf() {
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setIsUploading(true);
       try {
-        // Upload to Blob
         const blob = await upload(selectedFile.name, selectedFile, {
           access: 'public',
           handleUploadUrl: '/api/upload',
         });
         setFileUrl(blob.url);
         
-        // Create new file record in DB
         const token = await getToken();
         const res = await fetch('/api/edit-pdf', {
           method: 'POST',
@@ -157,7 +154,7 @@ export default function EditPdf() {
         }
       } catch (error) {
         console.error('Upload error:', error);
-        alert("Upload failed.");
+        alert("Upload failed. Check /api/upload and middleware.js");
       } finally {
         setIsUploading(false);
       }
@@ -224,14 +221,12 @@ export default function EditPdf() {
     setIsSharing(false);
   };
 
-  // Apply Watermark Handler (Frontend only for demo, Backend can use ConvertAPI)
+  // Apply Watermark Handler
   const handleWatermark = () => {
     if (!watermarkText) {
       alert('Please enter watermark text');
       return;
     }
-    // In a real app, you would send to backend with action 'watermark-pdf'
-    // Here we just simulate
     alert(`Watermark "${watermarkText}" will be applied on next save.`);
   };
 
@@ -296,7 +291,7 @@ export default function EditPdf() {
               </div>
               
               <div className="flex flex-1 gap-4">
-                {/* Left Toolbar (Custom Branding & Options) */}
+                {/* Left Toolbar */}
                 <div className="w-64 bg-gray-50 border-r border-gray-200 p-4 overflow-y-auto">
                   <h3 className="text-lg font-bold text-gray-800 mb-4">Tools</h3>
                   
