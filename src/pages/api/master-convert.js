@@ -69,7 +69,7 @@ export default async function handler(req, res) {
 
   // 🔥 HIGH QUALITY / BLUR FIX: High Resolution set karo (300 DPI)
   if (highQuality) {
-    options.ImageResolution = '300';
+    options.ImageResolution = '800';
   }
 
   // 🔥 OCR FIX: Scanned PDFs ke liye
