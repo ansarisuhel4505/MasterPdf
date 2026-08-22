@@ -12,6 +12,7 @@
     "@clerk/nextjs": "^7.7.6",
     "@google/generative-ai": "^0.21.0",
     "@vercel/blob": "^0.23.0",
+    "@vercel/postgres": "^0.10.0", 
     "convertapi": "^1.15.0",
     "tesseract.js": "^5.0.0",
     "form-data": "^4.0.6",
