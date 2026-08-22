@@ -96,7 +96,30 @@ export default async function handler(req, res) {
         throw excelError;
       }
     }
-    else if (action === 'pdf-to-powerpoint') result = await convertapi.convert('pptx', { File: fileUrl }, 'pdf');
+    else if (action === 'pdf-to-powerpoint') {
+  const ocrEnabled = req.body.ocrEnabled === true;
+  const highQuality = req.body.highQuality === true;
+  const preserveLayout = req.body.preserveLayout === true;
+
+  const options = { File: fileUrl };
+
+  // 🔥 No Blur: High Resolution (300 DPI) set karo
+  if (highQuality) {
+    options.ImageResolution = '300';
+  }
+
+  // 🔥 OCR: Scanned PDFs ke liye
+  if (ocrEnabled) {
+    options.Ocr = 'true';
+  }
+
+  // 🔥 Layout Preserve
+  if (preserveLayout) {
+    options.PreserveLayout = 'true';
+  }
+
+  result = await convertapi.convert('pptx', options, 'pdf');
+}
     else if (action === 'word-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'docx');
     else if (action === 'excel-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'xlsx');
     else if (action === 'powerpoint-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'pptx');
