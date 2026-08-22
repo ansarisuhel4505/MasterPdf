@@ -11,11 +11,12 @@ import {
   UploadCloud, X, PenTool, Lock, Download, Settings, 
   User, Calendar, Type, Stamp, Plus, ChevronLeft, 
   ChevronRight, ChevronUp, ChevronDown, ShieldCheck, Monitor, Palette,
-  Layers, ArrowLeft, ArrowRightCircle, HardDrive, Link2, Trash2, Edit3
+  Layers, ArrowLeft, ArrowRightCircle, HardDrive, Link2, Trash2, Edit3,
+  QrCode, Upload
 } from 'lucide-react';
 
 if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
 }
 
 const signatureFonts = [
@@ -41,6 +42,7 @@ export default function VisualSignPdf() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState(1);
+  const [fileUrl, setFileUrl] = useState('');
   
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [hTab, setHTab] = useState('Signature'); 
@@ -54,9 +56,9 @@ export default function VisualSignPdf() {
   const [uploadedStamp, setUploadedStamp] = useState(null);
   const [sigMode, setSigMode] = useState('simple'); 
   const [lockDocument, setLockDocument] = useState(false); 
+  const [pendingStampAdd, setPendingStampAdd] = useState(false); 
   
   const [elements, setElements] = useState([]);
-  const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
 
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -66,7 +68,9 @@ export default function VisualSignPdf() {
   useEffect(() => {
     if (showSignatureModal && vTab === 'Draw' && canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
-      ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = sigColor;
+      ctx.lineWidth = 3; 
+      ctx.lineCap = 'round'; 
+      ctx.strokeStyle = sigColor;
     }
   }, [showSignatureModal, vTab, sigColor]);
 
@@ -92,27 +96,51 @@ export default function VisualSignPdf() {
   };
 
   const removeFile = () => {
-    setFiles([]); setElements([]); setCurrentPage(1); setStep(1); setActiveFileIndex(0); setNumPages(null);
-    setPdfDimensions({ width: 0, height: 0 });
+    // Revoke all object URLs to prevent memory leak
+    files.forEach(f => URL.revokeObjectURL(f.url));
+    setFiles([]); 
+    setElements([]); 
+    setCurrentPage(1); 
+    setStep(1); 
+    setActiveFileIndex(0); 
+    setNumPages(null);
+    setFileUrl('');
   };
 
   const onDocumentLoadSuccess = ({ numPages }) => {
-    setNumPages(numPages); setCurrentPage(1);
+    setNumPages(numPages); 
+    setCurrentPage(1);
   };
 
   // --- DRAWING LOGIC ---
   const startDrawing = (e) => {
-    const { offsetX, offsetY } = e.nativeEvent;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = canvasRef.current.width / rect.width;
+    const scaleY = canvasRef.current.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
     const ctx = canvasRef.current.getContext('2d');
-    ctx.beginPath(); ctx.moveTo(offsetX, offsetY); setIsDrawing(true);
+    ctx.beginPath(); 
+    ctx.moveTo(x, y); 
+    setIsDrawing(true);
   };
+
   const draw = (e) => {
     if (!isDrawing) return;
-    const { offsetX, offsetY } = e.nativeEvent;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = canvasRef.current.width / rect.width;
+    const scaleY = canvasRef.current.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
     const ctx = canvasRef.current.getContext('2d');
-    ctx.lineTo(offsetX, offsetY); ctx.stroke();
+    ctx.lineTo(x, y); 
+    ctx.stroke();
   };
+
   const stopDrawing = () => setIsDrawing(false);
+
   const clearCanvas = () => {
     const ctx = canvasRef.current.getContext('2d');
     ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -125,7 +153,9 @@ export default function VisualSignPdf() {
       const reader = new FileReader();
       reader.onload = (ev) => {
         if (type === 'sig') setUploadedSig(ev.target.result);
-        if (type === 'stamp') setUploadedStamp(ev.target.result);
+        if (type === 'stamp') {
+          setUploadedStamp(ev.target.result);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -137,64 +167,178 @@ export default function VisualSignPdf() {
   };
 
   const applyModalSettings = () => {
-    if (vTab === 'Draw' && canvasRef.current) setDrawnSignature(canvasRef.current.toDataURL('image/png'));
+    if (vTab === 'Draw' && canvasRef.current) {
+      setDrawnSignature(canvasRef.current.toDataURL('image/png'));
+    }
+    
+    // If stamp was pending and now uploaded, add stamp element
+    if (pendingStampAdd && uploadedStamp) {
+      addStampElement();
+      setPendingStampAdd(false);
+    }
+    
     setShowSignatureModal(false);
   };
 
+  const addStampElement = () => {
+    const newElement = {
+      id: Date.now(), 
+      type: 'stamp', 
+      fileIndex: activeFileIndex, 
+      page: currentPage, 
+      x: 100, 
+      y: 150,
+      width: 150, 
+      height: 150, 
+      value: '', 
+      fontStyle: '', 
+      isImage: true, 
+      imgData: uploadedStamp, 
+      isDigital: false, 
+      color: sigColor
+    };
+    setElements(prev => [...prev, newElement]);
+  };
+
   const addElement = (type) => {
-    let value = ''; let fontStyle = 'Arial, sans-serif';
-    let isImage = false; let imgData = null; let isDigital = false;
+    let value = ''; 
+    let fontStyle = 'Arial, sans-serif';
+    let isImage = false; 
+    let imgData = null; 
+    let isDigital = false;
     let finalColor = sigColor;
+    let width = 200;
+    let height = 60;
 
     if (type === 'signature') {
       if (sigMode === 'simple') {
-        if (vTab === 'Draw' && drawnSignature) { isImage = true; imgData = drawnSignature; }
-        else if (vTab === 'Upload' && uploadedSig) { isImage = true; imgData = uploadedSig; }
-        else { value = fullName; fontStyle = signatureFonts[selectedStyle]; }
+        if (vTab === 'Draw' && drawnSignature) { 
+          isImage = true; 
+          imgData = drawnSignature; 
+          width = 200; 
+          height = 100; 
+        }
+        else if (vTab === 'Upload' && uploadedSig) { 
+          isImage = true; 
+          imgData = uploadedSig; 
+          width = 200; 
+          height = 100; 
+        }
+        else { 
+          value = fullName; 
+          fontStyle = signatureFonts[selectedStyle]; 
+          width = 200; 
+          height = 60; 
+        }
       } else if (sigMode === 'digital') {
-        value = generateDigitalSig(); isDigital = true;
+        value = generateDigitalSig(); 
+        isDigital = true; 
+        width = 260; 
+        height = 90; 
       }
     } 
     else if (type === 'initials') {
-      if (vTab === 'Upload' && uploadedSig) { isImage = true; imgData = uploadedSig; }
-      else { value = initials; fontStyle = signatureFonts[selectedStyle]; }
+      if (vTab === 'Upload' && uploadedSig) { 
+        isImage = true; 
+        imgData = uploadedSig; 
+        width = 150; 
+        height = 80; 
+      }
+      else { 
+        value = initials; 
+        fontStyle = signatureFonts[selectedStyle]; 
+        width = 150; 
+        height = 50; 
+      }
     } 
     else if (type === 'stamp') {
-      if (uploadedStamp) { isImage = true; imgData = uploadedStamp; }
-      else { setShowSignatureModal(true); setHTab('Stamp'); return; }
+      if (uploadedStamp) { 
+        isImage = true; 
+        imgData = uploadedStamp; 
+        width = 150; 
+        height = 150; 
+      }
+      else { 
+        setPendingStampAdd(true);
+        setShowSignatureModal(true); 
+        setHTab('Stamp'); 
+        return; 
+      }
     }
-    else if (type === 'name') { value = fullName; fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
-    else if (type === 'date') { value = new Date().toLocaleDateString(); fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
-    else if (type === 'text') { value = 'Type here...'; fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
+    else if (type === 'name') { 
+      value = fullName; 
+      fontStyle = 'Helvetica, sans-serif'; 
+      finalColor = '#333'; 
+      width = 200; 
+      height = 40; 
+    }
+    else if (type === 'date') { 
+      value = new Date().toLocaleDateString(); 
+      fontStyle = 'Helvetica, sans-serif'; 
+      finalColor = '#333'; 
+      width = 150; 
+      height = 40; 
+    }
+    else if (type === 'text') { 
+      value = ''; 
+      fontStyle = 'Helvetica, sans-serif'; 
+      finalColor = '#333'; 
+      width = 200; 
+      height = 40; 
+    }
 
     const newElement = {
-      id: Date.now(), type, fileIndex: activeFileIndex, page: currentPage, x: 100, y: 150,
-      width: isDigital ? 260 : (isImage ? 200 : (type === 'signature' ? 200 : 150)),
-      height: isDigital ? 90 : (isImage ? 100 : (type === 'signature' ? 60 : 40)),
-      value, fontStyle, isImage, imgData, isDigital, color: finalColor
+      id: Date.now(), 
+      type, 
+      fileIndex: activeFileIndex, 
+      page: currentPage, 
+      x: 100, 
+      y: 150,
+      width, 
+      height,
+      value, 
+      fontStyle, 
+      isImage, 
+      imgData, 
+      isDigital, 
+      color: finalColor
     };
-    setElements([...elements, newElement]);
+    setElements(prev => [...prev, newElement]);
   };
 
-  const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
-  const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
+  const updateElement = (id, newProps) => setElements(prev => prev.map(el => el.id === id ? { ...el, ...newProps } : el));
+  const deleteElement = (id) => setElements(prev => prev.filter(el => el.id !== id));
 
   const textToImageDataUrl = (text, fontStyle, width, height, color, isDigital = false) => {
     const canvas = document.createElement('canvas');
-    canvas.width = width * 2; canvas.height = height * 2;
+    canvas.width = width * 2; 
+    canvas.height = height * 2;
     const ctx = canvas.getContext('2d');
     ctx.scale(2, 2);
     
     if (isDigital) {
-      ctx.fillStyle = 'rgba(229, 50, 45, 0.05)'; ctx.fillRect(0, 0, width, height);
-      ctx.strokeStyle = '#E5322D'; ctx.lineWidth = 2; ctx.strokeRect(0, 0, width, height);
-      ctx.font = `12px monospace`; ctx.fillStyle = '#333333'; ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(229, 50, 45, 0.05)'; 
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = '#E5322D'; 
+      ctx.lineWidth = 2; 
+      ctx.strokeRect(0, 0, width, height);
+      ctx.font = `12px monospace`; 
+      ctx.fillStyle = '#333333'; 
+      ctx.textBaseline = 'top';
       const lines = text.split('\n');
       lines.forEach((line, i) => ctx.fillText(line, 10, 15 + (i * 22)));
-      ctx.fillStyle = '#E5322D'; ctx.beginPath(); ctx.arc(width - 30, height / 2, 18, 0, 2 * Math.PI); ctx.fill();
-      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 18px Arial'; ctx.fillText('✓', width - 38, height / 2 - 8);
+      ctx.fillStyle = '#E5322D'; 
+      ctx.beginPath(); 
+      ctx.arc(width - 30, height / 2, 18, 0, 2 * Math.PI); 
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF'; 
+      ctx.font = 'bold 18px Arial'; 
+      ctx.fillText('✓', width - 38, height / 2 - 8);
     } else {
-      ctx.font = `34px ${fontStyle}`; ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.fillText(text, 10, height / 2);
+      ctx.font = `34px ${fontStyle}`; 
+      ctx.fillStyle = color; 
+      ctx.textBaseline = 'middle'; 
+      ctx.fillText(text, 10, height / 2);
     }
     return canvas.toDataURL('image/png');
   };
@@ -229,17 +373,35 @@ export default function VisualSignPdf() {
         const actualW = el.width / RENDER_SCALE;
         const actualH = el.height / RENDER_SCALE;
 
-        if (el.isImage) {
-          const imgBytes = await fetch(el.imgData).then(res => res.arrayBuffer());
-          const pdfImage = await pdfDoc.embedPng(imgBytes);
-          page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
+        if (el.isImage && el.imgData) {
+          try {
+            const imgBytes = await fetch(el.imgData).then(res => res.arrayBuffer());
+            const pdfImage = await pdfDoc.embedPng(imgBytes);
+            page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
+          } catch (err) {
+            console.warn('Image embedding failed:', err);
+          }
         } else if (el.type === 'signature' || el.type === 'initials') {
-          const dataUrl = textToImageDataUrl(el.value, el.fontStyle, el.width, el.height, el.color, el.isDigital);
-          const imgBytes = await fetch(dataUrl).then(res => res.arrayBuffer());
-          const pdfImage = await pdfDoc.embedPng(imgBytes);
-          page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
+          try {
+            const dataUrl = textToImageDataUrl(el.value, el.fontStyle, el.width, el.height, el.color, el.isDigital);
+            const imgBytes = await fetch(dataUrl).then(res => res.arrayBuffer());
+            const pdfImage = await pdfDoc.embedPng(imgBytes);
+            page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
+          } catch (err) {
+            console.warn('Signature embedding failed:', err);
+          }
         } else {
-          page.drawText(el.value, { x: actualX + 5, y: actualY + 15, size: 14 / RENDER_SCALE, font: helveticaFont, color: rgb(0.2, 0.2, 0.2) });
+          try {
+            page.drawText(el.value || '', { 
+              x: actualX + 5, 
+              y: actualY + 15, 
+              size: 14 / RENDER_SCALE, 
+              font: helveticaFont, 
+              color: rgb(0.2, 0.2, 0.2) 
+            });
+          } catch (err) {
+            console.warn('Text draw failed:', err);
+          }
         }
       }
 
@@ -251,14 +413,20 @@ export default function VisualSignPdf() {
         pdfDoc.encrypt({
           userPassword: '', 
           ownerPassword: Math.random().toString(36).substring(2, 15), 
-          permissions: { modifying: false, copying: false, annotating: false, fillingInteractiveForms: false }
+          permissions: { 
+            modifying: false, 
+            copying: false, 
+            annotating: false, 
+            fillingInteractiveForms: false 
+          }
         });
       }
 
       const finalPdfBytes = await pdfDoc.save();
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
+      link.href = url;
       link.download = `Signed_${activeFile.name}`;
       
       document.body.appendChild(link);
@@ -266,7 +434,7 @@ export default function VisualSignPdf() {
       document.body.removeChild(link);
       
       downloadTriggered = true; 
-      setFileUrl(link.href);
+      setFileUrl(url);
       setStep(4);
     } catch (error) {
       console.error("Error signing PDF:", error);
@@ -361,7 +529,7 @@ export default function VisualSignPdf() {
                    {Array.from({ length: numPages || 0 }, (_, i) => (
                      <div key={i} onClick={() => setCurrentPage(i + 1)} className="flex flex-col items-center mb-4 cursor-pointer group">
                        <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
-                         <Page pageNumber={i + 1} width={120} scale={0.6} renderTextLayer={false} renderAnnotationLayer={false} />
+                         <Page pageNumber={i + 1} scale={0.6} renderTextLayer={false} renderAnnotationLayer={false} />
                        </div>
                        <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
                      </div>
@@ -393,33 +561,33 @@ export default function VisualSignPdf() {
                  <div className="flex-grow overflow-y-auto p-6 flex flex-col items-center custom-scrollbar">
                    <div className="relative shadow-2xl bg-white select-none mb-10">
                      <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
-                       {/* 🔥 FIX: Loop crash resolved by callback condition */}
                        <Page 
                          pageNumber={currentPage} 
                          scale={RENDER_SCALE} 
                          renderTextLayer={false} 
                          renderAnnotationLayer={false} 
-                         onLoadSuccess={(pageInfo) => {
-                           setPdfDimensions(prev => {
-                             if (prev.width !== pageInfo.width || prev.height !== pageInfo.height) {
-                               return { width: pageInfo.width, height: pageInfo.height };
-                             }
-                             return prev; // No update, No infinite loop
-                           });
-                         }} 
                        />
                      </Document>
 
                      {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
                        <Rnd
-                         key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
+                         key={el.id} 
+                         bounds="parent" 
+                         position={{ x: el.x, y: el.y }} 
+                         size={{ width: el.width, height: el.height }}
                          onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
-                         onResizeStop={(e, dir, ref, delta, position) => { updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...position }); }}
-                         className="group border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed flex items-center justify-center bg-white/40 hover:bg-white/70 transition-colors touch-none"
+                         onResizeStop={(e, dir, ref, delta, position) => { 
+                           updateElement(el.id, { 
+                             width: ref.offsetWidth, 
+                             height: ref.offsetHeight, 
+                             ...position 
+                           }); 
+                         }}
+                         className="group border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed flex items-center justify-center bg-white/40 hover:bg-white/70 transition-colors"
                        >
                          <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"><X size={14} /></button>
                          
-                         {el.isImage ? (
+                         {el.isImage && el.imgData ? (
                            <img src={el.imgData} alt="Signature" className="w-full h-full object-contain pointer-events-none" />
                          ) : el.isDigital ? (
                            <div className="border border-[#E5322D] bg-red-50/70 p-3 text-[11px] font-mono leading-tight text-gray-800 w-full h-full relative overflow-hidden flex flex-col justify-center">
@@ -428,7 +596,9 @@ export default function VisualSignPdf() {
                            </div>
                          ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
                            <input 
-                             type="text" value={el.value} onChange={(e) => updateElement(el.id, { value: e.target.value })}
+                             type="text" 
+                             value={el.value} 
+                             onChange={(e) => updateElement(el.id, { value: e.target.value })}
                              className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-800 resize-none"
                              style={{ fontSize: `${el.height * 0.4}px`, color: el.color }}
                            />
@@ -561,13 +731,13 @@ export default function VisualSignPdf() {
         {/* STEP 4: DOWNLOAD SCREEN */}
         {step === 4 && (
           <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in slide-in-from-bottom-8 fade-in text-center mt-10">
-            <h1 className="text-4xl font-bold text-gray-800 mb-8 tracking-tight">PDF files have been signed!</h1>
+            <h1 className="text-4xl font-bold text-gray-800 mb-8 tracking-tight">PDF file has been signed!</h1>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <div className="flex items-center gap-3">
                  <button onClick={() => setStep(1)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded-full shadow-md transition" title="Back to Home"><ArrowLeft size={24}/></button>
-                 <a href={fileUrl} download={`Signed_${activeFile?.name}`} className="bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-5 px-10 rounded-xl flex items-center gap-3 shadow-lg transition">
-                   <Download size={24}/> Download signed PDFs
+                 <a href={fileUrl} download={`Signed_${activeFile?.name || 'document.pdf'}`} className="bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-5 px-10 rounded-xl flex items-center gap-3 shadow-lg transition">
+                   <Download size={24}/> Download signed PDF
                  </a>
               </div>
               
@@ -584,14 +754,14 @@ export default function VisualSignPdf() {
       </main>
       <Footer />
 
-      {/* 🔥 SOLO SIGNATURE MODAL 🔥 */}
+      {/* SIGNATURE MODAL */}
       {showSignatureModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
             
             <div className="flex justify-between items-center bg-gray-50 border-b border-gray-200 p-4 sm:p-5 px-6 sm:px-8 shrink-0">
               <h3 className="text-xl font-bold text-gray-800 tracking-tight">Set your signature details</h3>
-              <button onClick={() => setShowSignatureModal(false)} className="text-gray-400 hover:text-[#E5322D] border border-gray-200 px-3 py-1 rounded-md text-sm font-bold bg-white shadow-sm">Cancel</button>
+              <button onClick={() => { setShowSignatureModal(false); setPendingStampAdd(false); }} className="text-gray-400 hover:text-[#E5322D] border border-gray-200 px-3 py-1 rounded-md text-sm font-bold bg-white shadow-sm">Cancel</button>
             </div>
 
             <div className="p-4 sm:p-8 overflow-y-auto flex-grow custom-scrollbar">
@@ -656,9 +826,12 @@ export default function VisualSignPdf() {
                     <div className="h-full flex flex-col items-center justify-center w-full gap-2">
                       <canvas 
                         ref={canvasRef}
-                        onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                        onTouchStart={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
-                        onTouchMove={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
+                        onMouseDown={startDrawing} 
+                        onMouseMove={draw} 
+                        onMouseUp={stopDrawing} 
+                        onMouseLeave={stopDrawing}
+                        onTouchStart={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ clientX: touch.clientX, clientY: touch.clientY }); }}
+                        onTouchMove={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ clientX: touch.clientX, clientY: touch.clientY }); }}
                         onTouchEnd={stopDrawing}
                         className="w-full h-[200px] bg-white border border-gray-300 rounded cursor-crosshair shadow-inner touch-none"
                         width={500} height={200}
