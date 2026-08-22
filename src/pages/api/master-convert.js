@@ -59,7 +59,31 @@ export default async function handler(req, res) {
       }
     }
 
-    else if (action === 'pdf-to-word') result = await convertapi.convert('docx', { File: fileUrl }, 'pdf');
+   else if (action === 'pdf-to-word') {
+  // Frontend se aaye options
+  const ocrEnabled = req.body.ocrEnabled === true;
+  const highQuality = req.body.highQuality === true;
+  const preserveLayout = req.body.preserveLayout === true;
+
+  const options = { File: fileUrl };
+
+  // 🔥 HIGH QUALITY / BLUR FIX: High Resolution set karo (300 DPI)
+  if (highQuality) {
+    options.ImageResolution = '300';
+  }
+
+  // 🔥 OCR FIX: Scanned PDFs ke liye
+  if (ocrEnabled) {
+    options.Ocr = 'true';
+  }
+
+  // 🔥 LAYOUT FIX: Layout preserve karo
+  if (preserveLayout) {
+    options.PreserveLayout = 'true';
+  }
+
+  result = await convertapi.convert('docx', options, 'pdf');
+}
     else if (action === 'pdf-to-excel') {
       try {
         result = await convertapi.convert('xlsx', { File: fileUrl }, 'pdf');
