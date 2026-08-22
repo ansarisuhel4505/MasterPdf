@@ -147,18 +147,22 @@ export default function PdfToWord() {
               </div>
 
               {/* Advanced Settings */}
+                            {/* 🔥 FIX: Text ko Dark aur Bold karke Blur hataya gaya hai */}
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
-                  <ScanText size={18} className="text-gray-900"/> <b>Enable OCR</b>
+                  <ScanText size={18} className="text-gray-900"/>
+                  <span className="font-bold text-gray-900">Enable OCR</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={highQuality} onChange={(e) => setHighQuality(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
-                  <CheckCircle2 size={18} className="text-gray-900"/><b> High Quality (Blur Fix)</b>
+                  <CheckCircle2 size={18} className="text-gray-900"/>
+                  <span className="font-bold text-gray-900">High Quality (Blur Fix)</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={preserveLayout} onChange={(e) => setPreserveLayout(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
-                  <FileText size={18} className="text-gray-900"/><b> Preserve Layout</b>
+                  <FileText size={18} className="text-gray-900"/>
+                  <span className="font-bold text-gray-900">Preserve Layout</span>
                 </label>
               </div>
 
