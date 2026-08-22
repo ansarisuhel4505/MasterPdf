@@ -9,9 +9,9 @@ import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { 
   UploadCloud, X, PenTool, Lock, Download, Settings, 
-  User, Calendar, Type, Stamp, PlusCircle, ChevronLeft, 
+  User, Calendar, Type, Stamp, Plus, PlusCircle, ChevronLeft, 
   ChevronRight, ChevronUp, ChevronDown, ShieldCheck, Upload, QrCode, Palette,
-  Layers, Globe, ArrowLeft, ArrowRightCircle, HardDrive, Link2, Trash2, Monitor
+  Layers, Globe, ArrowLeft, ArrowRightCircle, HardDrive, Link2, Trash2, Edit3
 } from 'lucide-react';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -28,8 +28,14 @@ const signatureFonts = [
 
 export default function VisualSignPdf() {
   const [isMounted, setIsMounted] = useState(false);
-  const [file, setFile] = useState(null);
-  const [fileUrl, setFileUrl] = useState(null);
+  
+  // Multi-File System States
+  const [files, setFiles] = useState([]);
+  const [activeFileIndex, setActiveFileIndex] = useState(0);
+  const [showFileDropdown, setShowFileDropdown] = useState(false);
+
+  const activeFile = files[activeFileIndex] || null;
+  
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -67,25 +73,38 @@ export default function VisualSignPdf() {
     }
   }, [showSignatureModal, vTab, sigColor]);
 
-  // --- FILE HANDLING ---
+  // --- MULTI-FILE HANDLING ---
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile && (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf'))) {
-      setFile(selectedFile);
-      setFileUrl(URL.createObjectURL(selectedFile));
-      setStep(2); 
-      setShowSignatureModal(true); 
-    } else if (selectedFile) {
-      alert("Please upload a valid PDF document (.pdf).");
+    const selectedFiles = Array.from(e.target.files);
+    const validFiles = selectedFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    
+    if (validFiles.length > 0) {
+      const newFilesData = validFiles.map(f => ({
+        file: f,
+        name: f.name,
+        url: URL.createObjectURL(f)
+      }));
+
+      setFiles(prev => [...prev, ...newFilesData]);
+      
+      if (step === 1) {
+        setStep(2); 
+        setShowSignatureModal(true); 
+      }
+    } else {
+      alert("Please upload valid PDF documents (.pdf).");
     }
-    if (e.target) e.target.value = null; 
+    e.target.value = null; 
   };
 
   const removeFile = () => {
-    setFile(null); setFileUrl(null); setElements([]); setCurrentPage(1); setStep(1);
+    setFiles([]); setElements([]); setCurrentPage(1); setStep(1); setActiveFileIndex(0);
   };
 
-  const onDocumentLoadSuccess = ({ numPages }) => setNumPages(numPages);
+  const onDocumentLoadSuccess = ({ numPages }) => {
+    setNumPages(numPages);
+    setCurrentPage(1);
+  };
 
   // --- DRAWING LOGIC ---
   const startDrawing = (e) => {
@@ -155,7 +174,7 @@ export default function VisualSignPdf() {
     else if (type === 'text') { value = 'Type here...'; fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
 
     const newElement = {
-      id: Date.now(), type, page: currentPage, x: 100, y: 150,
+      id: Date.now(), type, fileIndex: activeFileIndex, page: currentPage, x: 100, y: 150,
       width: isDigital ? 260 : (isImage ? 200 : (type === 'signature' ? 200 : 150)),
       height: isDigital ? 90 : (isImage ? 100 : (type === 'signature' ? 60 : 40)),
       value, fontStyle, isImage, imgData, isDigital, color: finalColor
@@ -187,22 +206,22 @@ export default function VisualSignPdf() {
   };
 
   const applySignatureAndDownload = async () => {
-    if (!file) return;
+    if (!activeFile) return;
     setIsProcessing(true);
     
     try {
-      const arrayBuffer = await file.arrayBuffer();
+      const arrayBuffer = await activeFile.file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-      for (const el of elements) {
+      // Only apply elements meant for this specific file
+      const currentFileElements = elements.filter(el => el.fileIndex === activeFileIndex);
+
+      for (const el of currentFileElements) {
         const page = pdfDoc.getPages()[el.page - 1];
         const { width: pdfWidth, height: pdfHeight } = page.getSize();
-        
-        // Multiplier handles the scale={2} resolution fix
-        const scaleX = pdfWidth / (pdfDimensions.width / 2);
-        const scaleY = pdfHeight / (pdfDimensions.height / 2);
-        
+        const scaleX = pdfWidth / pdfDimensions.width;
+        const scaleY = pdfHeight / pdfDimensions.height;
         const actualX = el.x * scaleX;
         const actualY = pdfHeight - (el.y * scaleY) - (el.height * scaleY);
 
@@ -224,7 +243,6 @@ export default function VisualSignPdf() {
       pdfDoc.setCreator('MasterPdf Secure Engine');
       pdfDoc.setModificationDate(new Date());
 
-      // 🔥 SECURE FEATURE: Lock Document against modifications
       if (lockDocument) {
         pdfDoc.encrypt({
           userPassword: '', 
@@ -237,9 +255,14 @@ export default function VisualSignPdf() {
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `Signed_${file.name}`;
+      link.download = `Signed_${activeFile.name}`;
       
-      setFileUrl(link.href);
+      // We only set step 4 for the active file. If they want to download all, they can loop, but standard iLovePDF downloads the active or zipped.
+      // For now, auto-download the active one and go to Success screen
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
       setStep(4);
     } catch (error) {
       console.error("Error signing PDF:", error);
@@ -248,10 +271,10 @@ export default function VisualSignPdf() {
     setIsProcessing(false);
   };
 
-  // --- FLOATING ICON HANDLERS ---
-  const handleDriveClick = () => alert("Connecting to Google Drive...");
-  const handleDropboxClick = () => alert("Connecting to Dropbox...");
-  const handleLocalUploadClick = () => document.getElementById('floating-upload').click();
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    alert('Document link copied to clipboard!');
+  };
 
   if (!isMounted) return null;
 
@@ -275,16 +298,17 @@ export default function VisualSignPdf() {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} onClick={(e)=>(e.target.value=null)} className="hidden" />
+              <input type="file" id="file-upload" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
               <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-14 rounded-xl shadow-lg transition-colors">
                 Select PDF file
               </label>
               
               <div className="flex sm:flex-col gap-2">
-                <button onClick={handleDriveClick} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Google Drive">
+                {/* Simulated Drive/Dropbox clicks mapped to local upload so no external website opens */}
+                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Google Drive">
                   <UploadCloud size={22} />
                 </button>
-                <button onClick={handleDropboxClick} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Dropbox">
+                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-105" title="Dropbox">
                   <Layers size={22} />
                 </button>
               </div>
@@ -294,34 +318,46 @@ export default function VisualSignPdf() {
         )}
 
         {/* STEP 2: SOLO VISUAL EDITOR */}
-        {step === 2 && (
+        {step === 2 && activeFile && (
           <div className="w-full max-w-[1600px] h-[85vh] flex flex-col bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden animate-in fade-in">
             
-            {/* Top Toolbar (Pagination & File Name) */}
-            <div className="h-14 bg-gray-50 border-b border-gray-200 flex items-center px-4 shrink-0 w-full z-10">
-               <div className="flex items-center gap-2">
-                 <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="p-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded text-gray-700"><ChevronUp size={16}/></button>
-                 <button onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))} className="p-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded text-gray-700"><ChevronDown size={16}/></button>
-                 <input type="text" value={currentPage} readOnly className="w-10 text-center border border-gray-300 rounded p-1 text-sm font-bold text-gray-800 bg-white" />
-                 <span className="text-sm font-bold text-gray-500">/ {numPages}</span>
+            {/* EXACT Top Toolbar (Pagination & File Dropdown) */}
+            <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 shrink-0 w-full z-10 shadow-sm relative">
+               <div className="flex items-center gap-2 border border-gray-300 rounded p-1">
+                 <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronUp size={16}/></button>
+                 <input type="text" value={currentPage} readOnly className="w-8 text-center bg-transparent text-sm font-bold text-gray-800 outline-none" />
+                 <button onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronDown size={16}/></button>
                </div>
-               <div className="ml-6 flex-1 max-w-md hidden sm:block">
-                 <div className="bg-white border border-gray-300 rounded px-3 py-1.5 text-sm font-bold text-gray-700 flex items-center justify-between cursor-pointer shadow-sm">
-                   <span className="truncate">{file?.name || "Document.pdf"}</span>
-                   <ChevronDown size={16} className="text-gray-400"/>
+               <span className="text-sm font-bold text-gray-500 ml-2">/ {numPages}</span>
+               
+               <div className="ml-6 flex-1 max-w-sm hidden sm:block relative">
+                 <div onClick={() => setShowFileDropdown(!showFileDropdown)} className="border border-gray-300 rounded px-3 py-1.5 text-sm font-bold text-gray-700 flex items-center justify-between cursor-pointer hover:bg-gray-50">
+                   <span className="truncate">{activeFile.name}</span>
+                   <ChevronDown size={16} className="text-gray-500 shrink-0 ml-2"/>
                  </div>
+                 {/* Dropdown for multiple files */}
+                 {showFileDropdown && (
+                   <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 shadow-lg rounded z-50">
+                     {files.map((f, i) => (
+                       <div key={i} onClick={() => { setActiveFileIndex(i); setShowFileDropdown(false); }} className={`p-2 text-sm font-bold cursor-pointer hover:bg-red-50 hover:text-[#E5322D] truncate ${i === activeFileIndex ? 'text-[#E5322D] bg-red-50/50' : 'text-gray-700'}`}>
+                         {f.name}
+                       </div>
+                     ))}
+                   </div>
+                 )}
                </div>
             </div>
 
             <div className="flex-grow flex flex-row overflow-hidden relative">
               
-              {/* Left Sidebar - Exact Thumbnails */}
-              <div className="w-40 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex">
-                 <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess}>
+              {/* EXACT Left Sidebar - Real PDF Thumbnails */}
+              <div className="w-48 bg-gray-100 border-r border-gray-200 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex custom-scrollbar">
+                 <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess}>
                    {Array.from({ length: numPages }, (_, i) => (
                      <div key={i} onClick={() => setCurrentPage(i + 1)} className="flex flex-col items-center mb-4 cursor-pointer group">
-                       <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105' : 'border-transparent group-hover:border-gray-300'}`}>
-                         <Page pageNumber={i + 1} width={100} renderTextLayer={false} renderAnnotationLayer={false} />
+                       <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
+                         {/* Scale 0.4 keeps thumbnails small but crisp */}
+                         <Page pageNumber={i + 1} width={120} scale={1} renderTextLayer={false} renderAnnotationLayer={false} />
                        </div>
                        <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
                      </div>
@@ -330,34 +366,34 @@ export default function VisualSignPdf() {
               </div>
 
               {/* Main Document Viewer Workspace */}
-              <div className="flex-grow bg-[#D3D3D3] p-6 flex flex-col items-center justify-start overflow-y-auto relative border-r border-gray-300">
+              <div className="flex-grow bg-[#E4E4E4] p-6 flex flex-col items-center justify-start overflow-y-auto relative border-r border-gray-200">
                  
-                 {/* Floating Plus Menu (Right Edge) */}
-                 <div className="absolute right-6 top-1/4 flex flex-col gap-2 group z-50">
+                 {/* Floating + Menu with multi-file add */}
+                 <div className="absolute right-6 top-[20%] flex flex-col gap-2 group z-50">
                     <button className="bg-[#E5322D] text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-110">
-                      <PlusCircle size={24}/>
+                      <Plus size={24}/>
                     </button>
                     <div className="absolute top-16 right-0 flex flex-col gap-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all transform translate-x-4 group-hover:translate-x-0">
-                      <input type="file" id="floating-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
-                      <button onClick={handleLocalUploadClick} className="bg-[#E5322D] text-white p-3 rounded-full shadow-lg hover:scale-110 transition" title="Upload from Device"><Monitor size={18}/></button>
-                      <button onClick={handleDriveClick} className="bg-[#E5322D] text-white p-3 rounded-full shadow-lg hover:scale-110 transition" title="Upload from Drive"><UploadCloud size={18}/></button>
-                      <button onClick={handleDropboxClick} className="bg-[#E5322D] text-white p-3 rounded-full shadow-lg hover:scale-110 transition" title="Upload from Dropbox"><Layers size={18}/></button>
+                      <input type="file" id="floating-upload" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
+                      <button onClick={() => document.getElementById('floating-upload').click()} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Device"><Monitor size={18}/></button>
+                      <button onClick={() => document.getElementById('floating-upload').click()} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Drive"><UploadCloud size={18}/></button>
+                      <button onClick={() => document.getElementById('floating-upload').click()} className="bg-[#E5322D] text-white p-3 rounded-full shadow-md hover:scale-110 transition" title="Upload from Dropbox"><Layers size={18}/></button>
                     </div>
                  </div>
 
-                 <div className="relative shadow-2xl bg-white select-none">
-                   <Document file={fileUrl}>
-                     {/* 🔥 Anti-Blur Fix: scale={2} ensures crystal clear crisp text */}
+                 <div className="relative shadow-2xl bg-white select-none mb-10">
+                   <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
+                     {/* Scale 1.5 for High Definition Sharp PDF rendering */}
                      <Page 
                        pageNumber={currentPage} 
-                       scale={2} 
+                       scale={1.5} 
                        renderTextLayer={false} 
                        renderAnnotationLayer={false} 
                        onLoadSuccess={(pageInfo) => setPdfDimensions({ width: pageInfo.width, height: pageInfo.height })} 
                      />
                    </Document>
 
-                   {elements.filter(el => el.page === currentPage).map((el) => (
+                   {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
                      <Rnd
                        key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
                        onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
@@ -376,7 +412,7 @@ export default function VisualSignPdf() {
                        ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
                          <input 
                            type="text" value={el.value} onChange={(e) => updateElement(el.id, { value: e.target.value })}
-                           className="w-full h-full bg-transparent outline-none text-center font-medium text-gray-800 resize-none"
+                           className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-800 resize-none"
                            style={{ fontSize: `${el.height * 0.4}px`, color: el.color }}
                          />
                        ) : (
@@ -389,7 +425,7 @@ export default function VisualSignPdf() {
                  </div>
               </div>
 
-              {/* Right Sidebar - Exact iLovePDF Options panel */}
+              {/* Exact iLovePDF Right Sidebar Options */}
               <div className="w-full lg:w-[320px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20">
                 <div className="flex justify-between items-center p-5 border-b border-gray-200">
                   <h3 className="text-xl font-bold text-gray-800">Signing options</h3>
@@ -413,31 +449,31 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* Required Fields Card */}
+                  {/* Required Fields (Exact Dotted Box Style) */}
                   <div className="mb-8">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Required fields</h4>
                     <div 
                       onClick={() => addElement('signature')}
-                      className="border border-[#E5322D] border-dashed rounded-lg p-0 bg-white hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors shadow-sm overflow-hidden"
+                      className="border border-[#E5322D] border-dashed rounded-lg bg-[#F8FAFC] hover:bg-red-50 cursor-pointer flex items-center justify-between group transition-colors shadow-sm overflow-hidden min-h-[60px]"
                     >
                       <div className="flex items-center w-full h-full">
                         {sigMode === 'simple' ? (
                           <>
-                            <div className="bg-red-100 p-4 h-full flex items-center justify-center text-[#E5322D] border-r border-dashed border-red-200"><PenTool size={18}/></div>
-                            <div className="flex-1 flex justify-center py-3">
+                            <div className="bg-[#E5322D] text-white p-4 h-full flex items-center justify-center"><PenTool size={18}/></div>
+                            <div className="flex-1 flex justify-center py-2 px-2 overflow-hidden">
                               {vTab === 'Draw' && drawnSignature ? (
-                                <img src={drawnSignature} className="h-8 object-contain" alt="Drawn" />
+                                <img src={drawnSignature} className="h-10 object-contain" alt="Drawn" />
                               ) : vTab === 'Upload' && uploadedSig ? (
-                                <img src={uploadedSig} className="h-8 object-contain" alt="Uploaded" />
+                                <img src={uploadedSig} className="h-10 object-contain" alt="Uploaded" />
                               ) : (
-                                <span className="text-xl truncate px-2" style={{ fontFamily: signatureFonts[selectedStyle], color: sigColor }}>{fullName}</span>
+                                <span className="text-2xl truncate" style={{ fontFamily: signatureFonts[selectedStyle], color: sigColor }}>{fullName}</span>
                               )}
                             </div>
-                            <button onClick={(e) => { e.stopPropagation(); setShowSignatureModal(true); }} className="p-3 text-gray-400 hover:text-[#E5322D] transition"><PenTool size={14}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); setShowSignatureModal(true); }} className="p-3 text-gray-400 hover:text-[#E5322D] transition bg-white border-l border-gray-200 h-full"><Edit3 size={16}/></button>
                           </>
                         ) : (
                           <>
-                            <div className="bg-green-100 p-4 h-full flex items-center justify-center text-green-600 border-r border-dashed border-green-200"><ShieldCheck size={18}/></div>
+                            <div className="bg-green-100 text-green-600 p-4 h-full flex items-center justify-center border-r border-dashed border-green-200"><ShieldCheck size={18}/></div>
                             <div className="flex-1 flex flex-col justify-center px-4 py-2">
                               <span className="text-xs font-bold text-gray-800">Certified Digital ID</span>
                               <span className="text-[10px] text-gray-500">Auto Generated</span>
@@ -448,8 +484,8 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* Optional Fields */}
-                  <div className="mb-4">
+                  {/* Optional Fields (Exact List Style) */}
+                  <div className="mb-6">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Optional fields</h4>
                     <div className="space-y-2">
                       <button onClick={() => addElement('initials')} className="w-full border border-gray-200 border-dashed rounded-lg p-0 bg-white hover:bg-gray-50 flex items-center justify-between transition-colors shadow-sm overflow-hidden group">
@@ -524,15 +560,15 @@ export default function VisualSignPdf() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <div className="flex items-center gap-3">
                  <button onClick={() => setStep(1)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded-full shadow-md transition" title="Back to Home"><ArrowLeft size={24}/></button>
-                 <a href={fileUrl} download={`Signed_${file?.name}`} className="bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-5 px-10 rounded-xl flex items-center gap-3 shadow-lg transition">
+                 <a href={fileUrl} download={`Signed_${activeFile?.name}`} className="bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-5 px-10 rounded-xl flex items-center gap-3 shadow-lg transition">
                    <Download size={24}/> Download signed PDFs
                  </a>
               </div>
               
               <div className="grid grid-cols-2 gap-2 mt-4 sm:mt-0">
-                <button onClick={handleDriveClick} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Google Drive"><HardDrive size={20}/></button>
+                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Google Drive"><HardDrive size={20}/></button>
                 <button onClick={handleCopyLink} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Copy Link"><Link2 size={20}/></button>
-                <button onClick={handleDropboxClick} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Dropbox"><Layers size={20}/></button>
+                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Save to Dropbox"><Layers size={20}/></button>
                 <button onClick={removeFile} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Delete File"><Trash2 size={20}/></button>
               </div>
             </div>
@@ -542,7 +578,7 @@ export default function VisualSignPdf() {
       </main>
       <Footer />
 
-      {/* 🔥 SOLO SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
+      {/* 🔥 SIGNATURE MODAL WITH SCROLL FIX 🔥 */}
       {showSignatureModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
