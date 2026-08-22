@@ -95,7 +95,6 @@ export default function VisualSignPdf() {
     setNumPages(numPages); setCurrentPage(1);
   };
 
-  // Drawing Handlers
   const startDrawing = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
     const ctx = canvasRef.current.getContext('2d');
@@ -194,31 +193,31 @@ export default function VisualSignPdf() {
     return canvas.toDataURL('image/png');
   };
 
-  // 🔥 THE MASTER FIX: ENCRYPTION BYPASS & EXACT COORDINATE MAPPING 🔥
+  // 🔥 THE MASTER FIX: SUCCESS FLAG ADDED 🔥
   const applySignatureAndDownload = async () => {
     if (!activeFile) return;
     setIsProcessing(true);
+    let downloadTriggered = false; // Flag to prevent fake errors
     
     try {
       const arrayBuffer = await activeFile.file.arrayBuffer();
       
-      // Step 1: Force Load even if Encrypted
-      const originalDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+      let pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
       
-      // Step 2: Strip Encryption by creating a Fresh Clone Document
-      const pdfDoc = await PDFDocument.create();
-      const copiedPages = await pdfDoc.copyPages(originalDoc, originalDoc.getPageIndices());
-      copiedPages.forEach((page) => pdfDoc.addPage(page));
+      if (pdfDoc.isEncrypted) {
+        const newDoc = await PDFDocument.create();
+        const copiedPages = await newDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+        copiedPages.forEach((page) => newDoc.addPage(page));
+        pdfDoc = newDoc;
+      }
 
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const currentFileElements = elements.filter(el => el.fileIndex === activeFileIndex);
 
-      // Step 3: Exact UI mapping to PDF mapping
       for (const el of currentFileElements) {
         const page = pdfDoc.getPages()[el.page - 1];
         const { height: pdfHeight } = page.getSize();
         
-        // Convert screen coordinates to actual PDF coordinates
         const actualX = el.x / RENDER_SCALE;
         const actualY = pdfHeight - (el.y / RENDER_SCALE) - (el.height / RENDER_SCALE);
         const actualW = el.width / RENDER_SCALE;
@@ -242,7 +241,6 @@ export default function VisualSignPdf() {
       pdfDoc.setCreator('MasterPdf Secure Engine');
       pdfDoc.setModificationDate(new Date());
 
-      // Optional Secure Re-Lock
       if (lockDocument) {
         pdfDoc.encrypt({
           userPassword: '', 
@@ -261,13 +259,19 @@ export default function VisualSignPdf() {
       link.click();
       document.body.removeChild(link);
       
+      downloadTriggered = true; // Mark as successful
+      
       setFileUrl(link.href);
       setStep(4);
     } catch (error) {
       console.error("Error signing PDF:", error);
-      alert("System Error: Could not process this document. It may be heavily corrupted.");
+      // Only show alert if download didn't actually trigger
+      if (!downloadTriggered) {
+        alert("System Error: Could not process this document. It may be heavily corrupted.");
+      }
+    } finally {
+      setIsProcessing(false);
     }
-    setIsProcessing(false);
   };
 
   const handleCopyLink = () => {
@@ -319,7 +323,6 @@ export default function VisualSignPdf() {
         {step === 2 && activeFile && (
           <div className="w-full max-w-[1600px] h-[85vh] flex flex-col bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden animate-in fade-in">
             
-            {/* Top Toolbar */}
             <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 shrink-0 w-full z-10 shadow-sm relative">
                <div className="flex items-center gap-2 border border-gray-300 rounded p-1">
                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronUp size={16}/></button>
@@ -345,10 +348,8 @@ export default function VisualSignPdf() {
                </div>
             </div>
 
-            {/* 🔥 FIX 1: OVERLAP PREVENTED - All 3 sections perfectly aligned in flex-row */}
             <div className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4]">
               
-              {/* Left Sidebar - High Res Thumbnails */}
               <div className="w-48 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto hidden lg:flex shrink-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] custom-scrollbar">
                  <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess}>
                    {Array.from({ length: numPages || 0 }, (_, i) => (
@@ -362,10 +363,8 @@ export default function VisualSignPdf() {
                  </Document>
               </div>
 
-              {/* Main Document Viewer Workspace */}
               <div className="flex-grow flex flex-col relative min-w-0">
                  
-                 {/* 🔥 FIX 2: Fixed Floating Menu (Does not scroll with PDF) */}
                  <div className="absolute right-6 top-[20%] flex flex-col gap-2 group z-50">
                     <div className="relative">
                       <button className="bg-[#E5322D] text-white p-3.5 rounded-full shadow-lg transition-transform hover:scale-110">
@@ -386,12 +385,16 @@ export default function VisualSignPdf() {
                  <div className="flex-grow overflow-y-auto p-6 flex flex-col items-center custom-scrollbar">
                    <div className="relative shadow-2xl bg-white select-none mb-10">
                      <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
-                       {/* 🔥 FIX 5: Scale 1.5 for Sharp HD Text */}
                        <Page 
                          pageNumber={currentPage} 
                          scale={RENDER_SCALE} 
                          renderTextLayer={false} 
                          renderAnnotationLayer={false} 
+                         onLoadSuccess={(pageInfo) => {
+                            if (pdfDimensions.width !== pageInfo.width || pdfDimensions.height !== pageInfo.height) {
+                               setPdfDimensions({ width: pageInfo.width, height: pageInfo.height });
+                            }
+                         }} 
                        />
                      </Document>
 
@@ -428,7 +431,6 @@ export default function VisualSignPdf() {
                  </div>
               </div>
 
-              {/* Exact iLovePDF Right Sidebar Options */}
               <div className="w-full lg:w-[320px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20">
                 <div className="flex justify-between items-center p-5 border-b border-gray-200">
                   <h3 className="text-xl font-bold text-gray-800">Signing options</h3>
@@ -437,7 +439,6 @@ export default function VisualSignPdf() {
 
                 <div className="p-5 overflow-y-auto flex-grow custom-scrollbar">
                   
-                  {/* Type Selection */}
                   <div className="mb-8">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Type</h4>
                     <div className="flex gap-2">
@@ -452,7 +453,6 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* Required Fields Card */}
                   <div className="mb-8">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Required fields</h4>
                     <div 
@@ -487,8 +487,7 @@ export default function VisualSignPdf() {
                     </div>
                   </div>
 
-                  {/* Optional Fields (Exact List Style) */}
-                  <div className="mb-6">
+                  <div className="mb-4">
                     <h4 className="text-sm font-bold text-gray-800 mb-3">Optional fields</h4>
                     <div className="space-y-2">
                       <button onClick={() => addElement('initials')} className="w-full border border-gray-200 border-dashed rounded-lg p-0 bg-white hover:bg-gray-50 flex items-center justify-between transition-colors shadow-sm overflow-hidden group">
@@ -569,9 +568,9 @@ export default function VisualSignPdf() {
               </div>
               
               <div className="grid grid-cols-2 gap-2 mt-4 sm:mt-0">
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Upload from Google Drive"><HardDrive size={20}/></button>
+                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Upload Next from Google Drive"><HardDrive size={20}/></button>
                 <button onClick={handleCopyLink} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Copy Link"><Link2 size={20}/></button>
-                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Upload from Dropbox"><Layers size={20}/></button>
+                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Upload Next from Dropbox"><Layers size={20}/></button>
                 <button onClick={removeFile} className="bg-[#E5322D] hover:bg-red-700 text-white p-3 rounded-full shadow-md transition-transform hover:scale-105" title="Delete File"><Trash2 size={20}/></button>
               </div>
             </div>
