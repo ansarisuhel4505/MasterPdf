@@ -2,25 +2,29 @@ import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { UploadCloud, FileText, X, ArrowRight, Settings, FolderOpen, ScanText, History, Loader2, Trash2 } from 'lucide-react';
+import { UploadCloud, FileText, X, ArrowRight, Settings, ScanText, History, Loader2, Trash2, CheckCircle2 } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
 
 export default function PdfToWord() {
-  const [files, setFiles] = useState([]); // Multiple files support
+  const [files, setFiles] = useState([]);
   const [isConverting, setIsConverting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const [ocrEnabled, setOcrEnabled] = useState(false);
+  const [highQuality, setHighQuality] = useState(true); // 🔥 Blur Fix: High Quality Default On
   const [preserveLayout, setPreserveLayout] = useState(true);
   const [recentFiles, setRecentFiles] = useState([]);
   const dragCounter = useRef(0);
+  const progressInterval = useRef(null);
 
-  // Load recent files from localStorage on mount
+  // Load Recent Files
   useEffect(() => {
     const saved = localStorage.getItem('masterpdf-recent');
     if (saved) setRecentFiles(JSON.parse(saved));
+    return () => clearInterval(progressInterval.current);
   }, []);
 
+  // File Selection
   const handleFileChange = (e) => {
     if (!e.target.files) return;
     const selectedFiles = Array.from(e.target.files);
@@ -32,72 +36,61 @@ export default function PdfToWord() {
     }
   };
 
-  const removeFile = (index) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
+  const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index));
   const clearAll = () => setFiles([]);
 
-  // Drag & Drop Handlers
-  const handleDragEnter = (e) => {
-    e.preventDefault();
-    dragCounter.current++;
-    setDragActive(true);
-  };
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    dragCounter.current--;
-    if (dragCounter.current === 0) setDragActive(false);
-  };
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragActive(false);
+  // Drag & Drop
+  const handleDragEnter = (e) => { e.preventDefault(); dragCounter.current++; setDragActive(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); dragCounter.current--; if (dragCounter.current === 0) setDragActive(false); };
+  const handleDrop = (e) => { e.preventDefault(); setDragActive(false); 
     const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-    if (droppedFiles.length > 0) {
-      setFiles(prev => [...prev, ...droppedFiles]);
-    }
+    if (droppedFiles.length > 0) setFiles(prev => [...prev, ...droppedFiles]);
   };
 
-  // Simulated Progress Bar (For UI feedback)
-  const updateProgress = (value) => {
-    setProgress(value);
+  // Simulated Progress Bar (UI Feedback)
+  const startProgressSimulation = () => {
+    setProgress(0);
+    progressInterval.current = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 95) { clearInterval(progressInterval.current); return prev; }
+        return prev + 5;
+      });
+    }, 200);
   };
 
-  // Convert Function
+  // Conversion Logic
   const convertToWord = async () => {
     if (files.length === 0) return;
     setIsConverting(true);
-    setProgress(5);
-    
+    startProgressSimulation();
+
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        updateProgress(Math.round((i / files.length) * 70)); // Upload progress 70%
 
-        // 1. Upload to Vercel Blob (Supports large files via chunking)
+        // 1. Upload to Vercel Blob (Large Files Support)
         const blob = await upload(file.name, file, {
           access: 'public',
-          handleUploadUrl: '/api/upload', // Make sure this route exists
+          handleUploadUrl: '/api/upload',
         });
 
-        updateProgress(75);
-
-        // 2. Send URL to Backend
+        // 2. Send URL to Backend with Settings
         const response = await fetch('/api/master-convert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             action: 'pdf-to-word', 
             fileUrl: blob.url,
-            ocrEnabled, // Send OCR flag
-            preserveLayout // Send Layout flag
+            ocrEnabled,
+            highQuality, // 🔥 Backend mein quality parameters bhejne ke liye
+            preserveLayout
           }),
         });
         
         const data = await response.json();
         
         if (response.ok && data.downloadUrl) {
-          // ✅ FIX: Download trick (target="_blank" removed to prevent opening in new tab)
+          // 🔥 Blur Fix: Download Trick (target="_blank" hata diya)
           const link = document.createElement('a');
           link.href = data.downloadUrl;
           link.setAttribute('download', `MasterPdf_Converted_${file.name.split('.')[0]}.docx`);
@@ -115,18 +108,18 @@ export default function PdfToWord() {
       }
     } catch (error) {
       console.error(error);
-      alert("Server connection failed. Check if /api/upload and /api/master-convert routes exist.");
+      alert("Server connection failed. Check /api/upload and /api/master-convert routes.");
+    } finally {
+      clearInterval(progressInterval.current);
+      setProgress(100);
+      setTimeout(() => { setProgress(0); setIsConverting(false); }, 1000);
     }
-    setProgress(100);
-    setTimeout(() => setProgress(0), 1000);
-    setIsConverting(false);
   };
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head>
         <title>Convert PDF to Word Online Free | MasterPdf</title>
-        <meta name="description" content="Fastest and most secure way to convert PDF to Word (Docx) online. 100% Free. No watermarks. Supports large files." />
       </Head>
 
       <Navbar />
@@ -154,7 +147,7 @@ export default function PdfToWord() {
                 <UploadCloud size={28} /> Select PDF files
               </label>
               <p className="text-gray-500 mt-4 font-medium">or Drag & Drop your PDFs here</p>
-              <p className="text-gray-400 text-sm mt-2">*No file size limits, supported via Vercel Blob</p>
+              <p className="text-gray-400 text-sm mt-2">*No file size limits (100MB max via Blob)</p>
             </div>
           )}
 
@@ -168,10 +161,14 @@ export default function PdfToWord() {
               </div>
 
               {/* Advanced Settings */}
-              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex flex-col sm:flex-row gap-4">
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
-                  <ScanText size={18} className="text-gray-600"/> Enable OCR (Scanned PDFs)
+                  <ScanText size={18} className="text-gray-600"/> Enable OCR
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={highQuality} onChange={(e) => setHighQuality(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
+                  <CheckCircle2 size={18} className="text-gray-600"/> High Quality (Blur Fix)
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={preserveLayout} onChange={(e) => setPreserveLayout(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
