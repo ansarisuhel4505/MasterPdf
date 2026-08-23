@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { action, fileUrl, password, boxes } = req.body;
+  const { action, fileUrl, password, boxes, pageIndices } = req.body;
 
   if (!fileUrl) {
     return res.status(400).json({ error: 'No file URL provided' });
@@ -18,7 +18,72 @@ export default async function handler(req, res) {
   try {
     let result;
 
-    if (action === 'redact-pdf') {
+    // 🔥 NEW: DELETE PAGES (Backend me add kiya)
+    if (action === 'delete-pages') {
+      if (!pageIndices || !Array.isArray(pageIndices)) return res.status(400).json({ error: 'No page indices provided' });
+
+      try {
+        const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // Descending order me sort karo taaki index shift na ho
+        const sortedIndices = [...pageIndices].sort((a, b) => b - a);
+        sortedIndices.forEach(page => pdfDoc.removePage(page - 1));
+        
+        const modifiedPdfBytes = await pdfDoc.save();
+        const blob = await put(`deleted-pages-${Date.now()}.pdf`, modifiedPdfBytes, {
+          access: 'public', contentType: 'application/pdf'
+        });
+        return res.status(200).json({ success: true, downloadUrl: blob.url });
+      } catch (err) {
+        return res.status(500).json({ error: "Failed to delete pages." });
+      }
+    }
+
+    // 🔥 NEW: EXTRACT PAGES
+    else if (action === 'extract-pages') {
+      if (!pageIndices || !Array.isArray(pageIndices)) return res.status(400).json({ error: 'No page indices provided' });
+
+      try {
+        const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const newDoc = await PDFDocument.create();
+        // Convert to 0-based indices
+        const copiedPages = await newDoc.copyPages(pdfDoc, pageIndices.map(i => i - 1));
+        copiedPages.forEach(page => newDoc.addPage(page));
+
+        const modifiedPdfBytes = await newDoc.save();
+        const blob = await put(`extracted-pages-${Date.now()}.pdf`, modifiedPdfBytes, {
+          access: 'public', contentType: 'application/pdf'
+        });
+        return res.status(200).json({ success: true, downloadUrl: blob.url });
+      } catch (err) {
+        return res.status(500).json({ error: "Failed to extract pages." });
+      }
+    }
+
+    // 🔥 NEW: SPLIT PDF
+    else if (action === 'split-pdf') {
+      try {
+        const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const count = pdfDoc.getPageCount();
+        const urls = [];
+        
+        for (let i = 0; i < count; i++) {
+           const newDoc = await PDFDocument.create();
+           const [copiedPage] = await newDoc.copyPages(pdfDoc, [i]);
+           newDoc.addPage(copiedPage);
+           const bytes = await newDoc.save();
+           const blob = await put(`page-${i + 1}-${Date.now()}.pdf`, bytes, { access: 'public', contentType: 'application/pdf' });
+           urls.push(blob.url);
+        }
+        return res.status(200).json({ success: true, downloadUrls: urls });
+      } catch (err) {
+        return res.status(500).json({ error: "Failed to split PDF." });
+      }
+    }
+
+    else if (action === 'redact-pdf') {
       try {
         const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
         const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -59,31 +124,31 @@ export default async function handler(req, res) {
       }
     }
 
-   else if (action === 'pdf-to-word') {
-  // Frontend se aaye options
-  const ocrEnabled = req.body.ocrEnabled === true;
-  const highQuality = req.body.highQuality === true;
-  const preserveLayout = req.body.preserveLayout === true;
+    else if (action === 'pdf-to-word') {
+      // Frontend se aaye options
+      const ocrEnabled = req.body.ocrEnabled === true;
+      const highQuality = req.body.highQuality === true;
+      const preserveLayout = req.body.preserveLayout === true;
 
-  const options = { File: fileUrl };
+      const options = { File: fileUrl };
 
-  // 🔥 HIGH QUALITY / BLUR FIX: High Resolution set karo (300 DPI)
-  if (highQuality) {
-    options.ImageResolution = '300';
-  }
+      // 🔥 HIGH QUALITY / BLUR FIX: High Resolution set karo (300 DPI)
+      if (highQuality) {
+        options.ImageResolution = '300';
+      }
 
-  // 🔥 OCR FIX: Scanned PDFs ke liye
-  if (ocrEnabled) {
-    options.Ocr = 'true';
-  }
+      // 🔥 OCR FIX: Scanned PDFs ke liye
+      if (ocrEnabled) {
+        options.Ocr = 'true';
+      }
 
-  // 🔥 LAYOUT FIX: Layout preserve karo
-  if (preserveLayout) {
-    options.PreserveLayout = 'true';
-  }
+      // 🔥 LAYOUT FIX: Layout preserve karo
+      if (preserveLayout) {
+        options.PreserveLayout = 'true';
+      }
 
-  result = await convertapi.convert('docx', options, 'pdf');
-}
+      result = await convertapi.convert('docx', options, 'pdf');
+    }
     else if (action === 'pdf-to-excel') {
       try {
         result = await convertapi.convert('xlsx', { File: fileUrl }, 'pdf');
@@ -97,29 +162,18 @@ export default async function handler(req, res) {
       }
     }
     else if (action === 'pdf-to-powerpoint') {
-  const ocrEnabled = req.body.ocrEnabled === true;
-  const highQuality = req.body.highQuality === true;
-  const preserveLayout = req.body.preserveLayout === true;
+      const ocrEnabled = req.body.ocrEnabled === true;
+      const highQuality = req.body.highQuality === true;
+      const preserveLayout = req.body.preserveLayout === true;
 
-  const options = { File: fileUrl };
+      const options = { File: fileUrl };
 
-  // 🔥 No Blur: High Resolution (300 DPI) set karo
-  if (highQuality) {
-    options.ImageResolution = '300';
-  }
+      if (highQuality) options.ImageResolution = '300';
+      if (ocrEnabled) options.Ocr = 'true';
+      if (preserveLayout) options.PreserveLayout = 'true';
 
-  // 🔥 OCR: Scanned PDFs ke liye
-  if (ocrEnabled) {
-    options.Ocr = 'true';
-  }
-
-  // 🔥 Layout Preserve
-  if (preserveLayout) {
-    options.PreserveLayout = 'true';
-  }
-
-  result = await convertapi.convert('pptx', options, 'pdf');
-}
+      result = await convertapi.convert('pptx', options, 'pdf');
+    }
     else if (action === 'word-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'docx');
     else if (action === 'excel-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'xlsx');
     else if (action === 'powerpoint-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'pptx');
@@ -139,8 +193,7 @@ export default async function handler(req, res) {
     else if (action === 'pdf-to-pdfa') {
       const options = req.body.options || {};
       
-      // Frontend se aane wale level ko ConvertAPI ke format mein map karna
-      let formatLevel = 'pdfa1b'; // Default ISO standard
+      let formatLevel = 'pdfa1b';
       if (options.level === 'pdfa2') formatLevel = 'pdfa2b';
       if (options.level === 'pdfa3') formatLevel = 'pdfa3b';
 
@@ -180,7 +233,6 @@ export default async function handler(req, res) {
       }
     }
     
-    // BASIC RAW TEXT EXTRACTION
     else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
     
     else if (action === 'ocr-pdf') {
@@ -242,7 +294,6 @@ export default async function handler(req, res) {
     // ==========================================
     // 🧠 CATEGORY 3: AI TOOLS (GROQ / LLAMA 3)
     // ==========================================
-    // 🔥 FIX: Added 'pdf-to-enterprise-md' to the AI array
     else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare' || action === 'pdf-to-enterprise-md') {
       if (!process.env.GROQ_API_KEY) return res.status(200).json({ success: false, textResult: "⚠️ Groq API Key is missing." });
 
@@ -259,7 +310,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               model: activeModel,
               messages: [{ role: "user", content: promptText }],
-              temperature: action === 'pdf-to-enterprise-md' ? 0.2 : 0.5 // Keep factual for Markdown
+              temperature: action === 'pdf-to-enterprise-md' ? 0.2 : 0.5
             })
           });
 
@@ -287,7 +338,6 @@ export default async function handler(req, res) {
           const text2 = await (await fetch(txt2.response.Files[0].Url)).text();
           return res.status(200).json({ success: true, textResult: await callGroqAI(`Compare:\n\nDOC1:\n${text1.substring(0, 7000)}\n\nDOC2:\n${text2.substring(0, 7000)}`) });
         }
-        // 🔥 NEW ENTERPRISE MARKDOWN ENDPOINT 🔥
         else if (action === 'pdf-to-enterprise-md') {
           const options = req.body.options || {};
           const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
