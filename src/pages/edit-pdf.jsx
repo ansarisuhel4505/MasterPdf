@@ -5,7 +5,7 @@ import Footer from '../components/Footer';
 import { 
   UploadCloud, X, Edit3, Lock, Share2, History, Shield, Stamp, 
   FileText, Trash2, Users, MessageSquare, Printer, 
-  Loader2, Menu, Type, Highlighter, Download, Plus
+  Loader2, Menu, Type, Highlighter, Download, Plus, Trash
 } from 'lucide-react';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { upload } from '@vercel/blob/client';
@@ -29,7 +29,7 @@ export default function EditPdf() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
-  // State for Elements (Text, Signature, Highlight, Watermark)
+  // State for Elements
   const [elements, setElements] = useState([]);
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -45,8 +45,13 @@ export default function EditPdf() {
   // Permissions & Options
   const [permissions, setPermissions] = useState({ allowEditing: true, allowPrinting: false });
   const [ocrEnabled, setOcrEnabled] = useState(false);
+  
+  // Histories & Activities
+  const [history, setHistory] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  // File Upload (Instant Preview + Background Upload)
+  // File Upload
   const handleFileChange = async (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const selectedFile = e.target.files[0];
@@ -74,6 +79,48 @@ export default function EditPdf() {
       alert("Please upload a valid PDF file.");
     }
     e.target.value = null;
+  };
+
+  // Load History
+  const loadHistory = async () => {
+    if (!fileId) return;
+    setIsLoadingHistory(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/edit-pdf?action=get-history&fileId=${fileId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.history) setHistory(data.history);
+    } catch(err) {}
+    setIsLoadingHistory(false);
+  };
+
+  // Load Activities
+  const loadActivities = async () => {
+    if (!fileId) return;
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/edit-pdf?action=get-activities&fileId=${fileId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.activities) setActivities(data.activities);
+    } catch(err) {}
+  };
+
+  // Share Link
+  const handleShare = async () => {
+    if (!fileId) return alert("Please wait for file sync");
+    try {
+      const token = await getToken();
+      const res = await fetch('/api/edit-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'share-file', fileId, isPublic: true })
+      });
+      const data = await res.json();
+      if (data.shareUrl) {
+        navigator.clipboard.writeText(data.shareUrl);
+        alert('Shareable link copied!');
+      }
+    } catch(err) { alert("Share failed"); }
   };
 
   // 1. ADD TEXT TOOL
@@ -143,12 +190,12 @@ export default function EditPdf() {
   // UPDATE & DELETE ELEMENTS
   const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
   const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
+  const clearAllElements = () => setElements([]);
 
   // 5. DOWNLOAD / SAVE THE EDITED PDF (USING PDF-LIB)
   const saveAndDownload = async () => {
     setIsSaving(true);
     try {
-      // Load original PDF
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const pages = pdfDoc.getPages();
@@ -156,10 +203,8 @@ export default function EditPdf() {
       // Place Elements on Pages
       elements.forEach(el => {
         const page = pages[el.page - 1];
-        const { width: pageWidth, height: pageHeight } = page.getSize();
-
-        // Convert Pixel Coordinates to PDF Coordinates (based on 1.2 scale)
-        const scaleFactor = 1.2; // Same as React-PDF scale
+        const { height: pageHeight } = page.getSize();
+        const scaleFactor = 1.2;
         const x = (el.x / scaleFactor);
         const y = pageHeight - (el.y / scaleFactor) - (el.height / scaleFactor);
         const w = el.width / scaleFactor;
@@ -174,15 +219,9 @@ export default function EditPdf() {
         else if (el.type === 'watermark') {
           page.drawText(el.value, { x: x + 10, y: y + 40, size: (el.fontSize || 48) / scaleFactor, color: rgb(0.8, 0.1, 0.1), opacity: 0.2 });
         }
-        else if (el.type === 'signature') {
-          // Draw Image
-          const imgBytes = fetch(el.imgData).then(res => res.arrayBuffer());
-          // This needs to be done asynchronously, but for simplicity, we'll use a helper or skip if too complex.
-          // Actually, we can't do await inside forEach, so we use standard for loop or Promise.all.
-        }
       });
 
-      // Handle Signature Images Separately
+      // Handle Signature Images Separately (async)
       for (const el of elements) {
         if (el.type === 'signature') {
           const page = pages[el.page - 1];
@@ -216,7 +255,6 @@ export default function EditPdf() {
     }
   };
 
-  // Render if not signed in
   if (!isLoaded) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#E5322D]" size={48} /></div>;
   if (!isSignedIn) return <div className="min-h-screen flex items-center justify-center text-gray-900 font-bold">Please <a href="/sign-in" className="text-[#E5322D] ml-1 hover:underline"> sign in</a> to use this editor.</div>;
 
@@ -256,8 +294,20 @@ export default function EditPdf() {
                   <span className="font-bold text-sm md:text-base text-gray-900 truncate max-w-[150px] md:max-w-xs">{file.name}</span>
                 </div>
                 <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
-                  <button onClick={saveAndDownload} disabled={isSaving} className="text-xs md:text-sm bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-1 font-bold whitespace-nowrap transition shadow">
-                    {isSaving ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>} <span className="hidden md:inline">Save & Download</span>
+                  <button onClick={handleShare} className="text-xs md:text-sm bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 flex items-center gap-1 font-bold whitespace-nowrap transition">
+                    <Share2 size={16} /> <span className="hidden md:inline">Share</span>
+                  </button>
+                  <button onClick={loadHistory} disabled={isLoadingHistory} className="text-xs md:text-sm bg-gray-100 text-gray-900 px-3 py-1.5 rounded-lg hover:bg-gray-200 flex items-center gap-1 font-bold whitespace-nowrap transition">
+                    <History size={16} /> <span className="hidden md:inline">Versions</span>
+                  </button>
+                  <button onClick={loadActivities} className="text-xs md:text-sm bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 flex items-center gap-1 font-bold whitespace-nowrap transition">
+                    <MessageSquare size={16} /> <span className="hidden md:inline">Activity</span>
+                  </button>
+                  <button onClick={() => window.print()} className="text-xs md:text-sm bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200 flex items-center gap-1 font-bold whitespace-nowrap transition">
+                    <Printer size={16} /> <span className="hidden md:inline">Print</span>
+                  </button>
+                  <button onClick={saveAndDownload} disabled={isSaving} className="text-xs md:text-sm bg-green-600 text-white px-4 py-1.5 rounded-lg hover:bg-green-700 flex items-center gap-1 font-bold whitespace-nowrap transition shadow">
+                    {isSaving ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>} <span className="hidden md:inline">Save</span>
                   </button>
                   <button onClick={() => setFile(null)} className="text-gray-500 hover:bg-red-50 hover:text-red-500 p-1.5 rounded-lg transition ml-2">
                     <X size={20} />
@@ -304,6 +354,12 @@ export default function EditPdf() {
                     <button onClick={addWatermarkElement} className="w-full bg-red-50 border border-red-200 text-red-700 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition">Add "CONFIDENTIAL"</button>
                   </div>
 
+                  {/* REMOVE ALL ELEMENTS */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Trash size={16} className="text-[#E5322D]"/> Remove Elements</h4>
+                    <button onClick={clearAllElements} className="w-full bg-red-50 border border-red-200 text-red-700 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition">Clear All Elements</button>
+                  </div>
+
                   {/* PERMISSIONS */}
                   <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
                     <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Lock size={16} className="text-[#E5322D]" /> Permissions</h4>
@@ -317,6 +373,7 @@ export default function EditPdf() {
                     </label>
                   </div>
 
+                  {/* OCR */}
                   <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
                     <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><FileText size={16} className="text-[#E5322D]" /> OCR</h4>
                     <label className="flex items-center gap-3 cursor-pointer">
@@ -325,6 +382,7 @@ export default function EditPdf() {
                     </label>
                   </div>
                   
+                  {/* COLLABORATION */}
                   <button onClick={() => alert("Invite link copied!")} className="w-full bg-blue-50 text-blue-700 py-2 rounded-lg text-sm font-bold border border-blue-200 hover:bg-blue-100 transition mb-2">Invite Teammate</button>
                 </div>
 
@@ -362,7 +420,7 @@ export default function EditPdf() {
                         <Page pageNumber={currentPage} scale={1.2} renderTextLayer={false} renderAnnotationLayer={false} />
                       </Document>
                       
-                      {/* Draggable Elements (Text, Highlight, Watermark, Signature) */}
+                      {/* Draggable Elements */}
                       {elements.filter(el => el.page === currentPage).map((el) => (
                         <Rnd
                           key={el.id} bounds="parent"
@@ -374,7 +432,6 @@ export default function EditPdf() {
                         >
                           <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 text-gray-500 rounded-full p-1 text-xs hover:text-[#E5322D] opacity-0 group-hover:opacity-100 shadow-sm"><X size={14} /></button>
                           
-                          {/* Render by Type */}
                           {el.type === 'text' && (
                             <input type="text" value={el.value} onChange={(e) => updateElement(el.id, { value: e.target.value })}
                               className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-900 resize-none"
