@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
@@ -24,6 +24,7 @@ export default function EditPdf() {
   const { isLoaded, isSignedIn, user } = useUser();
   const [isMounted, setIsMounted] = useState(false);
   
+  // Cleaned up File States
   const [files, setFiles] = useState([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const activeFile = files[activeFileIndex] || null;
@@ -45,35 +46,35 @@ export default function EditPdf() {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [showDrawModal, setShowDrawModal] = useState(false);
-  const [drawnSignature, setDrawnSignature] = useState(null);
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // --- 1. UPLOAD HANDLING ---
+  // --- 1. BULLETPROOF UPLOAD HANDLING ---
   const handleFileChange = (e) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const selectedFiles = Array.from(e.target.files);
-    const validFiles = selectedFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
     
-    if (validFiles.length > 0) {
-      const newFilesData = validFiles.map(f => ({ file: f, name: f.name, url: URL.createObjectURL(f) }));
-      setFiles(prev => [...prev, ...newFilesData]);
-      if (step === 1) setStep(2); 
+    if (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf')) {
+      const fileUrl = URL.createObjectURL(selectedFile);
+      setFiles([{ file: selectedFile, name: selectedFile.name, url: fileUrl }]);
+      setActiveFileIndex(0);
+      setNumPages(null);
+      setStep(2); 
     } else {
       alert("Please upload a valid PDF document (.pdf).");
     }
-    e.target.value = null; 
+    e.target.value = ''; // Reset input to allow re-uploading the same file if needed
   };
 
   const removeFile = () => {
-    setFiles([]); setElements([]); setCurrentPage(1); setStep(1); setActiveFileIndex(0);
+    setFiles([]); setElements([]); setCurrentPage(1); setStep(1); setActiveFileIndex(0); setNumPages(null);
   };
 
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages); setCurrentPage(1);
   };
 
-  // --- 2. ADDING ELEMENTS (Text, Image, Highlight, Redact, Shapes) ---
+  // --- 2. ADDING ELEMENTS ---
   const addElement = (type) => {
     const newElement = {
       id: Date.now(), type, page: currentPage, 
@@ -84,9 +85,9 @@ export default function EditPdf() {
       color: toolColor, size: textSize
     };
     
-    // Default colors for specific tools
-    if (type === 'highlight') newElement.color = '#FDE047'; // Yellow
-    if (type === 'redact') newElement.color = '#000000'; // Black
+    // Default colors for highlight/redact
+    if (type === 'highlight') newElement.color = '#FDE047'; 
+    if (type === 'redact') newElement.color = '#000000'; 
     
     setElements([...elements, newElement]);
     setMobileView('pdf');
@@ -103,9 +104,10 @@ export default function EditPdf() {
       };
       reader.readAsDataURL(imgFile);
     }
+    e.target.value = '';
   };
 
-  // Freehand Drawing Logic
+  // Drawing Logic
   const startDrawing = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
     const ctx = canvasRef.current.getContext('2d');
@@ -115,10 +117,12 @@ export default function EditPdf() {
     if (!isDrawing) return;
     const { offsetX, offsetY } = e.nativeEvent;
     const ctx = canvasRef.current.getContext('2d');
+    ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = toolColor;
     ctx.lineTo(offsetX, offsetY); ctx.stroke();
   };
   const stopDrawing = () => setIsDrawing(false);
   const clearCanvas = () => {
+    if(!canvasRef.current) return;
     const ctx = canvasRef.current.getContext('2d');
     ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   };
@@ -134,21 +138,25 @@ export default function EditPdf() {
   const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
   const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
 
-  // --- 3. EXPORT TO PDF (Applying all elements via pdf-lib) ---
+  // --- 3. EXPORT TO PDF ---
   const saveAndDownload = async () => {
     if (!activeFile) return;
     setIsProcessing(true);
+    let isSuccess = false;
     
     try {
       const arrayBuffer = await activeFile.file.arrayBuffer();
       let pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
       
+      // Force decrypt bypass
       if (pdfDoc.isEncrypted) {
         const newDoc = await PDFDocument.create();
         const copiedPages = await newDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
         copiedPages.forEach((page) => newDoc.addPage(page));
         pdfDoc = newDoc;
       }
+
+      const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
       const hexToRgb = (hex) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -160,17 +168,16 @@ export default function EditPdf() {
         const page = pdfDoc.getPages()[el.page - 1];
         const { height: pdfHeight } = page.getSize();
         
-        // Accurate Coordinate mapping
         const scaleX = page.getSize().width / (pdfDimensions.width / zoom);
         const scaleY = pdfHeight / (pdfDimensions.height / zoom);
         
         const actualX = el.x * scaleX;
         const actualW = el.width * scaleX;
         const actualH = el.height * scaleY;
-        const actualY = pdfHeight - (el.y * scaleY) - actualH; // PDF Y axis is bottom-to-top
+        const actualY = pdfHeight - (el.y * scaleY) - actualH;
 
         if (el.type === 'text') {
-          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size * scaleX)/2, size: el.size * scaleX, color: hexToRgb(el.color) });
+          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size * scaleX)/2, size: el.size * scaleX, font: helveticaFont, color: hexToRgb(el.color) });
         } 
         else if (el.type === 'image' || el.type === 'draw') {
           const imgBytes = await fetch(el.imgData).then(res => res.arrayBuffer());
@@ -191,6 +198,10 @@ export default function EditPdf() {
         }
       }
 
+      pdfDoc.setAuthor(user?.fullName || 'MasterPdf User');
+      pdfDoc.setCreator('MasterPdf Editor');
+      pdfDoc.setModificationDate(new Date());
+
       const finalPdfBytes = await pdfDoc.save();
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
@@ -201,12 +212,14 @@ export default function EditPdf() {
       link.click();
       document.body.removeChild(link);
       
+      isSuccess = true;
       setStep(4);
     } catch (error) {
       console.error("Error editing PDF:", error);
-      alert("Failed to edit document. Ensure it's not permanently locked.");
+      if (!isSuccess) alert("Failed to edit document. The file might have permanent modification locks.");
+    } finally {
+      setIsProcessing(false);
     }
-    setIsProcessing(false);
   };
 
   if (!isMounted) return null;
@@ -218,7 +231,7 @@ export default function EditPdf() {
 
       <main className="flex-grow flex flex-col pt-[72px] h-[calc(100vh-72px)] w-full relative">
         
-        {/* STEP 1: UPLOAD */}
+        {/* STEP 1: BULLETPROOF UPLOAD */}
         {step === 1 && (
           <div className="flex-grow flex items-center justify-center p-4">
             <div className="w-full max-w-4xl bg-white lg:rounded-2xl shadow-sm lg:border border-gray-200 p-8 lg:p-16 text-center animate-in fade-in">
@@ -227,14 +240,15 @@ export default function EditPdf() {
               </div>
               <h1 className="text-3xl lg:text-5xl font-bold text-gray-900 mb-4 tracking-tight">Edit PDF Document</h1>
               <p className="text-base lg:text-lg text-gray-600 mb-10 max-w-2xl mx-auto">
-                Add text, images, highlights, redactions, shapes, and freehand annotations.
+                Add text, images, highlights, redactions, shapes, and freehand annotations directly in your browser.
               </p>
               
               <div className="flex justify-center">
                 <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
-                <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-lg font-bold py-5 px-10 rounded-xl shadow-lg transition-colors flex items-center gap-3">
+                {/* 100% Reliable Button Click Upload */}
+                <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white text-lg font-bold py-5 px-10 rounded-xl shadow-lg transition-colors flex items-center justify-center gap-3 w-full sm:w-auto">
                   <UploadCloud size={24} /> Select PDF file
-                </label>
+                </button>
               </div>
             </div>
           </div>
@@ -250,7 +264,7 @@ export default function EditPdf() {
                  <button onClick={() => addElement('text')} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Add Text"><Type size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Text</span></button>
                  <div className="relative">
                    <input type="file" id="img-upload" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                   <label htmlFor="img-upload" className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition cursor-pointer" title="Add Image"><ImageIcon size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Image</span></label>
+                   <button onClick={() => document.getElementById('img-upload').click()} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition cursor-pointer" title="Add Image"><ImageIcon size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Image</span></button>
                  </div>
                  <button onClick={() => setShowDrawModal(true)} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Draw"><PenTool size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Draw</span></button>
                  <div className="w-px h-6 bg-gray-300 mx-1"></div>
@@ -284,7 +298,7 @@ export default function EditPdf() {
                      <button onClick={() => setMobileView('pdf')} className="p-2 text-gray-500"><X size={20}/></button>
                    </div>
                  )}
-                 <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess}>
+                 <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess}>
                    {Array.from({ length: numPages || 0 }, (_, i) => (
                      <div key={i} onClick={() => { setCurrentPage(i + 1); if(mobileView === 'pages') setMobileView('pdf'); }} className="flex flex-col items-center mb-4 cursor-pointer group">
                        <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
@@ -298,18 +312,29 @@ export default function EditPdf() {
 
               {/* Center Document Area */}
               <div className={`flex-grow flex flex-col relative min-w-0 ${mobileView === 'pdf' ? 'flex' : 'hidden lg:flex'}`}>
+                 
+                 {/* Page Controls (Mobile + Top of Center) */}
+                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-900/80 backdrop-blur-sm text-white px-4 py-2 rounded-full flex items-center gap-4 z-30 shadow-lg">
+                   <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="hover:text-[#E5322D]"><ChevronLeft size={20}/></button>
+                   <span className="text-xs font-bold w-16 text-center">Page {currentPage}/{numPages}</span>
+                   <button onClick={() => setCurrentPage(p => Math.min(numPages || 1, p + 1))} className="hover:text-[#E5322D]"><ChevronRight size={20}/></button>
+                 </div>
+
                  <div className="flex-grow overflow-y-auto p-4 lg:p-8 flex flex-col items-center custom-scrollbar pb-24 lg:pb-8">
                    <div className="relative shadow-2xl bg-white select-none">
-                     <Document file={fileUrl} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
+                     <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
                        <Page 
                          pageNumber={currentPage} 
                          scale={zoom} 
                          renderTextLayer={false} 
                          renderAnnotationLayer={false} 
                          onLoadSuccess={(pageInfo) => {
-                            if (pdfDimensions.width !== pageInfo.width || pdfDimensions.height !== pageInfo.height) {
-                               setPdfDimensions({ width: pageInfo.width, height: pageInfo.height });
-                            }
+                            setPdfDimensions(prev => {
+                              if(prev.width !== pageInfo.width || prev.height !== pageInfo.height) {
+                                return { width: pageInfo.width, height: pageInfo.height };
+                              }
+                              return prev;
+                            });
                          }} 
                        />
                      </Document>
@@ -327,14 +352,12 @@ export default function EditPdf() {
                            el.type === 'circle' ? 'border-2 rounded-full' :
                            'border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed bg-white/10'
                          }`}
-                         style={{ 
-                           borderColor: (el.type === 'rect' || el.type === 'circle') ? el.color : undefined 
-                         }}
+                         style={{ borderColor: (el.type === 'rect' || el.type === 'circle') ? el.color : undefined }}
                        >
-                         <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-30 shadow-sm"><X size={12} /></button>
+                         <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 text-gray-500 rounded-full p-1 text-xs hover:text-[#E5322D] opacity-0 group-hover:opacity-100 shadow-sm z-30"><X size={14} /></button>
                          
                          {el.type === 'image' || el.type === 'draw' ? (
-                           <img src={el.imgData} alt="Element" className="w-full h-full object-contain pointer-events-none" />
+                           <img src={el.imgData} alt="Element" className="w-full h-full object-fill pointer-events-none" />
                          ) : el.type === 'text' ? (
                            <textarea 
                              value={el.value} 
@@ -364,7 +387,6 @@ export default function EditPdf() {
                         <button key={c} onClick={() => setToolColor(c)} style={{backgroundColor: c}} className={`w-8 h-8 rounded-full transition-transform ${toolColor === c ? 'scale-110 ring-2 ring-offset-2 ring-gray-400 shadow-md' : 'hover:scale-105 shadow-sm'}`} />
                       ))}
                     </div>
-                    <p className="text-[10px] text-gray-500 mt-2">Applies to Text, Shapes, and Drawing.</p>
                   </div>
 
                   <div className="mb-6">
@@ -390,7 +412,10 @@ export default function EditPdf() {
                  <Monitor size={18} /> Editor
                </button>
                <button onClick={() => setMobileView('tools')} className={`flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] ${mobileView === 'tools' ? 'text-[#E5322D] bg-red-50' : 'text-gray-500'}`}>
-                 <Settings size={18} /> Tools
+                 <Settings size={18} /> Format
+               </button>
+               <button onClick={saveAndDownload} className="flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] text-white bg-[#E5322D]">
+                 <Save size={18} /> Export
                </button>
             </div>
           </div>
@@ -398,7 +423,7 @@ export default function EditPdf() {
 
         {/* STEP 4: DOWNLOAD SCREEN */}
         {step === 4 && (
-          <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in fade-in text-center mt-10">
+          <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in fade-in text-center mt-10 p-4">
             <div className="bg-green-100 p-4 rounded-full mb-6"><Download size={40} className="text-green-600" /></div>
             <h1 className="text-3xl font-bold text-gray-900 mb-4 tracking-tight">Your PDF is Ready!</h1>
             <p className="text-gray-600 mb-8 max-w-md">Your edits, annotations, and redactions have been permanently embedded into the document.</p>
