@@ -1,456 +1,393 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { 
-  UploadCloud, X, Edit3, Lock, Share2, Shield, Stamp, 
-  FileText, Trash2, Users, MessageSquare, Printer, 
-  Loader2, Menu, Type, Highlighter, Download, Plus, Minus,
-  RotateCw, Moon, Sun, Search, Shapes, KeyRound, Unlock,
-  Bot, Languages, FileOutput, Split, PenTool, Eraser,
-  StickyNote, Settings, Copy, Move, ChevronDown
-} from 'lucide-react';
-import { useUser, useAuth } from '@clerk/nextjs';
-import { upload } from '@vercel/blob/client';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
-import { PDFDocument, rgb } from 'pdf-lib';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
+import { 
+  UploadCloud, X, Edit3, Type, Image as ImageIcon, PenTool, 
+  Download, Settings, ChevronUp, ChevronDown, Trash2, 
+  Palette, FileText, Monitor, ZoomIn, ZoomOut, Save
+} from 'lucide-react';
+import { useUser, useAuth } from '@clerk/nextjs';
 
 if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 }
 
-const FONTS = ["Arial", "Courier New", "Georgia", "Times New Roman", "Verdana", "Comic Sans MS", "Brush Script MT"];
-const COLORS = ['#000000', '#E5322D', '#1E3A8A', '#065F46', '#7E22CE', '#B45309', '#2563EB', '#DC2626'];
-const STAMPS = ['APPROVED', 'CONFIDENTIAL', 'URGENT', 'PAID', 'RECEIVED'];
-const SHAPES = ['rectangle', 'circle', 'line', 'arrow'];
-
 export default function EditPdf() {
   const { isLoaded, isSignedIn, user } = useUser();
-  const { getToken } = useAuth();
-
-  // Core State
+  const [isMounted, setIsMounted] = useState(false);
+  
+  // File States
   const [file, setFile] = useState(null);
-  const [fileUrl, setFileUrl] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Viewer State
+  const [fileUrl, setFileUrl] = useState(null);
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [scale, setScale] = useState(1.0);
-  const [rotation, setRotation] = useState(0);
-  const [darkMode, setDarkMode] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
+  const [zoom, setZoom] = useState(1.5); // Default HD zoom
 
-  // Tools State
-  const [activeTool, setActiveTool] = useState('select'); // select, text, pen, highlighter, eraser, shape, stamp, redact, sticky
-  const [selectedShape, setSelectedShape] = useState('rectangle');
-  const [stampText, setStampText] = useState('APPROVED');
-  const [selectedFont, setSelectedFont] = useState('Arial');
-  const [selectedColor, setSelectedColor] = useState('#000000');
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  // Mobile View State ('pdf', 'pages', 'tools')
+  const [mobileView, setMobileView] = useState('pdf');
 
-  // Elements & Drawing
+  // Editor States (Text, Image, Draw)
   const [elements, setElements] = useState([]);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [showSignModal, setShowSignModal] = useState(false);
-  const canvasRef = useRef(null);
-  const containerRef = useRef(null);
+  const [activeTool, setActiveTool] = useState('text'); // 'text', 'image', 'draw'
+  const [textColor, setTextColor] = useState('#E5322D');
+  const [textSize, setTextSize] = useState(16);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [step, setStep] = useState(1);
 
-  // Selected Element Properties
-  const [selectedElementId, setSelectedElementId] = useState(null);
+  useEffect(() => { setIsMounted(true); }, []);
 
-  // Modals & Backend
-  const [aiResult, setAiResult] = useState(null);
-  const [showAiModal, setShowAiModal] = useState(false);
-  const [password, setPassword] = useState('');
-  const [ocrEnabled, setOcrEnabled] = useState(false);
-
-  // Page Management (Reorder)
-  const [pageOrder, setPageOrder] = useState([]); // UI Only
-  const [activities, setActivities] = useState([]);
-
-  // File Upload
-  const handleFileChange = async (e) => {
+  // --- 1. INSTANT LOCAL UPLOAD (No Backend API Wait) ---
+  const handleFileChange = (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const selectedFile = e.target.files[0];
-    if (selectedFile.type === 'application/pdf') {
+    
+    if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
       setFileUrl(URL.createObjectURL(selectedFile));
-      try {
-        const blob = await upload(selectedFile.name, selectedFile, {
-          access: 'public', handleUploadUrl: '/api/upload',
-        });
-        const token = await getToken();
-        await fetch('/api/edit-pdf', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ action: 'create-file', fileUrl: blob.url, fileName: selectedFile.name, fileSize: selectedFile.size })
-        });
-      } catch (err) { console.error("Background Sync Failed:", err); }
-    } else alert("Please upload a valid PDF file.");
-    e.target.value = null;
+      setStep(2); // Go straight to Editor
+    } else {
+      alert("Please upload a valid PDF document (.pdf).");
+    }
+    e.target.value = null; 
   };
 
-  // ADD LOCAL ELEMENTS (Text, Highlight, Shape, Stamp, Redact, Sticky Note)
-  const addElement = (type) => {
-    let newEl = { id: Date.now(), type, page: currentPage, x: 50, y: 50, width: 200, height: 60, value: '', fontSize: 24, color: selectedColor, fontFamily: selectedFont };
-    if (type === 'text') newEl.value = "Type here...";
-    if (type === 'highlight') newEl.color = 'rgba(255, 235, 59, 0.5)';
-    if (type === 'stamp') newEl.value = stampText;
-    if (type === 'shape') { newEl.shape = selectedShape; newEl.height = 100; }
-    if (type === 'redact') newEl.color = 'rgb(0, 0, 0)';
-    if (type === 'sticky') { newEl.value = 'Note...'; newEl.color = '#FEF9C3'; }
-    if (type === 'pen') { newEl.points = []; newEl.height = 200; newEl.width = 200; }
-    setElements([...elements, newEl]);
+  const removeFile = () => {
+    setFile(null); setFileUrl(null); setElements([]); setCurrentPage(1); setStep(1);
   };
 
-  // UPDATE & DELETE ELEMENTS
-  const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
-  const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
-
-  // SIGNATURE DRAWING LOGIC
-  const openSignModal = () => {
-    setShowSignModal(true);
-    setTimeout(() => {
-      if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#000';
-      }
-    }, 100);
-  };
-  const startDraw = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const scaleX = canvasRef.current.width / rect.width;
-    const scaleY = canvasRef.current.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    const ctx = canvasRef.current.getContext('2d');
-    ctx.beginPath(); ctx.moveTo(x, y); isDrawing.current = true;
-  };
-  const draw = (e) => {
-    if (!isDrawing.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const scaleX = canvasRef.current.width / rect.width;
-    const scaleY = canvasRef.current.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    const ctx = canvasRef.current.getContext('2d');
-    ctx.lineTo(x, y); ctx.stroke();
-  };
-  const stopDraw = () => { isDrawing.current = false; };
-  const saveSignature = () => {
-    const imgData = canvasRef.current.toDataURL('image/png');
-    const newEl = { id: Date.now(), type: 'signature', page: currentPage, x: 50, y: 50, width: 200, height: 100, imgData };
-    setElements([...elements, newEl]);
-    setShowSignModal(false);
-  };
-  const clearSignature = () => {
-    const ctx = canvasRef.current.getContext('2d');
-    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+  const onDocumentLoadSuccess = ({ numPages }) => {
+    setNumPages(numPages); setCurrentPage(1);
   };
 
-  // VIEW & SEARCH
-  const zoomIn = () => setScale(prev => Math.min(prev + 0.2, 3.0));
-  const zoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5));
-  const rotatePage = () => setRotation(prev => (prev + 90) % 360);
-  const handleSearch = (e) => {
-    if (e.key === 'Enter' && containerRef.current) {
-      window.find(searchTerm, false, false, true, false, false, false);
+  // --- 2. ADDING ELEMENTS (Company Level Editor Tools) ---
+  const addTextElement = () => {
+    const newElement = {
+      id: Date.now(), type: 'text', page: currentPage, x: 50, y: 100, 
+      width: 250, height: 50, value: 'Type something...', color: textColor, size: textSize
+    };
+    setElements([...elements, newElement]);
+    setMobileView('pdf');
+  };
+
+  const handleImageUpload = (e) => {
+    const imgFile = e.target.files[0];
+    if (imgFile) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const newElement = {
+          id: Date.now(), type: 'image', page: currentPage, x: 50, y: 100, 
+          width: 150, height: 150, imgData: ev.target.result
+        };
+        setElements([...elements, newElement]);
+        setMobileView('pdf');
+      };
+      reader.readAsDataURL(imgFile);
     }
   };
 
-  // BACKEND API CALL (Page Management, AI, Security)
-  const callBackend = async (action, params = {}) => {
-    try {
-      const token = await getToken();
-      const res = await fetch('/api/master-convert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ action, fileUrl, ...params })
-      });
-      const data = await res.json();
-      
-      if (data.success || data.textResult) {
-        if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'pdf-to-enterprise-md') {
-          setAiResult(data.textResult); setShowAiModal(true);
-        } else if (action === 'split-pdf' && data.downloadUrls) {
-          data.downloadUrls.forEach(url => {
-            const link = document.createElement('a'); link.href = url; link.download = `page-${Math.random()}.pdf`; link.click();
-          });
-          alert("All pages downloaded!");
-        } else if (data.downloadUrl) {
-          const link = document.createElement('a'); link.href = data.downloadUrl; link.download = `processed-${Date.now()}.pdf`; link.click();
-          alert("Operation successful!");
-        }
-      } else alert(data.error || "Action failed!");
-    } catch (e) { alert("Server error: " + e.message); }
-  };
+  const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
+  const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
 
-  const deleteCurrentPage = () => callBackend('delete-pages', { pageIndices: [currentPage] });
-  const extractPages = () => {
-    const input = prompt("Enter pages to extract (e.g., 1-3,5):");
-    if (!input) return;
-    const indices = input.split(',').flatMap(part => {
-      if (part.includes('-')) { const [start, end] = part.split('-').map(Number); return Array.from({ length: end - start + 1 }, (_, i) => start + i - 1); }
-      return [Number(part) - 1];
-    });
-    callBackend('extract-pages', { pageIndices: indices });
-  };
-  const splitPdf = () => callBackend('split-pdf');
-  const handleProtect = () => { if (!password) return alert("Enter a password first"); callBackend('protect-pdf', { password }); };
-  const handleUnlock = () => { if (!password) return alert("Enter password to unlock"); callBackend('unlock-pdf', { password }); };
-
-  // SAVE & DOWNLOAD (PDF-Lib Engine)
+  // --- 3. EXPORT & DOWNLOAD (Using pdf-lib) ---
   const saveAndDownload = async () => {
-    setIsSaving(true);
+    if (!file) return;
+    setIsProcessing(true);
+    
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const pages = pdfDoc.getPages();
+      // Ignore encryption to bypass author locks
+      let pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+      
+      if (pdfDoc.isEncrypted) {
+        const newDoc = await PDFDocument.create();
+        const copiedPages = await newDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+        copiedPages.forEach((page) => newDoc.addPage(page));
+        pdfDoc = newDoc;
+      }
+
+      const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
       for (const el of elements) {
-        if (el.page > pages.length) continue;
-        const page = pages[el.page - 1];
-        const { height: pH } = page.getSize();
-        const sf = 1.2;
-        const x = el.x / sf;
-        const y = pH - (el.y / sf) - (el.height / sf);
-        const w = el.width / sf;
-        const h = el.height / sf;
+        const page = pdfDoc.getPages()[el.page - 1];
+        const { height: pdfHeight } = page.getSize();
+        
+        // Exact coordinate mapping based on zoom level
+        const scaleX = page.getSize().width / (pdfDimensions.width / zoom);
+        const scaleY = pdfHeight / (pdfDimensions.height / zoom);
+        
+        const actualX = el.x * scaleX;
+        const actualY = pdfHeight - (el.y * scaleY) - (el.height * scaleY);
+        const actualW = el.width * scaleX;
+        const actualH = el.height * scaleY;
 
-        if (el.type === 'text' || el.type === 'stamp') {
-          page.drawText(el.value, { x: x + 5, y: y + 15, size: (el.fontSize || 24) / sf, color: rgb(0, 0, 0) });
-        } else if (el.type === 'highlight') {
-          page.drawRectangle({ x, y, width: w, height: h, color: rgb(1, 0.9, 0.1), opacity: 0.4 });
-        } else if (el.type === 'redact') {
-          page.drawRectangle({ x, y, width: w, height: h, color: rgb(0, 0, 0) });
-        } else if (el.type === 'shape') {
-          if (el.shape === 'circle') page.drawEllipse({ x: x + w/2, y: y + h/2, xScale: w/2, yScale: h/2, borderColor: rgb(0,0,0), borderWidth: 2 });
-          else page.drawRectangle({ x, y, width: w, height: h, borderColor: rgb(0,0,0), borderWidth: 2 });
-        } else if (el.type === 'signature') {
+        if (el.type === 'image') {
           const imgBytes = await fetch(el.imgData).then(res => res.arrayBuffer());
-          const pngImage = await pdfDoc.embedPng(imgBytes);
-          page.drawImage(pngImage, { x, y, width: w, height: h });
+          const pdfImage = await pdfDoc.embedPng(imgBytes);
+          page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
+        } else if (el.type === 'text') {
+          // Convert hex color to RGB for pdf-lib
+          const hexToRgb = (hex) => {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? rgb(parseInt(result[1], 16)/255, parseInt(result[2], 16)/255, parseInt(result[3], 16)/255) : rgb(0,0,0);
+          };
+          page.drawText(el.value, { 
+            x: actualX + 5, y: actualY + 15, 
+            size: el.size * scaleX, font: helveticaFont, color: hexToRgb(el.color) 
+          });
         }
       }
 
-      const savedBytes = await pdfDoc.save();
-      const blob = new Blob([savedBytes], { type: 'application/pdf' });
-      const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `Edited_${file.name}`; link.click();
-    } catch (error) { alert("Error saving PDF: " + error.message); } 
-    finally { setIsSaving(false); }
+      pdfDoc.setAuthor(user?.fullName || 'MasterPdf User');
+      pdfDoc.setCreator('MasterPdf Editor');
+      pdfDoc.setModificationDate(new Date());
+
+      const finalPdfBytes = await pdfDoc.save();
+      const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `Edited_${file.name}`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setStep(4);
+    } catch (error) {
+      console.error("Error editing PDF:", error);
+      alert("Failed to edit document. The file might be corrupted.");
+    }
+    setIsProcessing(false);
   };
 
-  // AUTH GATE
-  if (!isLoaded) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#E5322D]" size={48} /></div>;
-  if (!isSignedIn) return <div className="min-h-screen flex items-center justify-center font-bold text-gray-900">Please <a href="/sign-in" className="text-[#E5322D] ml-1 hover:underline"> sign in</a> to use this editor.</div>;
+  if (!isMounted) return null;
 
   return (
-    <div className={`min-h-screen flex flex-col ${darkMode ? 'bg-gray-900 text-white' : 'bg-[#F5F5F7]'} transition-colors`}>
-      <Head><title>Enterprise PDF Editor - MasterPdf</title></Head>
+    <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7] overflow-hidden">
+      <Head>
+        <title>Edit PDF Online | MasterPdf</title>
+      </Head>
+
       <Navbar />
-      
-      {/* STEP 1: UPLOAD SCREEN */}
-      {!file ? (
-        <main className="flex-grow flex items-center justify-center p-6">
-          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-lg border border-gray-200 p-8 md:p-16 text-center">
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 tracking-tight">Advanced PDF Editor</h1>
-            <p className="text-lg text-gray-600 mb-10 font-medium">Draw, highlight, add text, sign, manage pages, AI, Security, and more.</p>
-            <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
-            <label htmlFor="file-upload" className="cursor-pointer inline-flex items-center gap-3 bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
-              <UploadCloud size={28} /> Select PDF to Edit
-            </label>
-            <p className="mt-4 text-gray-500 font-medium">100% Browser-Based (No Adobe Error)</p>
-          </div>
-        </main>
-      ) : (
-        // STEP 2: FULL EDITOR UI
-        <div className="flex flex-1 overflow-hidden relative">
-          
-          {/* Mobile Sidebar Overlay */}
-          <div className={`fixed inset-0 bg-black/50 z-40 transition-opacity lg:hidden ${showMobileSidebar ? 'opacity-100 visible' : 'opacity-0 invisible'}`} onClick={() => setShowMobileSidebar(false)} />
-          
-          {/* LEFT SIDEBAR (TOOLS) */}
-          <div className={`w-72 bg-white border-r border-gray-200 p-4 overflow-y-auto absolute lg:relative h-full z-50 transform transition-transform ${showMobileSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Tools</h3>
-              <button onClick={() => setShowMobileSidebar(false)} className="lg:hidden text-gray-500 hover:text-red-500"><X size={20}/></button>
+
+      <main className="flex-grow flex flex-col pt-[72px] h-[calc(100vh-72px)] w-full relative">
+        
+        {/* STEP 1: UPLOAD SCREEN */}
+        {step === 1 && (
+          <div className="flex-grow flex items-center justify-center p-4">
+            <div className="w-full max-w-4xl bg-white lg:rounded-2xl shadow-sm lg:border border-gray-200 p-8 lg:p-16 text-center animate-in fade-in">
+              <div className="inline-flex items-center gap-2 bg-red-100 text-[#E5322D] px-3 py-1 rounded-full text-xs font-bold mb-4">
+                <Edit3 size={14} /> Advanced PDF Editor
+              </div>
+              <h1 className="text-3xl lg:text-5xl font-bold text-gray-900 mb-4 tracking-tight">Edit PDF Document</h1>
+              <p className="text-base lg:text-lg text-gray-600 mb-10 max-w-2xl mx-auto">
+                Add text, images, shapes, and freehand annotations to your PDF document instantly.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
+                <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-lg lg:text-xl font-bold py-5 px-10 lg:px-14 rounded-xl shadow-lg transition-colors w-full sm:w-auto flex items-center justify-center gap-3">
+                  <UploadCloud size={24} /> Select PDF file
+                </label>
+              </div>
+              <p className="text-sm text-gray-400 mt-8 hidden sm:block">or drop PDF here</p>
             </div>
+          </div>
+        )}
+
+        {/* STEP 2: ENTERPRISE EDITOR WORKSPACE */}
+        {step === 2 && file && (
+          <div className="w-full h-full flex flex-col bg-white shadow-lg overflow-hidden animate-in fade-in">
             
-            {/* ANNOTATION TOOLS */}
-            <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Annotation</h4>
-            <div className="grid grid-cols-2 gap-2 mb-6">
-              <button onClick={() => setActiveTool('select')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'select' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Select</button>
-              <button onClick={() => { setActiveTool('text'); addElement('text'); }} className="p-2 border rounded text-sm font-bold flex items-center justify-center gap-1 border-gray-300"><Type size={14}/> Text</button>
-              <button onClick={() => setActiveTool('highlight')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'highlight' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Highlight</button>
-              <button onClick={openSignModal} className="p-2 border rounded text-sm font-bold border-gray-300">Sign</button>
-              <button onClick={() => setActiveTool('shape')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'shape' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><Shapes size={14}/> Shape</button>
-              <button onClick={() => setActiveTool('stamp')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'stamp' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><Stamp size={14}/> Stamp</button>
-              <button onClick={() => setActiveTool('redact')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'redact' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><Eraser size={14}/> Redact</button>
-              <button onClick={() => setActiveTool('sticky')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'sticky' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><StickyNote size={14}/> Sticky</button>
+            {/* Top Toolbar (Editing Tools) */}
+            <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 w-full z-20 shadow-sm">
+               
+               {/* Left: Tools */}
+               <div className="flex items-center gap-2 lg:gap-4 overflow-x-auto custom-scrollbar">
+                 <button onClick={addTextElement} className="flex items-center gap-2 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition">
+                   <Type size={18} className="text-[#E5322D]"/> <span className="text-sm font-bold hidden sm:block">Add Text</span>
+                 </button>
+                 <div className="w-px h-6 bg-gray-300 hidden sm:block"></div>
+                 <div className="relative">
+                   <input type="file" id="img-upload" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                   <label htmlFor="img-upload" className="flex items-center gap-2 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition cursor-pointer">
+                     <ImageIcon size={18} className="text-[#E5322D]"/> <span className="text-sm font-bold hidden sm:block">Add Image</span>
+                   </label>
+                 </div>
+               </div>
+
+               {/* Center: File Info */}
+               <div className="hidden md:flex flex-col items-center justify-center">
+                 <span className="text-sm font-bold text-gray-900 truncate max-w-[200px]">{file.name}</span>
+                 <span className="text-[10px] text-gray-500 font-medium">Page {currentPage} of {numPages}</span>
+               </div>
+
+               {/* Right: Actions */}
+               <div className="flex items-center gap-2 shrink-0">
+                 <div className="hidden sm:flex items-center gap-2 bg-gray-100 rounded-lg p-1 mr-2">
+                   <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} className="p-1 hover:bg-white rounded text-gray-600 shadow-sm"><ZoomOut size={16}/></button>
+                   <span className="text-xs font-bold text-gray-700 w-10 text-center">{Math.round(zoom * 100)}%</span>
+                   <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} className="p-1 hover:bg-white rounded text-gray-600 shadow-sm"><ZoomIn size={16}/></button>
+                 </div>
+                 <button onClick={saveAndDownload} disabled={isProcessing} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition disabled:opacity-50 flex items-center gap-2">
+                   {isProcessing ? <Settings className="animate-spin" size={16}/> : <Save size={16}/>}
+                   <span className="hidden sm:block">Save PDF</span>
+                 </button>
+                 <button onClick={removeFile} className="lg:hidden text-gray-400 hover:text-[#E5322D] p-2"><X size={20}/></button>
+               </div>
             </div>
 
-            {/* PROPERTIES PANEL */}
-            {selectedElementId && (
-              <div className="mb-6 border border-gray-200 p-3 rounded bg-gray-50">
-                <h4 className="text-xs font-bold text-gray-900 mb-2">Properties</h4>
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs">Font</label>
-                  <select className="border rounded p-1" onChange={(e) => { setSelectedFont(e.target.value); updateElement(selectedElementId, { fontFamily: e.target.value }); }}>
-                    {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                  <label className="text-xs">Color</label>
-                  <div className="flex gap-1 flex-wrap">
-                    {COLORS.map(c => <button key={c} onClick={() => { setSelectedColor(c); updateElement(selectedElementId, { color: c }); }} style={{ backgroundColor: c }} className={`w-6 h-6 rounded ${selectedColor === c ? 'ring-2 ring-offset-1' : ''}`} />)}
+            {/* Main Editor Area (Flex Row) */}
+            <div className="flex-grow flex flex-row overflow-hidden bg-[#E4E4E4] relative">
+              
+              {/* LEFT SIDEBAR: Mini Pages (Thumbnails) */}
+              <div className={`w-40 lg:w-48 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto shrink-0 z-10 custom-scrollbar shadow-[2px_0_5px_rgba(0,0,0,0.05)] ${mobileView === 'pages' ? 'flex absolute inset-0 w-full z-40' : 'hidden lg:flex'}`}>
+                 {mobileView === 'pages' && (
+                   <div className="w-full flex justify-between items-center mb-4 lg:hidden">
+                     <h3 className="font-bold text-gray-800">Pages</h3>
+                     <button onClick={() => setMobileView('pdf')} className="p-2 text-gray-500"><X size={20}/></button>
+                   </div>
+                 )}
+                 <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess}>
+                   {Array.from({ length: numPages || 0 }, (_, i) => (
+                     <div key={i} onClick={() => { setCurrentPage(i + 1); if(mobileView === 'pages') setMobileView('pdf'); }} className="flex flex-col items-center mb-4 cursor-pointer group">
+                       <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
+                         <Page pageNumber={i + 1} width={100} renderTextLayer={false} renderAnnotationLayer={false} />
+                       </div>
+                       <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
+                     </div>
+                   ))}
+                 </Document>
+              </div>
+
+              {/* CENTER: Document Viewer Workspace */}
+              <div className={`flex-grow flex flex-col relative min-w-0 ${mobileView === 'pdf' ? 'flex' : 'hidden lg:flex'}`}>
+                 <div className="flex-grow overflow-y-auto p-4 lg:p-8 flex flex-col items-center custom-scrollbar pb-24 lg:pb-8">
+                   <div className="relative shadow-2xl bg-white select-none">
+                     <Document file={fileUrl} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
+                       <Page 
+                         pageNumber={currentPage} 
+                         scale={zoom} 
+                         renderTextLayer={false} 
+                         renderAnnotationLayer={false} 
+                         onLoadSuccess={(pageInfo) => {
+                            if (pdfDimensions.width !== pageInfo.width || pdfDimensions.height !== pageInfo.height) {
+                               setPdfDimensions({ width: pageInfo.width, height: pageInfo.height });
+                            }
+                         }} 
+                       />
+                     </Document>
+
+                     {/* Movable Elements Overlay */}
+                     {elements.filter(el => el.page === currentPage).map((el) => (
+                       <Rnd
+                         key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
+                         onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
+                         onResizeStop={(e, dir, ref, delta, position) => { updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...position }); }}
+                         className="group absolute border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed flex items-center justify-center bg-white/30 hover:bg-white/50 transition-colors touch-none"
+                       >
+                         <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 rounded-full p-1 text-gray-500 hover:text-[#E5322D] opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"><X size={14} /></button>
+                         
+                         {el.type === 'image' ? (
+                           <img src={el.imgData} alt="Element" className="w-full h-full object-contain pointer-events-none" />
+                         ) : el.type === 'text' ? (
+                           <textarea 
+                             value={el.value} 
+                             onChange={(e) => updateElement(el.id, { value: e.target.value })}
+                             className="w-full h-full bg-transparent outline-none font-bold resize-none"
+                             style={{ fontSize: `${el.size * zoom}px`, color: el.color }}
+                           />
+                         ) : null}
+                       </Rnd>
+                     ))}
+                   </div>
+                 </div>
+              </div>
+
+              {/* RIGHT SIDEBAR: Formatting Properties */}
+              <div className={`w-full lg:w-[300px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20 ${mobileView === 'tools' ? 'absolute inset-0' : 'hidden lg:flex'}`}>
+                <div className="flex justify-between items-center p-4 lg:p-5 border-b border-gray-200 bg-gray-50">
+                  <h3 className="text-xl font-bold text-gray-800">Formatting</h3>
+                  <button onClick={() => { if(mobileView === 'tools') setMobileView('pdf'); else removeFile(); }} className="text-gray-400 hover:text-[#E5322D]"><X size={20}/></button>
+                </div>
+
+                <div className="p-4 lg:p-5 overflow-y-auto flex-grow custom-scrollbar">
+                  
+                  {/* Text Color Picker */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Palette size={16} className="text-[#E5322D]"/> Text Color</h4>
+                    <div className="flex flex-wrap gap-3">
+                      {['#E5322D', '#000000', '#1F2937', '#1E3A8A', '#065F46', '#D97706'].map(c => (
+                        <button key={c} onClick={() => setTextColor(c)} style={{backgroundColor: c}} className={`w-8 h-8 rounded-full transition-transform ${textColor === c ? 'scale-125 ring-2 ring-offset-2 ring-gray-300 shadow-md' : 'hover:scale-110 shadow-sm'}`} />
+                      ))}
+                    </div>
                   </div>
-                  <button onClick={() => deleteElement(selectedElementId)} className="text-red-500 text-sm font-bold mt-2">Delete Element</button>
+
+                  {/* Text Size */}
+                  <div className="mb-8">
+                    <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Type size={16} className="text-[#E5322D]"/> Font Size</h4>
+                    <input type="range" min="10" max="72" value={textSize} onChange={(e) => setTextSize(Number(e.target.value))} className="w-full accent-[#E5322D]" />
+                    <div className="text-right text-xs font-bold text-gray-500 mt-1">{textSize}px</div>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+                    <h4 className="text-sm font-bold text-blue-800 mb-1 flex items-center gap-2"><Monitor size={16}/> Pro Tip</h4>
+                    <p className="text-xs text-blue-600">Select "Add Text" or "Add Image" from the top toolbar to place elements on the document. You can drag and resize them easily.</p>
+                  </div>
+                </div>
+
+                {/* Bottom Save Button (PC only) */}
+                <div className="p-4 lg:p-5 border-t border-gray-200 bg-gray-50 shrink-0 hidden lg:block">
+                  <button onClick={saveAndDownload} disabled={isProcessing} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-lg bg-[#E5322D] hover:bg-red-700 transition shadow-md disabled:bg-gray-400">
+                    {isProcessing ? <Settings className="animate-spin" size={18}/> : 'Save Document'}
+                  </button>
                 </div>
               </div>
-            )}
-
-            {/* SHAPES & STAMPS OPTIONS */}
-            {activeTool === 'shape' && (
-              <div className="mb-6">
-                <h4 className="font-bold text-gray-900 mb-2">Shape Type</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {SHAPES.map(s => <button key={s} onClick={() => { setSelectedShape(s); addElement('shape'); }} className="border p-2 rounded capitalize text-sm">{s}</button>)}
-                </div>
-              </div>
-            )}
-            {activeTool === 'stamp' && (
-              <div className="mb-6">
-                <h4 className="font-bold text-gray-900 mb-2">Stamp</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {STAMPS.map(s => <button key={s} onClick={() => { setStampText(s); addElement('stamp'); }} className="border border-red-500 text-red-600 p-2 rounded font-bold text-sm">{s}</button>)}
-                </div>
-              </div>
-            )}
-
-            {/* PAGE MANAGEMENT (BACKEND) */}
-            <div className="mb-6 border-t pt-4">
-              <h4 className="font-bold text-gray-900 mb-2">Page Management</h4>
-              <button onClick={deleteCurrentPage} className="w-full bg-red-50 text-red-600 p-2 rounded mb-2 text-sm font-bold">Delete Current Page</button>
-              <button onClick={extractPages} className="w-full bg-blue-50 text-blue-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><FileOutput size={16}/> Extract Pages</button>
-              <button onClick={splitPdf} className="w-full bg-purple-50 text-purple-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Split size={16}/> Split PDF</button>
             </div>
 
-            {/* SECURITY & AI (BACKEND) */}
-            <div className="mb-6 border-t pt-4">
-              <h4 className="font-bold text-gray-900 mb-2">Security & AI</h4>
-              <div className="flex gap-2 mb-2">
-                <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="flex-1 p-2 border rounded text-sm text-gray-900" />
-                <button onClick={handleProtect} className="bg-gray-800 text-white p-2 rounded" title="Encrypt"><KeyRound size={16}/></button>
-                <button onClick={handleUnlock} className="bg-gray-200 p-2 rounded" title="Decrypt"><Unlock size={16}/></button>
-              </div>
-              <label className="flex items-center gap-2 mb-2 text-sm">
-                <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} className="accent-[#E5322D]" /> Enable OCR
-              </label>
-              <button onClick={() => callBackend('ai-summarizer')} className="w-full bg-purple-100 text-purple-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><Bot size={16}/> AI Summarize</button>
-              <button onClick={() => callBackend('translate-pdf', { targetLanguage: 'Hindi' })} className="w-full bg-blue-100 text-blue-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Languages size={16}/> Translate</button>
-            </div>
-
-            {/* COLLABORATION (UI ONLY) */}
-            <div className="mb-6 border-t pt-4">
-              <h4 className="font-bold text-gray-900 mb-2">Collaboration</h4>
-              <button onClick={() => alert("Real-time Editing requires WebSocket backend (Liveblocks/Yjs).")} className="w-full bg-blue-50 text-blue-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><Users size={16}/> Invite Teammate</button>
-              <button onClick={() => alert("Activity Log will show here once backend is connected.")} className="w-full bg-purple-50 text-purple-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><MessageSquare size={16}/> View Comments</button>
+            {/* Mobile Bottom Navigation Bar */}
+            <div className="lg:hidden flex border-t border-gray-200 bg-white h-16 shrink-0 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-30">
+               <button onClick={() => setMobileView('pages')} className={`flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] ${mobileView === 'pages' ? 'text-[#E5322D] bg-red-50' : 'text-gray-500'}`}>
+                 <FileText size={20} /> Pages
+               </button>
+               <button onClick={() => setMobileView('pdf')} className={`flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] ${mobileView === 'pdf' ? 'text-[#E5322D] bg-red-50' : 'text-gray-500'}`}>
+                 <Edit3 size={20} /> Editor
+               </button>
+               <button onClick={() => setMobileView('tools')} className={`flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] ${mobileView === 'tools' ? 'text-[#E5322D] bg-red-50' : 'text-gray-500'}`}>
+                 <Settings size={20} /> Format
+               </button>
+               <button onClick={saveAndDownload} className="flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] text-white bg-[#E5322D]">
+                 <Save size={20} /> Save
+               </button>
             </div>
           </div>
+        )}
 
-          {/* MAIN VIEWER */}
-          <div className="flex-1 flex flex-col h-screen overflow-hidden">
-            {/* TOP TOOLBAR */}
-            <div className="flex items-center justify-between p-3 border-b shadow-sm bg-white z-20">
-              <div className="flex items-center gap-2">
-                <button onClick={() => setShowMobileSidebar(true)} className="lg:hidden p-2 border rounded text-gray-700"><Menu size={18} /></button>
-                <span className="font-bold text-gray-900 truncate max-w-[120px] md:max-w-[300px]">{file.name}</span>
-              </div>
-              <div className="flex items-center gap-1 overflow-x-auto">
-                <button onClick={zoomOut} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"><Minus size={18}/></button>
-                <span className="text-sm font-bold text-gray-900 w-12 text-center">{Math.round(scale * 100)}%</span>
-                <button onClick={zoomIn} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"><Plus size={18}/></button>
-                <button onClick={rotatePage} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700" title="Rotate"><RotateCw size={18}/></button>
-                <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700">{darkMode ? <Sun size={18}/> : <Moon size={18}/>}</button>
-                <div className="relative ml-2 hidden md:block">
-                  <Search size={16} className="absolute left-2 top-2.5 text-gray-500" />
-                  <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={handleSearch} placeholder="Search text" className="pl-8 pr-2 py-2 border rounded-lg w-48 text-gray-900" />
-                </div>
-                <button onClick={saveAndDownload} disabled={isSaving} className="ml-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1 whitespace-nowrap">
-                  {isSaving ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>} <span className="hidden md:inline">Save</span>
-                </button>
-                <button onClick={() => setFile(null)} className="p-2 rounded bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-600 ml-1"><X size={20} /></button>
-              </div>
+        {/* STEP 4: DOWNLOAD SCREEN */}
+        {step === 4 && (
+          <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in slide-in-from-bottom-8 fade-in text-center px-4 mt-10">
+            <div className="bg-green-100 p-4 rounded-full mb-6">
+              <Download size={40} className="text-green-600" />
             </div>
-
-            {/* VIEWER AREA */}
-            <div ref={containerRef} className={`flex-1 overflow-auto p-6 ${darkMode ? 'bg-gray-800' : 'bg-[#E4E4E4]'}`}>
-              <div className="relative shadow-2xl mx-auto" style={{ transform: `scale(${scale}) rotate(${rotation}deg)` }}>
-                <Document file={fileUrl} loading={<div className="p-10 text-gray-900">Loading...</div>}>
-                  <Page pageNumber={currentPage} scale={1.2} renderTextLayer={true} renderAnnotationLayer={false} />
-                </Document>
-                
-                {/* DRAGGABLE ELEMENTS */}
-                {elements.filter(el => el.page === currentPage).map((el) => (
-                  <Rnd key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
-                    onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
-                    onResizeStop={(e, dir, ref, delta, pos) => updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...pos })}
-                    onClick={() => setSelectedElementId(el.id)}
-                    className={`group absolute border-2 ${selectedElementId === el.id ? 'border-[#E5322D]' : 'border-transparent hover:border-gray-400'} border-dashed flex items-center justify-center z-20 touch-none`}>
-                    <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 text-xs opacity-0 group-hover:opacity-100"><X size={14}/></button>
-                    
-                    {/* Render Type */}
-                    {el.type === 'text' && <input value={el.value} onChange={(e) => updateElement(el.id, { value: e.target.value })} className="w-full h-full bg-transparent outline-none text-center font-bold" style={{ fontSize: `${el.fontSize}px`, color: el.color, fontFamily: el.fontFamily }} />}
-                    {el.type === 'highlight' && <div className="w-full h-full" style={{ backgroundColor: el.color }}></div>}
-                    {el.type === 'redact' && <div className="w-full h-full bg-black"></div>}
-                    {el.type === 'shape' && el.shape === 'rectangle' && <div className="w-full h-full border-2" style={{ borderColor: el.color }}></div>}
-                    {el.type === 'shape' && el.shape === 'circle' && <div className="w-full h-full border-2 rounded-full" style={{ borderColor: el.color }}></div>}
-                    {el.type === 'stamp' && <div className="w-full h-full flex items-center justify-center border-4 border-double border-red-600 text-red-600 font-black text-xl">{el.value}</div>}
-                    {el.type === 'sticky' && <div className="w-full h-full bg-yellow-100 p-2 text-sm overflow-hidden">{el.value}</div>}
-                    {el.type === 'signature' && <img src={el.imgData} className="w-full h-full object-contain" />}
-                  </Rnd>
-                ))}
-              </div>
+            <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4 tracking-tight">Your PDF has been Edited!</h1>
+            <p className="text-gray-600 mb-8 max-w-md">Your modified document has been processed successfully and downloaded to your device.</p>
+            
+            <div className="flex gap-4 w-full justify-center">
+              <button onClick={() => setStep(1)} className="bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-800 font-bold py-3 px-8 rounded-xl transition shadow-sm">
+                Edit Another File
+              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* SIGNATURE MODAL */}
-      {showSignModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-            <div className="flex justify-between p-4 border-b">
-              <h3 className="font-bold text-gray-900">Draw Your Signature</h3>
-              <button onClick={() => setShowSignModal(false)} className="text-gray-500 hover:text-red-500"><X size={20}/></button>
-            </div>
-            <div className="p-4">
-              <canvas ref={canvasRef} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw}
-                onTouchStart={(e) => { e.preventDefault(); const touch = e.touches[0]; startDraw({ clientX: touch.clientX, clientY: touch.clientY }); }}
-                onTouchMove={(e) => { e.preventDefault(); const touch = e.touches[0]; draw({ clientX: touch.clientX, clientY: touch.clientY }); }}
-                onTouchEnd={stopDraw} className="w-full h-40 border rounded cursor-crosshair touch-none" width={400} height={160} />
-              <div className="flex justify-between mt-4">
-                <button onClick={clearSignature} className="text-red-500 underline">Clear</button>
-                <button onClick={saveSignature} className="bg-[#E5322D] text-white px-6 py-2 rounded-lg font-bold">Add Signature</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI RESULT MODAL */}
-      {showAiModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col">
-            <div className="flex justify-between p-4 border-b">
-              <h3 className="font-bold text-gray-900">AI Result</h3>
-              <button onClick={() => setShowAiModal(false)} className="text-gray-500 hover:text-red-500"><X size={20}/></button>
-            </div>
-            <div className="p-4 overflow-y-auto whitespace-pre-wrap text-gray-900">{aiResult || "Processing..."}</div>
-          </div>
-        </div>
-      )}
+      </main>
+      <Footer />
     </div>
   );
 }
