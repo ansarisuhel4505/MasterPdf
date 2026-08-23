@@ -10,13 +10,24 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { 
   UploadCloud, X, Edit3, Type, Image as ImageIcon, PenTool, 
   Download, Settings, ChevronUp, ChevronDown, Trash2, 
-  Palette, FileText, Monitor, ZoomIn, ZoomOut, Save, Square, Circle, Highlighter
+  Palette, FileText, Monitor, ZoomIn, ZoomOut, Save, Square, 
+  Circle, Highlighter, User, Calendar, Stamp, ShieldCheck, 
+  Lock, QrCode, Layers, HardDrive, Link2, Plus, ArrowLeft, ArrowRightCircle
 } from 'lucide-react';
 import { useUser } from '@clerk/nextjs';
 
 if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 }
+
+const signatureFonts = [
+  "Brush Script MT", "Caveat", "Dancing Script", "Pacifico", "Satisfy", "Homemade Apple", "Sacramento", "Yellowtail", 
+  "Parisienne", "Bad Script", "Tangerine", "Alex Brush", "Allura", "Arizonia", "Cookie", "Courgette", "Damion", 
+  "Engagement", "Grand Hotel", "Kaushan Script", "Leckerli One", "Marck Script", "Niconne", "Norican", "Oleo Script", 
+  "Over the Rainbow", "Pinyon Script", "Qwigley", "Rancho", "Rochester", "Rouge Script", "Ruge Boogie", "Shadows Into Light", 
+  "Sofia", "Stalemate", "Vibur", "Yesteryear", "Zeyada", "Kalam", "Indie Flower", "Patrick Hand", "Amatic SC", "Handlee", 
+  "Neucha", "Rock Salt", "Reenie Beanie", "Nothing You Could Do", "Schoolbell", "Nanum Pen Script", "Comic Sans MS"
+];
 
 const RENDER_SCALE = 1.5; 
 
@@ -24,19 +35,16 @@ export default function EditPdf() {
   const { isLoaded, isSignedIn, user } = useUser();
   const [isMounted, setIsMounted] = useState(false);
   
-  // Cleaned up File States
   const [files, setFiles] = useState([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
+  const [showFileDropdown, setShowFileDropdown] = useState(false);
   const activeFile = files[activeFileIndex] || null;
   
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1.5); 
-
   const [mobileView, setMobileView] = useState('pdf'); 
 
-  // Editor States
   const [elements, setElements] = useState([]);
   const [toolColor, setToolColor] = useState('#E5322D');
   const [textSize, setTextSize] = useState(16);
@@ -49,21 +57,21 @@ export default function EditPdf() {
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // --- 1. BULLETPROOF UPLOAD HANDLING ---
+  // --- 1. UPLOAD HANDLING (CRASH FIXED) ---
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
     
-    if (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf')) {
-      const fileUrl = URL.createObjectURL(selectedFile);
-      setFiles([{ file: selectedFile, name: selectedFile.name, url: fileUrl }]);
-      setActiveFileIndex(0);
-      setNumPages(null);
-      setStep(2); 
+    const validFiles = Array.from(selectedFiles).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    
+    if (validFiles.length > 0) {
+      const newFilesData = validFiles.map(f => ({ file: f, name: f.name, url: URL.createObjectURL(f) }));
+      setFiles(prev => [...prev, ...newFilesData]);
+      if (step === 1) setStep(2); 
     } else {
       alert("Please upload a valid PDF document (.pdf).");
     }
-    e.target.value = ''; // Reset input to allow re-uploading the same file if needed
+    e.target.value = ''; 
   };
 
   const removeFile = () => {
@@ -77,7 +85,7 @@ export default function EditPdf() {
   // --- 2. ADDING ELEMENTS ---
   const addElement = (type) => {
     const newElement = {
-      id: Date.now(), type, page: currentPage, 
+      id: Date.now(), type, fileIndex: activeFileIndex, page: currentPage, 
       x: 50, y: 100, 
       width: type === 'text' ? 200 : 150, 
       height: type === 'text' ? 40 : 100, 
@@ -85,7 +93,6 @@ export default function EditPdf() {
       color: toolColor, size: textSize
     };
     
-    // Default colors for highlight/redact
     if (type === 'highlight') newElement.color = '#FDE047'; 
     if (type === 'redact') newElement.color = '#000000'; 
     
@@ -98,7 +105,7 @@ export default function EditPdf() {
     if (imgFile) {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const newElement = { id: Date.now(), type: 'image', page: currentPage, x: 50, y: 100, width: 150, height: 150, imgData: ev.target.result };
+        const newElement = { id: Date.now(), type: 'image', fileIndex: activeFileIndex, page: currentPage, x: 50, y: 100, width: 150, height: 150, imgData: ev.target.result };
         setElements([...elements, newElement]);
         setMobileView('pdf');
       };
@@ -129,7 +136,7 @@ export default function EditPdf() {
   const saveDraw = () => {
     if (canvasRef.current) {
       const dataUrl = canvasRef.current.toDataURL('image/png');
-      const newElement = { id: Date.now(), type: 'draw', page: currentPage, x: 50, y: 100, width: 200, height: 100, imgData: dataUrl };
+      const newElement = { id: Date.now(), type: 'draw', fileIndex: activeFileIndex, page: currentPage, x: 50, y: 100, width: 200, height: 100, imgData: dataUrl };
       setElements([...elements, newElement]);
       setShowDrawModal(false);
     }
@@ -138,7 +145,7 @@ export default function EditPdf() {
   const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
   const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
 
-  // --- 3. EXPORT TO PDF ---
+  // --- 3. EXPORT TO PDF (NO INFINITE LOOP CRASH) ---
   const saveAndDownload = async () => {
     if (!activeFile) return;
     setIsProcessing(true);
@@ -163,21 +170,21 @@ export default function EditPdf() {
         return result ? rgb(parseInt(result[1], 16)/255, parseInt(result[2], 16)/255, parseInt(result[3], 16)/255) : rgb(0,0,0);
       };
 
-      for (const el of elements) {
+      const currentFileElements = elements.filter(el => el.fileIndex === activeFileIndex);
+
+      for (const el of currentFileElements) {
         if (el.page > pdfDoc.getPageCount()) continue;
         const page = pdfDoc.getPages()[el.page - 1];
         const { height: pdfHeight } = page.getSize();
         
-        const scaleX = page.getSize().width / (pdfDimensions.width / zoom);
-        const scaleY = pdfHeight / (pdfDimensions.height / zoom);
-        
-        const actualX = el.x * scaleX;
-        const actualW = el.width * scaleX;
-        const actualH = el.height * scaleY;
-        const actualY = pdfHeight - (el.y * scaleY) - actualH;
+        // Exact Mathematical Mapping without causing React State Loops
+        const actualX = el.x / zoom;
+        const actualW = el.width / zoom;
+        const actualH = el.height / zoom;
+        const actualY = pdfHeight - (el.y / zoom) - actualH;
 
         if (el.type === 'text') {
-          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size * scaleX)/2, size: el.size * scaleX, font: helveticaFont, color: hexToRgb(el.color) });
+          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size/zoom)/2, size: el.size / zoom, font: helveticaFont, color: hexToRgb(el.color) });
         } 
         else if (el.type === 'image' || el.type === 'draw') {
           const imgBytes = await fetch(el.imgData).then(res => res.arrayBuffer());
@@ -244,8 +251,7 @@ export default function EditPdf() {
               </p>
               
               <div className="flex justify-center">
-                <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
-                {/* 100% Reliable Button Click Upload */}
+                <input type="file" id="file-upload" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
                 <button onClick={() => document.getElementById('file-upload').click()} className="bg-[#E5322D] hover:bg-red-700 text-white text-lg font-bold py-5 px-10 rounded-xl shadow-lg transition-colors flex items-center justify-center gap-3 w-full sm:w-auto">
                   <UploadCloud size={24} /> Select PDF file
                 </button>
@@ -288,7 +294,7 @@ export default function EditPdf() {
                </div>
             </div>
 
-            <div className="flex-grow flex flex-row overflow-hidden bg-[#E4E4E4] relative">
+            <div className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4]">
               
               {/* Left Mini Pages */}
               <div className={`w-40 lg:w-48 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto shrink-0 z-10 custom-scrollbar shadow-[2px_0_5px_rgba(0,0,0,0.05)] ${mobileView === 'pages' ? 'flex absolute inset-0 w-full z-40' : 'hidden lg:flex'}`}>
@@ -313,7 +319,7 @@ export default function EditPdf() {
               {/* Center Document Area */}
               <div className={`flex-grow flex flex-col relative min-w-0 ${mobileView === 'pdf' ? 'flex' : 'hidden lg:flex'}`}>
                  
-                 {/* Page Controls (Mobile + Top of Center) */}
+                 {/* Page Controls Overlay */}
                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-900/80 backdrop-blur-sm text-white px-4 py-2 rounded-full flex items-center gap-4 z-30 shadow-lg">
                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="hover:text-[#E5322D]"><ChevronLeft size={20}/></button>
                    <span className="text-xs font-bold w-16 text-center">Page {currentPage}/{numPages}</span>
@@ -328,19 +334,11 @@ export default function EditPdf() {
                          scale={zoom} 
                          renderTextLayer={false} 
                          renderAnnotationLayer={false} 
-                         onLoadSuccess={(pageInfo) => {
-                            setPdfDimensions(prev => {
-                              if(prev.width !== pageInfo.width || prev.height !== pageInfo.height) {
-                                return { width: pageInfo.width, height: pageInfo.height };
-                              }
-                              return prev;
-                            });
-                         }} 
                        />
                      </Document>
 
                      {/* RND Elements Mapping */}
-                     {elements.filter(el => el.page === currentPage).map((el) => (
+                     {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
                        <Rnd
                          key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
                          onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
@@ -447,8 +445,8 @@ export default function EditPdf() {
               <canvas 
                 ref={canvasRef}
                 onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                onTouchStart={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
-                onTouchMove={(e) => { e.preventDefault(); const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
+                onTouchStart={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
+                onTouchMove={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
                 onTouchEnd={stopDrawing}
                 className="w-full h-48 bg-white border border-gray-300 rounded-lg cursor-crosshair shadow-inner touch-none"
                 width={400} height={200}
