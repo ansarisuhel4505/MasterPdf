@@ -25,12 +25,13 @@ export default function EditPdf() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { getToken } = useAuth();
 
-  // State
+  // Core State
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState('');
   const [fileId, setFileId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-
+  
+  // Viewer State
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.0);
@@ -38,18 +39,20 @@ export default function EditPdf() {
   const [darkMode, setDarkMode] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Tools State
   const [activeTool, setActiveTool] = useState('select');
   const [selectedShape, setSelectedShape] = useState('rectangle');
   const [stampText, setStampText] = useState('APPROVED');
   const [pagesToDelete, setPagesToDelete] = useState([]);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   
+  // Elements State
   const [elements, setElements] = useState([]);
-  const [isDrawing, setIsDrawing] = useState(false);
   const [showSignModal, setShowSignModal] = useState(false);
   const signCanvasRef = useRef(null);
   const containerRef = useRef(null);
 
+  // Modal & Passwords
   const [aiResult, setAiResult] = useState(null);
   const [showAiModal, setShowAiModal] = useState(false);
   const [password, setPassword] = useState('');
@@ -57,7 +60,7 @@ export default function EditPdf() {
   const [permissions, setPermissions] = useState({ allowEditing: true, allowPrinting: false });
   const [ocrEnabled, setOcrEnabled] = useState(false);
 
-  // File Upload & Creation
+  // File Upload (Instant + Background)
   const handleFileChange = async (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const selectedFile = e.target.files[0];
@@ -80,6 +83,7 @@ export default function EditPdf() {
     e.target.value = null;
   };
 
+  // LOCAL TOOLS (Text, Highlight, etc.)
   const addElement = (type) => {
     let newEl = { id: Date.now(), type, page: currentPage, x: 50, y: 50, width: 200, height: 50, value: '', fontSize: 24, color: '#000000' };
     if (type === 'text') newEl.value = "Type here...";
@@ -90,6 +94,7 @@ export default function EditPdf() {
     setElements([...elements, newEl]);
   };
 
+  // Canvas Drawing for Signature
   const openSignModal = () => {
     setShowSignModal(true);
     setTimeout(() => {
@@ -106,19 +111,27 @@ export default function EditPdf() {
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
     const ctx = signCanvasRef.current.getContext('2d');
-    ctx.beginPath(); ctx.moveTo(x, y); setIsDrawing(true);
+    ctx.beginPath(); ctx.moveTo(x, y); 
+    // Webkit / Mozilla support check for mouse coords
+    const realX = e.clientX || (e.touches && e.touches[0].clientX);
+    const realY = e.clientY || (e.touches && e.touches[0].clientY);
+    const posX = (realX - rect.left) * scaleX;
+    const posY = (realY - rect.top) * scaleY;
+    ctx.lineTo(posX, posY); ctx.stroke();
   };
   const draw = (e) => {
-    if (!isDrawing) return;
+    if (!e.buttons && !e.touches) return;
     const rect = signCanvasRef.current.getBoundingClientRect();
     const scaleX = signCanvasRef.current.width / rect.width;
     const scaleY = signCanvasRef.current.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const realX = e.clientX || (e.touches && e.touches[0].clientX);
+    const realY = e.clientY || (e.touches && e.touches[0].clientY);
+    const x = (realX - rect.left) * scaleX;
+    const y = (realY - rect.top) * scaleY;
     const ctx = signCanvasRef.current.getContext('2d');
     ctx.lineTo(x, y); ctx.stroke();
   };
-  const stopDraw = () => setIsDrawing(false);
+  const stopDraw = () => {};
   const saveSignature = () => {
     const imgData = signCanvasRef.current.toDataURL('image/png');
     const newEl = { id: Date.now(), type: 'signature', page: currentPage, x: 50, y: 50, width: 200, height: 100, imgData };
@@ -126,82 +139,21 @@ export default function EditPdf() {
     setShowSignModal(false);
   };
 
+  // VIEW TOOLS
   const zoomIn = () => setScale(prev => Math.min(prev + 0.2, 3.0));
   const zoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5));
   const rotatePage = () => setRotation(prev => (prev + 90) % 360);
-
-  const deleteCurrentPage = () => {
-    if (pagesToDelete.includes(currentPage)) {
-      setPagesToDelete(pagesToDelete.filter(p => p !== currentPage));
-    } else {
-      setPagesToDelete([...pagesToDelete, currentPage]);
-    }
-  };
-
-  const extractPages = async () => {
-    const input = prompt("Enter pages to extract (e.g., 1-3,5):");
-    if (!input) return;
-    setIsSaving(true);
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const indices = input.split(',').flatMap(part => {
-        if (part.includes('-')) {
-          const [start, end] = part.split('-').map(Number);
-          return Array.from({ length: end - start + 1 }, (_, i) => start + i - 1);
-        }
-        return [Number(part) - 1];
-      }).filter(i => i >= 0 && i < pdfDoc.getPageCount());
-
-      const newDoc = await PDFDocument.create();
-      const copiedPages = await newDoc.copyPages(pdfDoc, indices);
-      copiedPages.forEach(page => newDoc.addPage(page));
-
-      const bytes = await newDoc.save();
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `Extracted_Pages.pdf`;
-      link.click();
-    } catch (err) {
-      alert("Extraction failed: " + err.message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const splitPdf = async () => {
-    setIsSaving(true);
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const count = pdfDoc.getPageCount();
-      
-      for (let i = 0; i < count; i++) {
-        const newDoc = await PDFDocument.create();
-        const [copiedPage] = await newDoc.copyPages(pdfDoc, [i]);
-        newDoc.addPage(copiedPage);
-        const bytes = await newDoc.save();
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `Page_${i + 1}.pdf`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-      }
-    } catch (err) {
-      alert("Split failed: " + err.message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleSearch = (e) => {
     if (e.key === 'Enter' && containerRef.current) {
       window.find(searchTerm, false, false, true, false, false, false);
     }
   };
 
+  // UPDATE & DELETE LOCAL ELEMENTS
+  const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
+  const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
+
+  // BACKEND API CALLS (Security, Page Management, AI)
   const callBackend = async (action, params = {}) => {
     try {
       const token = await getToken();
@@ -211,24 +163,81 @@ export default function EditPdf() {
         body: JSON.stringify({ action, fileUrl, ...params })
       });
       const data = await res.json();
+      
       if (data.success || data.textResult) {
+        // AI Result Modal
         if (action === 'ai-summarizer' || action === 'translate-pdf') {
           setAiResult(data.textResult);
           setShowAiModal(true);
-        } else {
-          alert(data.success ? "Action successful!" : data.error);
+        } 
+        // Split PDF Downloads
+        else if (action === 'split-pdf' && data.downloadUrls) {
+          data.downloadUrls.forEach(url => {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `page-${Math.random()}.pdf`;
+            link.click();
+          });
+          alert("All pages downloaded!");
         }
-      } else alert(data.error || "Failed");
-    } catch (e) { alert("Server error"); }
+        // Page Operations
+        else if (data.downloadUrl) {
+          const link = document.createElement('a');
+          link.href = data.downloadUrl;
+          link.download = `processed-${Date.now()}.pdf`;
+          link.click();
+          alert("Operation successful!");
+        }
+      } else {
+        alert(data.error || "Action failed!");
+      }
+    } catch (e) { alert("Server error: " + e.message); }
   };
 
+  // BACKEND ACTIONS
+  const deleteCurrentPage = () => {
+    if (pagesToDelete.includes(currentPage)) {
+      setPagesToDelete(pagesToDelete.filter(p => p !== currentPage));
+    } else {
+      setPagesToDelete([...pagesToDelete, currentPage]);
+    }
+  };
+
+  const extractPages = () => {
+    const input = prompt("Enter pages to extract (e.g., 1-3,5):");
+    if (!input) return;
+    const indices = input.split(',').flatMap(part => {
+      if (part.includes('-')) {
+        const [start, end] = part.split('-').map(Number);
+        return Array.from({ length: end - start + 1 }, (_, i) => start + i - 1);
+      }
+      return [Number(part) - 1];
+    });
+    callBackend('extract-pages', { pageIndices: indices });
+  };
+
+  const splitPdf = () => {
+    callBackend('split-pdf');
+  };
+
+  const handleProtect = () => {
+    if (!password) return alert("Enter a password first");
+    callBackend('protect-pdf', { password });
+  };
+
+  const handleUnlock = () => {
+    if (!password) return alert("Enter password to unlock");
+    callBackend('unlock-pdf', { password });
+  };
+
+  // SAVE & DOWNLOAD LOCAL EDITS
   const saveAndDownload = async () => {
     setIsSaving(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       
-      // Delete Pages
+      // Delete Pages (Local)
       if (pagesToDelete.length > 0) {
         pagesToDelete.sort((a, b) => b - a).forEach(page => {
           if (page >= 1 && page <= pdfDoc.getPageCount()) {
@@ -237,7 +246,6 @@ export default function EditPdf() {
         });
       }
 
-      // Place Elements
       const pages = pdfDoc.getPages();
       for (const el of elements) {
         if (el.page > pages.length) continue;
@@ -271,16 +279,13 @@ export default function EditPdf() {
       link.href = URL.createObjectURL(blob);
       link.download = `Edited_${file.name}`;
       link.click();
-
     } catch (error) {
-      console.error(error);
-      alert("Error saving PDF");
+      alert("Error saving PDF: " + error.message);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // AUTH & LOADING CHECKS
   if (!isLoaded) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#E5322D]" size={48} /></div>;
   if (!isSignedIn) return <div className="min-h-screen flex items-center justify-center font-bold text-gray-900">Please <a href="/sign-in" className="text-[#E5322D] ml-1 hover:underline"> sign in</a> to use this editor.</div>;
 
@@ -289,41 +294,35 @@ export default function EditPdf() {
       <Head><title>Pro Edit PDF - MasterPdf</title></Head>
       <Navbar />
       
-      {/* 
-        =============================================
-        STEP 1: NO FILE SELECTED (UPLOAD SCREEN)
-        =============================================
-      */}
+      {/* STEP 1: UPLOAD SCREEN */}
       {!file ? (
         <main className="flex-grow flex items-center justify-center p-6">
           <div className="w-full max-w-4xl bg-white rounded-2xl shadow-lg border border-gray-200 p-8 md:p-16 text-center">
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 tracking-tight">Advanced PDF Editor</h1>
-            <p className="text-lg text-gray-600 mb-10 font-medium">Draw, highlight, add text, sign, collaborate, and manage versions.</p>
+            <p className="text-lg text-gray-600 mb-10 font-medium">Draw, highlight, add text, sign, manage pages, and more.</p>
             
             <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
             <label htmlFor="file-upload" className="cursor-pointer inline-flex items-center gap-3 bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
               <UploadCloud size={28} /> Select PDF to Edit
             </label>
-            <p className="mt-4 text-gray-500 font-medium">Browser-based Editor (Works without Adobe!)</p>
+            <p className="mt-4 text-gray-500 font-medium">Full featured browser-based editor</p>
           </div>
         </main>
       ) : (
-        // =============================================
-        // STEP 2: FILE SELECTED (FULL EDITOR UI)
-        // =============================================
+        // STEP 2: FULL EDITOR UI
         <div className="flex flex-1 overflow-hidden relative">
           
           {/* Mobile Sidebar Overlay */}
           <div className={`fixed inset-0 bg-black/50 z-40 transition-opacity lg:hidden ${showMobileSidebar ? 'opacity-100 visible' : 'opacity-0 invisible'}`} onClick={() => setShowMobileSidebar(false)} />
           
-          {/* LEFT SIDEBAR (TOOLS) */}
+          {/* SIDEBAR (TOOLS) */}
           <div className={`w-72 bg-white border-r border-gray-200 p-4 overflow-y-auto absolute lg:relative h-full z-50 transform transition-transform ${showMobileSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-900">Tools</h3>
               <button onClick={() => setShowMobileSidebar(false)} className="lg:hidden text-gray-500 hover:text-red-500"><X size={20}/></button>
             </div>
             
-            {/* Tool Grid */}
+            {/* Local Annotation Tools */}
             <div className="grid grid-cols-2 gap-2 mb-6">
               <button onClick={() => setActiveTool('select')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'select' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Select</button>
               <button onClick={() => { setActiveTool('text'); addElement('text'); }} className="p-2 border rounded text-sm font-bold text-gray-900 flex items-center justify-center gap-1 border-gray-300"><Type size={14}/> Text</button>
@@ -348,8 +347,8 @@ export default function EditPdf() {
               <h4 className="font-bold text-gray-900 mb-2">Security & AI</h4>
               <div className="flex gap-2 mb-2">
                 <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="flex-1 p-2 border rounded text-sm text-gray-900" />
-                <button onClick={() => callBackend('protect-pdf', { password })} className="bg-gray-800 text-white p-2 rounded" title="Encrypt"><KeyRound size={16}/></button>
-                <button onClick={() => callBackend('unlock-pdf', { password })} className="bg-gray-200 p-2 rounded" title="Decrypt"><Unlock size={16}/></button>
+                <button onClick={handleProtect} className="bg-gray-800 text-white p-2 rounded" title="Encrypt"><KeyRound size={16}/></button>
+                <button onClick={handleUnlock} className="bg-gray-200 p-2 rounded" title="Decrypt"><Unlock size={16}/></button>
               </div>
               <button onClick={() => callBackend('ai-summarizer')} className="w-full bg-purple-100 text-purple-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><Bot size={16}/> AI Summarize</button>
               <button onClick={() => callBackend('translate-pdf', { targetLanguage: 'Hindi' })} className="w-full bg-blue-100 text-blue-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Languages size={16}/> Translate (Hindi)</button>
@@ -358,7 +357,6 @@ export default function EditPdf() {
 
           {/* MAIN VIEWER */}
           <div className="flex-1 flex flex-col h-screen overflow-hidden">
-            
             {/* Top Action Bar */}
             <div className="flex items-center justify-between p-3 border-b shadow-sm bg-white z-20">
               <div className="flex items-center gap-2">
@@ -394,12 +392,12 @@ export default function EditPdf() {
                 {/* Elements Layer */}
                 {elements.filter(el => el.page === currentPage).map((el) => (
                   <Rnd key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
-                    onDragStop={(e, d) => setElements(elements.map(x => x.id === el.id ? { ...x, x: d.x, y: d.y } : x))}
-                    onResizeStop={(e, dir, ref, delta, pos) => setElements(elements.map(x => x.id === el.id ? { ...x, width: ref.offsetWidth, height: ref.offsetHeight, ...pos } : x))}
+                    onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
+                    onResizeStop={(e, dir, ref, delta, pos) => updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...pos })}
                     className="group absolute border-2 border-transparent hover:border-gray-400 border-dashed flex items-center justify-center z-20 touch-none">
-                    <button onClick={() => setElements(elements.filter(x => x.id !== el.id))} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 text-xs opacity-0 group-hover:opacity-100"><X size={14}/></button>
+                    <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 text-xs opacity-0 group-hover:opacity-100"><X size={14}/></button>
                     
-                    {el.type === 'text' && <input value={el.value} onChange={(e) => setElements(elements.map(x => x.id === el.id ? { ...x, value: e.target.value } : x))} className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-900" style={{ fontSize: `${el.fontSize}px` }} />}
+                    {el.type === 'text' && <input value={el.value} onChange={(e) => updateElement(el.id, { value: e.target.value })} className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-900" style={{ fontSize: `${el.fontSize}px` }} />}
                     {el.type === 'highlight' && <div className="w-full h-full" style={{ backgroundColor: el.color }}></div>}
                     {el.type === 'redact' && <div className="w-full h-full bg-black"></div>}
                     {el.type === 'shape' && el.shape === 'rectangle' && <div className="w-full h-full border-2 border-black"></div>}
@@ -423,7 +421,7 @@ export default function EditPdf() {
               <button onClick={() => setShowSignModal(false)} className="text-gray-500 hover:text-red-500"><X size={20}/></button>
             </div>
             <div className="p-4">
-              <canvas ref={signCanvasRef} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} className="w-full h-40 border rounded cursor-crosshair" width={400} height={160} />
+              <canvas ref={signCanvasRef} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw} className="w-full h-40 border rounded cursor-crosshair" width={400} height={160} />
               <div className="flex justify-between mt-4">
                 <button onClick={() => signCanvasRef.current.getContext('2d').clearRect(0, 0, 400, 160)} className="text-red-500 underline">Clear</button>
                 <button onClick={saveSignature} className="bg-[#E5322D] text-white px-6 py-2 rounded-lg font-bold">Add Signature</button>
