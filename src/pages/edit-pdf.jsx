@@ -7,17 +7,20 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
+
+// 🔥 YAHAN THI MERI GALTI: Saare naye icons add kar diye hain taaki crash na ho!
 import { 
   UploadCloud, X, Edit3, Type, Image as ImageIcon, PenTool, 
-  Download, Settings, ChevronUp, ChevronDown, Trash2, 
-  Palette, FileText, Monitor, ZoomIn, ZoomOut, Save, Square, 
-  Circle, Highlighter, User, Calendar, Stamp, ShieldCheck, 
-  Lock, QrCode, Layers, HardDrive, Link2, Plus, ArrowLeft, ArrowRightCircle
+  Download, Settings, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, 
+  Trash2, Palette, FileText, Monitor, ZoomIn, ZoomOut, Save, 
+  Square, Circle, Highlighter, ShieldCheck, Upload, QrCode, 
+  User, Calendar, Stamp, Lock, Layers, ArrowLeft, ArrowRightCircle, 
+  HardDrive, Link2, Plus, Menu
 } from 'lucide-react';
 import { useUser } from '@clerk/nextjs';
 
 if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 }
 
 const signatureFonts = [
@@ -42,6 +45,7 @@ export default function EditPdf() {
   
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1.5); 
   const [mobileView, setMobileView] = useState('pdf'); 
 
@@ -51,13 +55,34 @@ export default function EditPdf() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState(1);
 
+  // Modal States
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [hTab, setHTab] = useState('Signature'); 
+  const [vTab, setVTab] = useState('Type'); 
+  const [fullName, setFullName] = useState('Suhel Ansari');
+  const [initials, setInitials] = useState('SA');
+  const [sigColor, setSigColor] = useState('#E5322D');
+  const [selectedStyle, setSelectedStyle] = useState(1); 
+  const [drawnSignature, setDrawnSignature] = useState(null);
+  const [uploadedSig, setUploadedSig] = useState(null);
+  const [uploadedStamp, setUploadedStamp] = useState(null);
+  const [sigMode, setSigMode] = useState('simple'); 
+  const [lockDocument, setLockDocument] = useState(false); 
+
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [showDrawModal, setShowDrawModal] = useState(false);
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // --- 1. UPLOAD HANDLING (CRASH FIXED) ---
+  useEffect(() => {
+    if (showSignatureModal && vTab === 'Draw' && canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = sigColor;
+    }
+  }, [showSignatureModal, vTab, sigColor]);
+
+  // --- 1. INSTANT UPLOAD (CRASH FREE) ---
   const handleFileChange = (e) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles || selectedFiles.length === 0) return;
@@ -82,15 +107,41 @@ export default function EditPdf() {
     setNumPages(numPages); setCurrentPage(1);
   };
 
-  // --- 2. ADDING ELEMENTS ---
+  // --- 2. ADDING ELEMENTS (Text, Image, Draw, Highlight, Redact, Shapes) ---
   const addElement = (type) => {
+    let value = ''; let fontStyle = 'Arial, sans-serif';
+    let isImage = false; let imgData = null; let isDigital = false;
+    let finalColor = toolColor;
+
+    if (type === 'signature') {
+      if (sigMode === 'simple') {
+        if (vTab === 'Draw' && drawnSignature) { isImage = true; imgData = drawnSignature; finalColor = sigColor; }
+        else if (vTab === 'Upload' && uploadedSig) { isImage = true; imgData = uploadedSig; finalColor = sigColor; }
+        else { value = fullName; fontStyle = signatureFonts[selectedStyle]; finalColor = sigColor; }
+      } else if (sigMode === 'digital') {
+        const uniqueId = Math.random().toString(36).substring(2, 10).toUpperCase();
+        value = `Digitally Signed By: ${fullName}\nDate: ${new Date().toLocaleString()}\nVerify ID: ${uniqueId}`; 
+        isDigital = true;
+      }
+    } 
+    else if (type === 'initials') {
+      if (vTab === 'Upload' && uploadedSig) { isImage = true; imgData = uploadedSig; }
+      else { value = initials; fontStyle = signatureFonts[selectedStyle]; finalColor = sigColor; }
+    } 
+    else if (type === 'stamp') {
+      if (uploadedStamp) { isImage = true; imgData = uploadedStamp; }
+      else { setShowSignatureModal(true); setHTab('Stamp'); return; }
+    }
+    else if (type === 'name') { value = fullName; fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
+    else if (type === 'date') { value = new Date().toLocaleDateString(); fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
+    else if (type === 'text') { value = 'Type text here...'; fontStyle = 'Helvetica, sans-serif'; }
+
     const newElement = {
       id: Date.now(), type, fileIndex: activeFileIndex, page: currentPage, 
       x: 50, y: 100, 
-      width: type === 'text' ? 200 : 150, 
-      height: type === 'text' ? 40 : 100, 
-      value: type === 'text' ? 'Type text here...' : '', 
-      color: toolColor, size: textSize
+      width: isDigital ? 260 : (isImage ? 200 : (type === 'text' ? 200 : 150)), 
+      height: isDigital ? 90 : (isImage ? 100 : (type === 'text' ? 40 : 100)), 
+      value, fontStyle, isImage, imgData, isDigital, color: finalColor, size: textSize
     };
     
     if (type === 'highlight') newElement.color = '#FDE047'; 
@@ -100,16 +151,25 @@ export default function EditPdf() {
     setMobileView('pdf');
   };
 
-  const handleImageUpload = (e) => {
-    const imgFile = e.target.files[0];
-    if (imgFile) {
+  const applyModalSettings = () => {
+    if (vTab === 'Draw' && canvasRef.current) setDrawnSignature(canvasRef.current.toDataURL('image/png'));
+    setShowSignatureModal(false);
+  };
+
+  const handleImageUpload = (e, type) => {
+    const file = e.target.files[0];
+    if (file) {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const newElement = { id: Date.now(), type: 'image', fileIndex: activeFileIndex, page: currentPage, x: 50, y: 100, width: 150, height: 150, imgData: ev.target.result };
-        setElements([...elements, newElement]);
-        setMobileView('pdf');
+        if (type === 'sig') setUploadedSig(ev.target.result);
+        else if (type === 'stamp') setUploadedStamp(ev.target.result);
+        else {
+          const newElement = { id: Date.now(), type: 'image', fileIndex: activeFileIndex, page: currentPage, x: 50, y: 100, width: 150, height: 150, imgData: ev.target.result };
+          setElements([...elements, newElement]);
+          setMobileView('pdf');
+        }
       };
-      reader.readAsDataURL(imgFile);
+      reader.readAsDataURL(file);
     }
     e.target.value = '';
   };
@@ -124,7 +184,7 @@ export default function EditPdf() {
     if (!isDrawing) return;
     const { offsetX, offsetY } = e.nativeEvent;
     const ctx = canvasRef.current.getContext('2d');
-    ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = toolColor;
+    ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = showDrawModal ? toolColor : sigColor;
     ctx.lineTo(offsetX, offsetY); ctx.stroke();
   };
   const stopDrawing = () => setIsDrawing(false);
@@ -145,7 +205,27 @@ export default function EditPdf() {
   const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
   const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
 
-  // --- 3. EXPORT TO PDF (NO INFINITE LOOP CRASH) ---
+  // Converts Digital Sign to Image
+  const textToImageDataUrl = (text, fontStyle, width, height, color, isDigital = false) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = width * 2; canvas.height = height * 2;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2, 2);
+    if (isDigital) {
+      ctx.fillStyle = 'rgba(229, 50, 45, 0.05)'; ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = '#E5322D'; ctx.lineWidth = 2; ctx.strokeRect(0, 0, width, height);
+      ctx.font = `12px monospace`; ctx.fillStyle = '#333333'; ctx.textBaseline = 'top';
+      const lines = text.split('\n');
+      lines.forEach((line, i) => ctx.fillText(line, 10, 15 + (i * 22)));
+      ctx.fillStyle = '#E5322D'; ctx.beginPath(); ctx.arc(width - 30, height / 2, 18, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 18px Arial'; ctx.fillText('✓', width - 38, height / 2 - 8);
+    } else {
+      ctx.font = `34px ${fontStyle}`; ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.fillText(text, 10, height / 2);
+    }
+    return canvas.toDataURL('image/png');
+  };
+
+  // --- 3. EXPORT TO PDF (100% BYPASS) ---
   const saveAndDownload = async () => {
     if (!activeFile) return;
     setIsProcessing(true);
@@ -177,16 +257,25 @@ export default function EditPdf() {
         const page = pdfDoc.getPages()[el.page - 1];
         const { height: pdfHeight } = page.getSize();
         
-        // Exact Mathematical Mapping without causing React State Loops
-        const actualX = el.x / zoom;
-        const actualW = el.width / zoom;
-        const actualH = el.height / zoom;
-        const actualY = pdfHeight - (el.y / zoom) - actualH;
+        // Exact Mathematical Mapping to prevent coordinate crashes
+        const scaleX = pdfDimensions.width ? page.getSize().width / (pdfDimensions.width / zoom) : 1;
+        const scaleY = pdfDimensions.height ? pdfHeight / (pdfDimensions.height / zoom) : 1;
+        
+        const actualX = el.x * scaleX;
+        const actualW = el.width * scaleX;
+        const actualH = el.height * scaleY;
+        const actualY = pdfHeight - (el.y * scaleY) - actualH;
 
-        if (el.type === 'text') {
-          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size/zoom)/2, size: el.size / zoom, font: helveticaFont, color: hexToRgb(el.color) });
+        if (el.type === 'text' || el.type === 'name' || el.type === 'date') {
+          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size * scaleX)/2, size: el.size * scaleX, font: helveticaFont, color: hexToRgb(el.color) });
         } 
-        else if (el.type === 'image' || el.type === 'draw') {
+        else if (el.type === 'signature' || el.type === 'initials') {
+          const dataUrl = textToImageDataUrl(el.value, el.fontStyle, el.width, el.height, el.color, el.isDigital);
+          const imgBytes = await fetch(dataUrl).then(res => res.arrayBuffer());
+          const pdfImage = await pdfDoc.embedPng(imgBytes);
+          page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
+        }
+        else if (el.type === 'image' || el.type === 'draw' || el.type === 'stamp') {
           const imgBytes = await fetch(el.imgData).then(res => res.arrayBuffer());
           const pdfImage = await pdfDoc.embedPng(imgBytes);
           page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
@@ -209,6 +298,14 @@ export default function EditPdf() {
       pdfDoc.setCreator('MasterPdf Editor');
       pdfDoc.setModificationDate(new Date());
 
+      if (lockDocument) {
+        pdfDoc.encrypt({
+          userPassword: '', 
+          ownerPassword: Math.random().toString(36).substring(2, 15), 
+          permissions: { modifying: false, copying: false, annotating: false, fillingInteractiveForms: false }
+        });
+      }
+
       const finalPdfBytes = await pdfDoc.save();
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const link = document.createElement('a');
@@ -227,6 +324,11 @@ export default function EditPdf() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    alert('Document link copied to clipboard!');
   };
 
   if (!isMounted) return null;
@@ -269,8 +371,8 @@ export default function EditPdf() {
                <div className="flex items-center gap-2 min-w-max">
                  <button onClick={() => addElement('text')} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Add Text"><Type size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Text</span></button>
                  <div className="relative">
-                   <input type="file" id="img-upload" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                   <button onClick={() => document.getElementById('img-upload').click()} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition cursor-pointer" title="Add Image"><ImageIcon size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Image</span></button>
+                   <input type="file" id="img-upload-tool" accept="image/*" onChange={(e) => handleImageUpload(e, 'general')} className="hidden" />
+                   <button onClick={() => document.getElementById('img-upload-tool').click()} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition cursor-pointer" title="Add Image"><ImageIcon size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Image</span></button>
                  </div>
                  <button onClick={() => setShowDrawModal(true)} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Draw"><PenTool size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Draw</span></button>
                  <div className="w-px h-6 bg-gray-300 mx-1"></div>
@@ -334,6 +436,14 @@ export default function EditPdf() {
                          scale={zoom} 
                          renderTextLayer={false} 
                          renderAnnotationLayer={false} 
+                         onLoadSuccess={(pageInfo) => {
+                            setPdfDimensions(prev => {
+                              if(prev.width !== pageInfo.width || prev.height !== pageInfo.height) {
+                                return { width: pageInfo.width, height: pageInfo.height };
+                              }
+                              return prev;
+                            });
+                         }} 
                        />
                      </Document>
 
@@ -354,9 +464,9 @@ export default function EditPdf() {
                        >
                          <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 text-gray-500 rounded-full p-1 text-xs hover:text-[#E5322D] opacity-0 group-hover:opacity-100 shadow-sm z-30"><X size={14} /></button>
                          
-                         {el.type === 'image' || el.type === 'draw' ? (
+                         {el.type === 'image' || el.type === 'draw' || el.type === 'signature' || el.type === 'stamp' || el.type === 'initials' ? (
                            <img src={el.imgData} alt="Element" className="w-full h-full object-fill pointer-events-none" />
-                         ) : el.type === 'text' ? (
+                         ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
                            <textarea 
                              value={el.value} 
                              onChange={(e) => updateElement(el.id, { value: e.target.value })}
@@ -378,6 +488,21 @@ export default function EditPdf() {
                 </div>
 
                 <div className="p-4 overflow-y-auto flex-grow custom-scrollbar">
+                  
+                  {/* File Switcher Dropdown */}
+                  {files.length > 1 && (
+                    <div className="mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Switch File</h4>
+                      <select 
+                        value={activeFileIndex} 
+                        onChange={(e) => { setActiveFileIndex(Number(e.target.value)); setCurrentPage(1); }}
+                        className="w-full border border-gray-300 rounded p-2 text-sm font-bold text-gray-800 outline-none"
+                      >
+                        {files.map((f, i) => <option key={i} value={i}>{f.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+
                   <div className="mb-6">
                     <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Palette size={16} className="text-[#E5322D]"/> Tool Color</h4>
                     <div className="flex flex-wrap gap-2">
@@ -393,9 +518,11 @@ export default function EditPdf() {
                     <div className="text-right text-xs font-bold text-gray-500 mt-1">{textSize}px</div>
                   </div>
 
-                  <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl mb-4">
-                    <h4 className="text-xs font-bold text-gray-800 mb-1 flex items-center gap-1"><Monitor size={14}/> Pro Tip</h4>
-                    <p className="text-[10px] text-gray-600">Select tools from the top bar to add content. Drag corners to resize highlights, redactions, and shapes.</p>
+                  {/* Sign & Stamp Integration */}
+                  <div className="mb-6 border-t border-gray-200 pt-6">
+                    <h4 className="text-sm font-bold text-gray-800 mb-3">Signatures & Fields</h4>
+                    <button onClick={() => addElement('signature')} className="w-full bg-white border border-gray-300 text-gray-800 py-2 rounded-lg text-sm font-bold hover:bg-gray-50 mb-2 flex items-center justify-center gap-2 transition"><PenTool size={16}/> Add Signature</button>
+                    <button onClick={() => addElement('stamp')} className="w-full bg-white border border-gray-300 text-gray-800 py-2 rounded-lg text-sm font-bold hover:bg-gray-50 flex items-center justify-center gap-2 transition"><Stamp size={16}/> Add Stamp</button>
                   </div>
                 </div>
               </div>
@@ -454,6 +581,71 @@ export default function EditPdf() {
               <div className="flex justify-between w-full mt-3">
                 <button onClick={clearCanvas} className="text-sm font-bold text-gray-500 hover:text-[#E5322D]">Clear</button>
                 <button onClick={saveDraw} className="bg-[#E5322D] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-700">Add to PDF</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SIGNATURE MODAL */}
+      {showSignatureModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center bg-gray-50 border-b border-gray-200 p-4 shrink-0">
+              <h3 className="text-xl font-bold text-gray-800 tracking-tight">Set your signature details</h3>
+              <button onClick={() => setShowSignatureModal(false)} className="text-gray-400 hover:text-[#E5322D] border border-gray-200 px-3 py-1 rounded-md text-sm font-bold bg-white shadow-sm">Cancel</button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-grow custom-scrollbar">
+              <div className="flex flex-col md:flex-row gap-4 mb-4">
+                <div className="flex-grow">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Full name:</label>
+                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-[#E5322D] outline-none font-medium text-gray-800 transition" />
+                </div>
+              </div>
+              <div className="flex border-b border-gray-200 overflow-x-auto custom-scrollbar">
+                <button onClick={() => setHTab('Signature')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 whitespace-nowrap ${hTab === 'Signature' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}><PenTool size={16}/> Signature</button>
+                <button onClick={() => setHTab('Stamp')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 whitespace-nowrap ${hTab === 'Stamp' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}><Stamp size={16}/> Company Stamp</button>
+              </div>
+              <div className="bg-gray-100 rounded-b-xl flex flex-col md:flex-row min-h-[300px] border border-gray-200 border-t-0 relative">
+                <div className="w-full md:w-16 bg-gray-200 border-r border-gray-300 flex flex-row md:flex-col rounded-bl-xl overflow-hidden shrink-0">
+                  <button onClick={() => setVTab('Type')} className={`py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Type' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Type size={20}/></button>
+                  <button onClick={() => setVTab('Draw')} className={`py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Draw' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><PenTool size={20}/></button>
+                  <button onClick={() => setVTab('Upload')} className={`py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Upload' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Upload size={20}/></button>
+                </div>
+                <div className="flex-grow p-4 relative flex flex-col overflow-hidden">
+                  {(hTab === 'Signature') && vTab === 'Type' && (
+                    <div className="flex flex-col gap-2 bg-gray-100 h-[240px] overflow-y-auto pr-2 custom-scrollbar">
+                      {signatureFonts.map((font, index) => (
+                        <label key={index} className={`flex items-center gap-4 px-4 py-3 rounded-md cursor-pointer transition border-b border-gray-200 ${selectedStyle === index ? 'bg-white shadow-sm border-[#E5322D]' : 'hover:bg-gray-50 border-transparent'}`}>
+                          <input type="radio" checked={selectedStyle === index} onChange={() => setSelectedStyle(index)} className="w-5 h-5 accent-[#E5322D] shrink-0" />
+                          <span className="text-3xl truncate" style={{ fontFamily: font, color: '#000' }}>{fullName}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {(hTab === 'Signature') && vTab === 'Draw' && (
+                    <div className="h-full flex flex-col items-center justify-center w-full gap-2">
+                      <canvas ref={canvasRef} onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} onTouchStart={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }} onTouchMove={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }} onTouchEnd={stopDrawing} className="w-full h-[200px] bg-white border border-gray-300 rounded cursor-crosshair shadow-inner touch-none" width={500} height={200} />
+                      <div className="flex justify-between w-full text-xs text-gray-500 px-2 font-medium"><span>Draw inside the box</span><button onClick={clearCanvas} className="hover:text-[#E5322D] underline">Clear</button></div>
+                    </div>
+                  )}
+                  {vTab === 'Upload' && (
+                    <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-300 bg-white rounded-lg m-2 p-4">
+                      <div className="text-center w-full flex flex-col items-center">
+                        {hTab === 'Stamp' && uploadedStamp ? (
+                           <><img src={uploadedStamp} alt="Stamp" className="max-h-[140px] object-contain mb-4" /><button onClick={() => setUploadedStamp(null)} className="text-xs hover:text-[#E5322D]">Remove</button></>
+                        ) : hTab === 'Signature' && uploadedSig ? (
+                           <><img src={uploadedSig} alt="Sig" className="max-h-[140px] object-contain mb-4" /><button onClick={() => setUploadedSig(null)} className="text-xs hover:text-[#E5322D]">Remove</button></>
+                        ) : (
+                           <><input type="file" id="modal-upload" accept="image/*" onChange={(e) => handleImageUpload(e, hTab === 'Stamp' ? 'stamp' : 'sig')} className="hidden" /><label htmlFor="modal-upload" className="border border-[#E5322D] text-[#E5322D] font-bold px-6 py-2 rounded-lg hover:bg-red-50 cursor-pointer">Upload Image</label></>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end">
+                <button onClick={applyModalSettings} className="bg-[#E5322D] text-white font-bold py-3 px-10 rounded-xl">Apply</button>
               </div>
             </div>
           </div>
