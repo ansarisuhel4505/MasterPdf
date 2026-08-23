@@ -3,7 +3,7 @@ import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { 
-  UploadCloud, X, Edit3, Lock, Share2, History, Shield, Stamp, 
+  UploadCloud, X, Edit3, Lock, Share2, Shield, Stamp, 
   FileText, Trash2, Users, MessageSquare, Printer, 
   Loader2, Menu, Type, Highlighter, Download, Plus, Minus,
   RotateCw, Moon, Sun, Search, Shapes, KeyRound, Unlock,
@@ -25,13 +25,10 @@ export default function EditPdf() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { getToken } = useAuth();
 
-  // Core State
+  // File & Viewer State
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState('');
-  const [fileId, setFileId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Viewer State
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.0);
@@ -43,24 +40,22 @@ export default function EditPdf() {
   const [activeTool, setActiveTool] = useState('select');
   const [selectedShape, setSelectedShape] = useState('rectangle');
   const [stampText, setStampText] = useState('APPROVED');
-  const [pagesToDelete, setPagesToDelete] = useState([]);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  
-  // Elements State
+
+  // Elements & Signature
   const [elements, setElements] = useState([]);
   const [showSignModal, setShowSignModal] = useState(false);
-  const signCanvasRef = useRef(null);
+  const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const isDrawing = useRef(false);
 
-  // Modal & Passwords
+  // Modals & Backend
   const [aiResult, setAiResult] = useState(null);
   const [showAiModal, setShowAiModal] = useState(false);
   const [password, setPassword] = useState('');
-
-  const [permissions, setPermissions] = useState({ allowEditing: true, allowPrinting: false });
   const [ocrEnabled, setOcrEnabled] = useState(false);
 
-  // File Upload (Instant + Background)
+  // File Upload
   const handleFileChange = async (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const selectedFile = e.target.files[0];
@@ -76,14 +71,13 @@ export default function EditPdf() {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ action: 'create-file', fileUrl: blob.url, fileName: selectedFile.name, fileSize: selectedFile.size })
         });
-        const data = await res.json();
-        if (data.success) setFileId(data.fileId);
+        await res.json();
       } catch (err) { console.error("Background Sync Failed:", err); }
     } else alert("Please upload a valid PDF file.");
     e.target.value = null;
   };
 
-  // LOCAL TOOLS (Text, Highlight, etc.)
+  // LOCAL ANNOTATIONS
   const addElement = (type) => {
     let newEl = { id: Date.now(), type, page: currentPage, x: 50, y: 50, width: 200, height: 50, value: '', fontSize: 24, color: '#000000' };
     if (type === 'text') newEl.value = "Type here...";
@@ -94,52 +88,51 @@ export default function EditPdf() {
     setElements([...elements, newEl]);
   };
 
-  // Canvas Drawing for Signature
+  const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
+  const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
+
+  // SIMPLE SIGNATURE DRAWING (Mouse + Touch)
   const openSignModal = () => {
     setShowSignModal(true);
     setTimeout(() => {
-      if (signCanvasRef.current) {
-        const ctx = signCanvasRef.current.getContext('2d');
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
         ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#000';
       }
     }, 100);
   };
   const startDraw = (e) => {
-    const rect = signCanvasRef.current.getBoundingClientRect();
-    const scaleX = signCanvasRef.current.width / rect.width;
-    const scaleY = signCanvasRef.current.height / rect.height;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = canvasRef.current.width / rect.width;
+    const scaleY = canvasRef.current.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
-    const ctx = signCanvasRef.current.getContext('2d');
-    ctx.beginPath(); ctx.moveTo(x, y); 
-    // Webkit / Mozilla support check for mouse coords
-    const realX = e.clientX || (e.touches && e.touches[0].clientX);
-    const realY = e.clientY || (e.touches && e.touches[0].clientY);
-    const posX = (realX - rect.left) * scaleX;
-    const posY = (realY - rect.top) * scaleY;
-    ctx.lineTo(posX, posY); ctx.stroke();
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.beginPath(); ctx.moveTo(x, y); isDrawing.current = true;
   };
   const draw = (e) => {
-    if (!e.buttons && !e.touches) return;
-    const rect = signCanvasRef.current.getBoundingClientRect();
-    const scaleX = signCanvasRef.current.width / rect.width;
-    const scaleY = signCanvasRef.current.height / rect.height;
-    const realX = e.clientX || (e.touches && e.touches[0].clientX);
-    const realY = e.clientY || (e.touches && e.touches[0].clientY);
-    const x = (realX - rect.left) * scaleX;
-    const y = (realY - rect.top) * scaleY;
-    const ctx = signCanvasRef.current.getContext('2d');
+    if (!isDrawing.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = canvasRef.current.width / rect.width;
+    const scaleY = canvasRef.current.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    const ctx = canvasRef.current.getContext('2d');
     ctx.lineTo(x, y); ctx.stroke();
   };
-  const stopDraw = () => {};
+  const stopDraw = () => { isDrawing.current = false; };
   const saveSignature = () => {
-    const imgData = signCanvasRef.current.toDataURL('image/png');
+    const imgData = canvasRef.current.toDataURL('image/png');
     const newEl = { id: Date.now(), type: 'signature', page: currentPage, x: 50, y: 50, width: 200, height: 100, imgData };
     setElements([...elements, newEl]);
     setShowSignModal(false);
   };
+  const clearSignature = () => {
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+  };
 
-  // VIEW TOOLS
+  // VIEW TOOLS (Zoom, Rotate, Dark Mode, Search)
   const zoomIn = () => setScale(prev => Math.min(prev + 0.2, 3.0));
   const zoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5));
   const rotatePage = () => setRotation(prev => (prev + 90) % 360);
@@ -149,11 +142,7 @@ export default function EditPdf() {
     }
   };
 
-  // UPDATE & DELETE LOCAL ELEMENTS
-  const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
-  const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
-
-  // BACKEND API CALLS (Security, Page Management, AI)
+  // BACKEND CALLS (Page Management, AI, Password)
   const callBackend = async (action, params = {}) => {
     try {
       const token = await getToken();
@@ -165,13 +154,10 @@ export default function EditPdf() {
       const data = await res.json();
       
       if (data.success || data.textResult) {
-        // AI Result Modal
         if (action === 'ai-summarizer' || action === 'translate-pdf') {
           setAiResult(data.textResult);
           setShowAiModal(true);
-        } 
-        // Split PDF Downloads
-        else if (action === 'split-pdf' && data.downloadUrls) {
+        } else if (action === 'split-pdf' && data.downloadUrls) {
           data.downloadUrls.forEach(url => {
             const link = document.createElement('a');
             link.href = url;
@@ -179,9 +165,7 @@ export default function EditPdf() {
             link.click();
           });
           alert("All pages downloaded!");
-        }
-        // Page Operations
-        else if (data.downloadUrl) {
+        } else if (data.downloadUrl) {
           const link = document.createElement('a');
           link.href = data.downloadUrl;
           link.download = `processed-${Date.now()}.pdf`;
@@ -194,59 +178,31 @@ export default function EditPdf() {
     } catch (e) { alert("Server error: " + e.message); }
   };
 
-  // BACKEND ACTIONS
-  const deleteCurrentPage = () => {
-    if (pagesToDelete.includes(currentPage)) {
-      setPagesToDelete(pagesToDelete.filter(p => p !== currentPage));
-    } else {
-      setPagesToDelete([...pagesToDelete, currentPage]);
-    }
-  };
-
+  // BACKEND ACTIONS (Page Management)
+  const deleteCurrentPage = () => callBackend('delete-pages', { pageIndices: [currentPage] });
   const extractPages = () => {
     const input = prompt("Enter pages to extract (e.g., 1-3,5):");
     if (!input) return;
     const indices = input.split(',').flatMap(part => {
-      if (part.includes('-')) {
-        const [start, end] = part.split('-').map(Number);
-        return Array.from({ length: end - start + 1 }, (_, i) => start + i - 1);
-      }
+      if (part.includes('-')) { const [start, end] = part.split('-').map(Number); return Array.from({ length: end - start + 1 }, (_, i) => start + i - 1); }
       return [Number(part) - 1];
     });
     callBackend('extract-pages', { pageIndices: indices });
   };
+  const splitPdf = () => callBackend('split-pdf');
 
-  const splitPdf = () => {
-    callBackend('split-pdf');
-  };
+  // SECURITY & AI ACTIONS
+  const handleProtect = () => { if (!password) return alert("Enter a password first"); callBackend('protect-pdf', { password }); };
+  const handleUnlock = () => { if (!password) return alert("Enter password to unlock"); callBackend('unlock-pdf', { password }); };
 
-  const handleProtect = () => {
-    if (!password) return alert("Enter a password first");
-    callBackend('protect-pdf', { password });
-  };
-
-  const handleUnlock = () => {
-    if (!password) return alert("Enter password to unlock");
-    callBackend('unlock-pdf', { password });
-  };
-
-  // SAVE & DOWNLOAD LOCAL EDITS
+  // SAVE & DOWNLOAD (Pure PDF-Lib - No Adobe Required)
   const saveAndDownload = async () => {
     setIsSaving(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
-      
-      // Delete Pages (Local)
-      if (pagesToDelete.length > 0) {
-        pagesToDelete.sort((a, b) => b - a).forEach(page => {
-          if (page >= 1 && page <= pdfDoc.getPageCount()) {
-            pdfDoc.removePage(page - 1);
-          }
-        });
-      }
-
       const pages = pdfDoc.getPages();
+
       for (const el of elements) {
         if (el.page > pages.length) continue;
         const page = pages[el.page - 1];
@@ -300,19 +256,17 @@ export default function EditPdf() {
           <div className="w-full max-w-4xl bg-white rounded-2xl shadow-lg border border-gray-200 p-8 md:p-16 text-center">
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 tracking-tight">Advanced PDF Editor</h1>
             <p className="text-lg text-gray-600 mb-10 font-medium">Draw, highlight, add text, sign, manage pages, and more.</p>
-            
             <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
             <label htmlFor="file-upload" className="cursor-pointer inline-flex items-center gap-3 bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
               <UploadCloud size={28} /> Select PDF to Edit
             </label>
-            <p className="mt-4 text-gray-500 font-medium">Full featured browser-based editor</p>
+            <p className="mt-4 text-gray-500 font-medium">100% Browser-Based Editor (No Adobe Error)</p>
           </div>
         </main>
       ) : (
         // STEP 2: FULL EDITOR UI
         <div className="flex flex-1 overflow-hidden relative">
           
-          {/* Mobile Sidebar Overlay */}
           <div className={`fixed inset-0 bg-black/50 z-40 transition-opacity lg:hidden ${showMobileSidebar ? 'opacity-100 visible' : 'opacity-0 invisible'}`} onClick={() => setShowMobileSidebar(false)} />
           
           {/* SIDEBAR (TOOLS) */}
@@ -322,7 +276,7 @@ export default function EditPdf() {
               <button onClick={() => setShowMobileSidebar(false)} className="lg:hidden text-gray-500 hover:text-red-500"><X size={20}/></button>
             </div>
             
-            {/* Local Annotation Tools */}
+            {/* LOCAL ANNOTATION TOOLS */}
             <div className="grid grid-cols-2 gap-2 mb-6">
               <button onClick={() => setActiveTool('select')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'select' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Select</button>
               <button onClick={() => { setActiveTool('text'); addElement('text'); }} className="p-2 border rounded text-sm font-bold text-gray-900 flex items-center justify-center gap-1 border-gray-300"><Type size={14}/> Text</button>
@@ -330,19 +284,18 @@ export default function EditPdf() {
               <button onClick={openSignModal} className="p-2 border rounded text-sm font-bold text-gray-900 border-gray-300">Sign</button>
               <button onClick={() => setActiveTool('shape')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'shape' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><Shapes size={14}/> Shape</button>
               <button onClick={() => setActiveTool('redact')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'redact' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Redact</button>
+              <button onClick={() => addElement('stamp')} className="p-2 border rounded text-sm font-bold text-gray-900 border-gray-300"><Stamp size={14}/> Stamp</button>
             </div>
 
-            {/* Page Management */}
+            {/* PAGE MANAGEMENT (BACKEND) */}
             <div className="mb-6 border-t pt-4">
               <h4 className="font-bold text-gray-900 mb-2">Page Management</h4>
-              <button onClick={deleteCurrentPage} className={`w-full p-2 rounded mb-2 text-sm font-bold ${pagesToDelete.includes(currentPage) ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600'}`}>
-                {pagesToDelete.includes(currentPage) ? "Unmark Delete" : "Delete Current Page"}
-              </button>
+              <button onClick={deleteCurrentPage} className="w-full bg-red-50 text-red-600 p-2 rounded mb-2 text-sm font-bold">Delete Current Page</button>
               <button onClick={extractPages} className="w-full bg-blue-50 text-blue-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><FileOutput size={16}/> Extract Pages</button>
               <button onClick={splitPdf} className="w-full bg-purple-50 text-purple-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Split size={16}/> Split PDF</button>
             </div>
 
-            {/* Security & AI */}
+            {/* SECURITY & AI (BACKEND) */}
             <div className="mb-6 border-t pt-4">
               <h4 className="font-bold text-gray-900 mb-2">Security & AI</h4>
               <div className="flex gap-2 mb-2">
@@ -351,13 +304,13 @@ export default function EditPdf() {
                 <button onClick={handleUnlock} className="bg-gray-200 p-2 rounded" title="Decrypt"><Unlock size={16}/></button>
               </div>
               <button onClick={() => callBackend('ai-summarizer')} className="w-full bg-purple-100 text-purple-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><Bot size={16}/> AI Summarize</button>
-              <button onClick={() => callBackend('translate-pdf', { targetLanguage: 'Hindi' })} className="w-full bg-blue-100 text-blue-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Languages size={16}/> Translate (Hindi)</button>
+              <button onClick={() => callBackend('translate-pdf', { targetLanguage: 'Hindi' })} className="w-full bg-blue-100 text-blue-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Languages size={16}/> Translate</button>
             </div>
           </div>
 
           {/* MAIN VIEWER */}
           <div className="flex-1 flex flex-col h-screen overflow-hidden">
-            {/* Top Action Bar */}
+            {/* TOP TOOLBAR */}
             <div className="flex items-center justify-between p-3 border-b shadow-sm bg-white z-20">
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowMobileSidebar(true)} className="lg:hidden p-2 border rounded text-gray-700"><Menu size={18} /></button>
@@ -368,9 +321,7 @@ export default function EditPdf() {
                 <span className="text-sm font-bold text-gray-900 w-12 text-center">{Math.round(scale * 100)}%</span>
                 <button onClick={zoomIn} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"><Plus size={18}/></button>
                 <button onClick={rotatePage} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700" title="Rotate"><RotateCw size={18}/></button>
-                <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700">
-                  {darkMode ? <Sun size={18}/> : <Moon size={18}/>}
-                </button>
+                <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700">{darkMode ? <Sun size={18}/> : <Moon size={18}/>}</button>
                 <div className="relative ml-2 hidden md:block">
                   <Search size={16} className="absolute left-2 top-2.5 text-gray-500" />
                   <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={handleSearch} placeholder="Search text" className="pl-8 pr-2 py-2 border rounded-lg w-48 text-gray-900" />
@@ -382,14 +333,14 @@ export default function EditPdf() {
               </div>
             </div>
 
-            {/* Viewer Area */}
+            {/* VIEWER AREA */}
             <div ref={containerRef} className={`flex-1 overflow-auto p-6 ${darkMode ? 'bg-gray-800' : 'bg-[#E4E4E4]'}`}>
               <div className="relative shadow-2xl mx-auto" style={{ transform: `scale(${scale}) rotate(${rotation}deg)` }}>
                 <Document file={fileUrl} loading={<div className="p-10 text-gray-900">Loading...</div>}>
                   <Page pageNumber={currentPage} scale={1.2} renderTextLayer={true} renderAnnotationLayer={false} />
                 </Document>
                 
-                {/* Elements Layer */}
+                {/* DRAGGABLE ELEMENTS */}
                 {elements.filter(el => el.page === currentPage).map((el) => (
                   <Rnd key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
                     onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
@@ -412,7 +363,7 @@ export default function EditPdf() {
         </div>
       )}
 
-      {/* Signature Modal */}
+      {/* SIGNATURE MODAL */}
       {showSignModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
@@ -421,9 +372,12 @@ export default function EditPdf() {
               <button onClick={() => setShowSignModal(false)} className="text-gray-500 hover:text-red-500"><X size={20}/></button>
             </div>
             <div className="p-4">
-              <canvas ref={signCanvasRef} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw} className="w-full h-40 border rounded cursor-crosshair" width={400} height={160} />
+              <canvas ref={canvasRef} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw}
+                onTouchStart={(e) => { e.preventDefault(); const touch = e.touches[0]; startDraw({ clientX: touch.clientX, clientY: touch.clientY }); }}
+                onTouchMove={(e) => { e.preventDefault(); const touch = e.touches[0]; draw({ clientX: touch.clientX, clientY: touch.clientY }); }}
+                onTouchEnd={stopDraw} className="w-full h-40 border rounded cursor-crosshair touch-none" width={400} height={160} />
               <div className="flex justify-between mt-4">
-                <button onClick={() => signCanvasRef.current.getContext('2d').clearRect(0, 0, 400, 160)} className="text-red-500 underline">Clear</button>
+                <button onClick={clearSignature} className="text-red-500 underline">Clear</button>
                 <button onClick={saveSignature} className="bg-[#E5322D] text-white px-6 py-2 rounded-lg font-bold">Add Signature</button>
               </div>
             </div>
@@ -431,7 +385,7 @@ export default function EditPdf() {
         </div>
       )}
 
-      {/* AI Result Modal */}
+      {/* AI RESULT MODAL */}
       {showAiModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col">
