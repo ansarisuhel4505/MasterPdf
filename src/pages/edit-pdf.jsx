@@ -7,7 +7,8 @@ import {
   FileText, Trash2, Users, MessageSquare, Printer, 
   Loader2, Menu, Type, Highlighter, Download, Plus, Minus,
   RotateCw, Moon, Sun, Search, Shapes, KeyRound, Unlock,
-  Bot, Languages, FileOutput, Split
+  Bot, Languages, FileOutput, Split, PenTool, Eraser,
+  StickyNote, Settings, Copy, Move, ChevronDown
 } from 'lucide-react';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { upload } from '@vercel/blob/client';
@@ -21,14 +22,21 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 }
 
+const FONTS = ["Arial", "Courier New", "Georgia", "Times New Roman", "Verdana", "Comic Sans MS", "Brush Script MT"];
+const COLORS = ['#000000', '#E5322D', '#1E3A8A', '#065F46', '#7E22CE', '#B45309', '#2563EB', '#DC2626'];
+const STAMPS = ['APPROVED', 'CONFIDENTIAL', 'URGENT', 'PAID', 'RECEIVED'];
+const SHAPES = ['rectangle', 'circle', 'line', 'arrow'];
+
 export default function EditPdf() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { getToken } = useAuth();
 
-  // File & Viewer State
+  // Core State
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Viewer State
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.0);
@@ -37,23 +45,32 @@ export default function EditPdf() {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Tools State
-  const [activeTool, setActiveTool] = useState('select');
+  const [activeTool, setActiveTool] = useState('select'); // select, text, pen, highlighter, eraser, shape, stamp, redact, sticky
   const [selectedShape, setSelectedShape] = useState('rectangle');
   const [stampText, setStampText] = useState('APPROVED');
+  const [selectedFont, setSelectedFont] = useState('Arial');
+  const [selectedColor, setSelectedColor] = useState('#000000');
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
-  // Elements & Signature
+  // Elements & Drawing
   const [elements, setElements] = useState([]);
+  const [isDrawing, setIsDrawing] = useState(false);
   const [showSignModal, setShowSignModal] = useState(false);
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  const isDrawing = useRef(false);
+
+  // Selected Element Properties
+  const [selectedElementId, setSelectedElementId] = useState(null);
 
   // Modals & Backend
   const [aiResult, setAiResult] = useState(null);
   const [showAiModal, setShowAiModal] = useState(false);
   const [password, setPassword] = useState('');
   const [ocrEnabled, setOcrEnabled] = useState(false);
+
+  // Page Management (Reorder)
+  const [pageOrder, setPageOrder] = useState([]); // UI Only
+  const [activities, setActivities] = useState([]);
 
   // File Upload
   const handleFileChange = async (e) => {
@@ -67,31 +84,33 @@ export default function EditPdf() {
           access: 'public', handleUploadUrl: '/api/upload',
         });
         const token = await getToken();
-        const res = await fetch('/api/edit-pdf', {
+        await fetch('/api/edit-pdf', {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ action: 'create-file', fileUrl: blob.url, fileName: selectedFile.name, fileSize: selectedFile.size })
         });
-        await res.json();
       } catch (err) { console.error("Background Sync Failed:", err); }
     } else alert("Please upload a valid PDF file.");
     e.target.value = null;
   };
 
-  // LOCAL ANNOTATIONS
+  // ADD LOCAL ELEMENTS (Text, Highlight, Shape, Stamp, Redact, Sticky Note)
   const addElement = (type) => {
-    let newEl = { id: Date.now(), type, page: currentPage, x: 50, y: 50, width: 200, height: 50, value: '', fontSize: 24, color: '#000000' };
+    let newEl = { id: Date.now(), type, page: currentPage, x: 50, y: 50, width: 200, height: 60, value: '', fontSize: 24, color: selectedColor, fontFamily: selectedFont };
     if (type === 'text') newEl.value = "Type here...";
     if (type === 'highlight') newEl.color = 'rgba(255, 235, 59, 0.5)';
     if (type === 'stamp') newEl.value = stampText;
     if (type === 'shape') { newEl.shape = selectedShape; newEl.height = 100; }
     if (type === 'redact') newEl.color = 'rgb(0, 0, 0)';
+    if (type === 'sticky') { newEl.value = 'Note...'; newEl.color = '#FEF9C3'; }
+    if (type === 'pen') { newEl.points = []; newEl.height = 200; newEl.width = 200; }
     setElements([...elements, newEl]);
   };
 
+  // UPDATE & DELETE ELEMENTS
   const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
   const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
 
-  // SIMPLE SIGNATURE DRAWING (Mouse + Touch)
+  // SIGNATURE DRAWING LOGIC
   const openSignModal = () => {
     setShowSignModal(true);
     setTimeout(() => {
@@ -132,7 +151,7 @@ export default function EditPdf() {
     ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   };
 
-  // VIEW TOOLS (Zoom, Rotate, Dark Mode, Search)
+  // VIEW & SEARCH
   const zoomIn = () => setScale(prev => Math.min(prev + 0.2, 3.0));
   const zoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5));
   const rotatePage = () => setRotation(prev => (prev + 90) % 360);
@@ -142,7 +161,7 @@ export default function EditPdf() {
     }
   };
 
-  // BACKEND CALLS (Page Management, AI, Password)
+  // BACKEND API CALL (Page Management, AI, Security)
   const callBackend = async (action, params = {}) => {
     try {
       const token = await getToken();
@@ -154,31 +173,21 @@ export default function EditPdf() {
       const data = await res.json();
       
       if (data.success || data.textResult) {
-        if (action === 'ai-summarizer' || action === 'translate-pdf') {
-          setAiResult(data.textResult);
-          setShowAiModal(true);
+        if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'pdf-to-enterprise-md') {
+          setAiResult(data.textResult); setShowAiModal(true);
         } else if (action === 'split-pdf' && data.downloadUrls) {
           data.downloadUrls.forEach(url => {
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `page-${Math.random()}.pdf`;
-            link.click();
+            const link = document.createElement('a'); link.href = url; link.download = `page-${Math.random()}.pdf`; link.click();
           });
           alert("All pages downloaded!");
         } else if (data.downloadUrl) {
-          const link = document.createElement('a');
-          link.href = data.downloadUrl;
-          link.download = `processed-${Date.now()}.pdf`;
-          link.click();
+          const link = document.createElement('a'); link.href = data.downloadUrl; link.download = `processed-${Date.now()}.pdf`; link.click();
           alert("Operation successful!");
         }
-      } else {
-        alert(data.error || "Action failed!");
-      }
+      } else alert(data.error || "Action failed!");
     } catch (e) { alert("Server error: " + e.message); }
   };
 
-  // BACKEND ACTIONS (Page Management)
   const deleteCurrentPage = () => callBackend('delete-pages', { pageIndices: [currentPage] });
   const extractPages = () => {
     const input = prompt("Enter pages to extract (e.g., 1-3,5):");
@@ -190,12 +199,10 @@ export default function EditPdf() {
     callBackend('extract-pages', { pageIndices: indices });
   };
   const splitPdf = () => callBackend('split-pdf');
-
-  // SECURITY & AI ACTIONS
   const handleProtect = () => { if (!password) return alert("Enter a password first"); callBackend('protect-pdf', { password }); };
   const handleUnlock = () => { if (!password) return alert("Enter password to unlock"); callBackend('unlock-pdf', { password }); };
 
-  // SAVE & DOWNLOAD (Pure PDF-Lib - No Adobe Required)
+  // SAVE & DOWNLOAD (PDF-Lib Engine)
   const saveAndDownload = async () => {
     setIsSaving(true);
     try {
@@ -231,23 +238,18 @@ export default function EditPdf() {
 
       const savedBytes = await pdfDoc.save();
       const blob = new Blob([savedBytes], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `Edited_${file.name}`;
-      link.click();
-    } catch (error) {
-      alert("Error saving PDF: " + error.message);
-    } finally {
-      setIsSaving(false);
-    }
+      const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `Edited_${file.name}`; link.click();
+    } catch (error) { alert("Error saving PDF: " + error.message); } 
+    finally { setIsSaving(false); }
   };
 
+  // AUTH GATE
   if (!isLoaded) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#E5322D]" size={48} /></div>;
   if (!isSignedIn) return <div className="min-h-screen flex items-center justify-center font-bold text-gray-900">Please <a href="/sign-in" className="text-[#E5322D] ml-1 hover:underline"> sign in</a> to use this editor.</div>;
 
   return (
     <div className={`min-h-screen flex flex-col ${darkMode ? 'bg-gray-900 text-white' : 'bg-[#F5F5F7]'} transition-colors`}>
-      <Head><title>Pro Edit PDF - MasterPdf</title></Head>
+      <Head><title>Enterprise PDF Editor - MasterPdf</title></Head>
       <Navbar />
       
       {/* STEP 1: UPLOAD SCREEN */}
@@ -255,37 +257,76 @@ export default function EditPdf() {
         <main className="flex-grow flex items-center justify-center p-6">
           <div className="w-full max-w-4xl bg-white rounded-2xl shadow-lg border border-gray-200 p-8 md:p-16 text-center">
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 tracking-tight">Advanced PDF Editor</h1>
-            <p className="text-lg text-gray-600 mb-10 font-medium">Draw, highlight, add text, sign, manage pages, and more.</p>
+            <p className="text-lg text-gray-600 mb-10 font-medium">Draw, highlight, add text, sign, manage pages, AI, Security, and more.</p>
             <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
             <label htmlFor="file-upload" className="cursor-pointer inline-flex items-center gap-3 bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
               <UploadCloud size={28} /> Select PDF to Edit
             </label>
-            <p className="mt-4 text-gray-500 font-medium">100% Browser-Based Editor (No Adobe Error)</p>
+            <p className="mt-4 text-gray-500 font-medium">100% Browser-Based (No Adobe Error)</p>
           </div>
         </main>
       ) : (
         // STEP 2: FULL EDITOR UI
         <div className="flex flex-1 overflow-hidden relative">
           
+          {/* Mobile Sidebar Overlay */}
           <div className={`fixed inset-0 bg-black/50 z-40 transition-opacity lg:hidden ${showMobileSidebar ? 'opacity-100 visible' : 'opacity-0 invisible'}`} onClick={() => setShowMobileSidebar(false)} />
           
-          {/* SIDEBAR (TOOLS) */}
+          {/* LEFT SIDEBAR (TOOLS) */}
           <div className={`w-72 bg-white border-r border-gray-200 p-4 overflow-y-auto absolute lg:relative h-full z-50 transform transition-transform ${showMobileSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-900">Tools</h3>
               <button onClick={() => setShowMobileSidebar(false)} className="lg:hidden text-gray-500 hover:text-red-500"><X size={20}/></button>
             </div>
             
-            {/* LOCAL ANNOTATION TOOLS */}
+            {/* ANNOTATION TOOLS */}
+            <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Annotation</h4>
             <div className="grid grid-cols-2 gap-2 mb-6">
-              <button onClick={() => setActiveTool('select')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'select' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Select</button>
-              <button onClick={() => { setActiveTool('text'); addElement('text'); }} className="p-2 border rounded text-sm font-bold text-gray-900 flex items-center justify-center gap-1 border-gray-300"><Type size={14}/> Text</button>
-              <button onClick={() => setActiveTool('highlight')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'highlight' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Highlight</button>
-              <button onClick={openSignModal} className="p-2 border rounded text-sm font-bold text-gray-900 border-gray-300">Sign</button>
-              <button onClick={() => setActiveTool('shape')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'shape' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><Shapes size={14}/> Shape</button>
-              <button onClick={() => setActiveTool('redact')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'redact' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Redact</button>
-              <button onClick={() => addElement('stamp')} className="p-2 border rounded text-sm font-bold text-gray-900 border-gray-300"><Stamp size={14}/> Stamp</button>
+              <button onClick={() => setActiveTool('select')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'select' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Select</button>
+              <button onClick={() => { setActiveTool('text'); addElement('text'); }} className="p-2 border rounded text-sm font-bold flex items-center justify-center gap-1 border-gray-300"><Type size={14}/> Text</button>
+              <button onClick={() => setActiveTool('highlight')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'highlight' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Highlight</button>
+              <button onClick={openSignModal} className="p-2 border rounded text-sm font-bold border-gray-300">Sign</button>
+              <button onClick={() => setActiveTool('shape')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'shape' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><Shapes size={14}/> Shape</button>
+              <button onClick={() => setActiveTool('stamp')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'stamp' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><Stamp size={14}/> Stamp</button>
+              <button onClick={() => setActiveTool('redact')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'redact' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><Eraser size={14}/> Redact</button>
+              <button onClick={() => setActiveTool('sticky')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'sticky' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><StickyNote size={14}/> Sticky</button>
             </div>
+
+            {/* PROPERTIES PANEL */}
+            {selectedElementId && (
+              <div className="mb-6 border border-gray-200 p-3 rounded bg-gray-50">
+                <h4 className="text-xs font-bold text-gray-900 mb-2">Properties</h4>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs">Font</label>
+                  <select className="border rounded p-1" onChange={(e) => { setSelectedFont(e.target.value); updateElement(selectedElementId, { fontFamily: e.target.value }); }}>
+                    {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                  <label className="text-xs">Color</label>
+                  <div className="flex gap-1 flex-wrap">
+                    {COLORS.map(c => <button key={c} onClick={() => { setSelectedColor(c); updateElement(selectedElementId, { color: c }); }} style={{ backgroundColor: c }} className={`w-6 h-6 rounded ${selectedColor === c ? 'ring-2 ring-offset-1' : ''}`} />)}
+                  </div>
+                  <button onClick={() => deleteElement(selectedElementId)} className="text-red-500 text-sm font-bold mt-2">Delete Element</button>
+                </div>
+              </div>
+            )}
+
+            {/* SHAPES & STAMPS OPTIONS */}
+            {activeTool === 'shape' && (
+              <div className="mb-6">
+                <h4 className="font-bold text-gray-900 mb-2">Shape Type</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {SHAPES.map(s => <button key={s} onClick={() => { setSelectedShape(s); addElement('shape'); }} className="border p-2 rounded capitalize text-sm">{s}</button>)}
+                </div>
+              </div>
+            )}
+            {activeTool === 'stamp' && (
+              <div className="mb-6">
+                <h4 className="font-bold text-gray-900 mb-2">Stamp</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {STAMPS.map(s => <button key={s} onClick={() => { setStampText(s); addElement('stamp'); }} className="border border-red-500 text-red-600 p-2 rounded font-bold text-sm">{s}</button>)}
+                </div>
+              </div>
+            )}
 
             {/* PAGE MANAGEMENT (BACKEND) */}
             <div className="mb-6 border-t pt-4">
@@ -303,8 +344,18 @@ export default function EditPdf() {
                 <button onClick={handleProtect} className="bg-gray-800 text-white p-2 rounded" title="Encrypt"><KeyRound size={16}/></button>
                 <button onClick={handleUnlock} className="bg-gray-200 p-2 rounded" title="Decrypt"><Unlock size={16}/></button>
               </div>
+              <label className="flex items-center gap-2 mb-2 text-sm">
+                <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} className="accent-[#E5322D]" /> Enable OCR
+              </label>
               <button onClick={() => callBackend('ai-summarizer')} className="w-full bg-purple-100 text-purple-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><Bot size={16}/> AI Summarize</button>
               <button onClick={() => callBackend('translate-pdf', { targetLanguage: 'Hindi' })} className="w-full bg-blue-100 text-blue-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Languages size={16}/> Translate</button>
+            </div>
+
+            {/* COLLABORATION (UI ONLY) */}
+            <div className="mb-6 border-t pt-4">
+              <h4 className="font-bold text-gray-900 mb-2">Collaboration</h4>
+              <button onClick={() => alert("Real-time Editing requires WebSocket backend (Liveblocks/Yjs).")} className="w-full bg-blue-50 text-blue-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><Users size={16}/> Invite Teammate</button>
+              <button onClick={() => alert("Activity Log will show here once backend is connected.")} className="w-full bg-purple-50 text-purple-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><MessageSquare size={16}/> View Comments</button>
             </div>
           </div>
 
@@ -345,15 +396,18 @@ export default function EditPdf() {
                   <Rnd key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
                     onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
                     onResizeStop={(e, dir, ref, delta, pos) => updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...pos })}
-                    className="group absolute border-2 border-transparent hover:border-gray-400 border-dashed flex items-center justify-center z-20 touch-none">
+                    onClick={() => setSelectedElementId(el.id)}
+                    className={`group absolute border-2 ${selectedElementId === el.id ? 'border-[#E5322D]' : 'border-transparent hover:border-gray-400'} border-dashed flex items-center justify-center z-20 touch-none`}>
                     <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 text-xs opacity-0 group-hover:opacity-100"><X size={14}/></button>
                     
-                    {el.type === 'text' && <input value={el.value} onChange={(e) => updateElement(el.id, { value: e.target.value })} className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-900" style={{ fontSize: `${el.fontSize}px` }} />}
+                    {/* Render Type */}
+                    {el.type === 'text' && <input value={el.value} onChange={(e) => updateElement(el.id, { value: e.target.value })} className="w-full h-full bg-transparent outline-none text-center font-bold" style={{ fontSize: `${el.fontSize}px`, color: el.color, fontFamily: el.fontFamily }} />}
                     {el.type === 'highlight' && <div className="w-full h-full" style={{ backgroundColor: el.color }}></div>}
                     {el.type === 'redact' && <div className="w-full h-full bg-black"></div>}
-                    {el.type === 'shape' && el.shape === 'rectangle' && <div className="w-full h-full border-2 border-black"></div>}
-                    {el.type === 'shape' && el.shape === 'circle' && <div className="w-full h-full border-2 border-black rounded-full"></div>}
+                    {el.type === 'shape' && el.shape === 'rectangle' && <div className="w-full h-full border-2" style={{ borderColor: el.color }}></div>}
+                    {el.type === 'shape' && el.shape === 'circle' && <div className="w-full h-full border-2 rounded-full" style={{ borderColor: el.color }}></div>}
                     {el.type === 'stamp' && <div className="w-full h-full flex items-center justify-center border-4 border-double border-red-600 text-red-600 font-black text-xl">{el.value}</div>}
+                    {el.type === 'sticky' && <div className="w-full h-full bg-yellow-100 p-2 text-sm overflow-hidden">{el.value}</div>}
                     {el.type === 'signature' && <img src={el.imgData} className="w-full h-full object-contain" />}
                   </Rnd>
                 ))}
