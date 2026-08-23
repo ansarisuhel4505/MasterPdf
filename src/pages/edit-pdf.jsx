@@ -7,7 +7,7 @@ import {
   FileText, Trash2, Users, MessageSquare, Printer, 
   Loader2, Menu, Type, Highlighter, Download, Plus, Minus,
   RotateCw, Moon, Sun, Search, Shapes, KeyRound, Unlock,
-  Bot, Languages, FileOutput, Split, Eraser
+  Bot, Languages, FileOutput, Split
 } from 'lucide-react';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { upload } from '@vercel/blob/client';
@@ -25,12 +25,12 @@ export default function EditPdf() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { getToken } = useAuth();
 
+  // State
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState('');
   const [fileId, setFileId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Viewer State
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.0);
@@ -38,26 +38,22 @@ export default function EditPdf() {
   const [darkMode, setDarkMode] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Tools State
   const [activeTool, setActiveTool] = useState('select');
   const [selectedShape, setSelectedShape] = useState('rectangle');
   const [stampText, setStampText] = useState('APPROVED');
   const [pagesToDelete, setPagesToDelete] = useState([]);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   
-  // Elements State
   const [elements, setElements] = useState([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [showSignModal, setShowSignModal] = useState(false);
   const signCanvasRef = useRef(null);
   const containerRef = useRef(null);
 
-  // AI & Security Modal
   const [aiResult, setAiResult] = useState(null);
   const [showAiModal, setShowAiModal] = useState(false);
   const [password, setPassword] = useState('');
 
-  // Permissions
   const [permissions, setPermissions] = useState({ allowEditing: true, allowPrinting: false });
   const [ocrEnabled, setOcrEnabled] = useState(false);
 
@@ -84,7 +80,6 @@ export default function EditPdf() {
     e.target.value = null;
   };
 
-  // Add Elements
   const addElement = (type) => {
     let newEl = { id: Date.now(), type, page: currentPage, x: 50, y: 50, width: 200, height: 50, value: '', fontSize: 24, color: '#000000' };
     if (type === 'text') newEl.value = "Type here...";
@@ -95,7 +90,6 @@ export default function EditPdf() {
     setElements([...elements, newEl]);
   };
 
-  // Signature Drawing
   const openSignModal = () => {
     setShowSignModal(true);
     setTimeout(() => {
@@ -132,12 +126,10 @@ export default function EditPdf() {
     setShowSignModal(false);
   };
 
-  // View Operations
   const zoomIn = () => setScale(prev => Math.min(prev + 0.2, 3.0));
   const zoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5));
   const rotatePage = () => setRotation(prev => (prev + 90) % 360);
 
-  // Page Operations
   const deleteCurrentPage = () => {
     if (pagesToDelete.includes(currentPage)) {
       setPagesToDelete(pagesToDelete.filter(p => p !== currentPage));
@@ -146,7 +138,6 @@ export default function EditPdf() {
     }
   };
 
-  // Extract and Split
   const extractPages = async () => {
     const input = prompt("Enter pages to extract (e.g., 1-3,5):");
     if (!input) return;
@@ -205,14 +196,12 @@ export default function EditPdf() {
     }
   };
 
-  // Search Text
   const handleSearch = (e) => {
     if (e.key === 'Enter' && containerRef.current) {
       window.find(searchTerm, false, false, true, false, false, false);
     }
   };
 
-  // Backend API (AI & Security)
   const callBackend = async (action, params = {}) => {
     try {
       const token = await getToken();
@@ -233,14 +222,13 @@ export default function EditPdf() {
     } catch (e) { alert("Server error"); }
   };
 
-  // Final Save & Download (Complete Engine)
   const saveAndDownload = async () => {
     setIsSaving(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       
-      // 1. Delete Pages
+      // Delete Pages
       if (pagesToDelete.length > 0) {
         pagesToDelete.sort((a, b) => b - a).forEach(page => {
           if (page >= 1 && page <= pdfDoc.getPageCount()) {
@@ -249,7 +237,7 @@ export default function EditPdf() {
         });
       }
 
-      // 2. Place Elements
+      // Place Elements
       const pages = pdfDoc.getPages();
       for (const el of elements) {
         if (el.page > pages.length) continue;
@@ -292,140 +280,147 @@ export default function EditPdf() {
     }
   };
 
-  if (!isLoaded) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" size={48} /></div>;
-  if (!isSignedIn) return <div className="min-h-screen flex items-center justify-center font-bold">Please <a href="/sign-in" className="text-[#E5322D]"> sign in</a></div>;
+  // AUTH & LOADING CHECKS
+  if (!isLoaded) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#E5322D]" size={48} /></div>;
+  if (!isSignedIn) return <div className="min-h-screen flex items-center justify-center font-bold text-gray-900">Please <a href="/sign-in" className="text-[#E5322D] ml-1 hover:underline"> sign in</a> to use this editor.</div>;
 
   return (
     <div className={`min-h-screen flex flex-col ${darkMode ? 'bg-gray-900 text-white' : 'bg-[#F5F5F7]'} transition-colors`}>
       <Head><title>Pro Edit PDF - MasterPdf</title></Head>
       <Navbar />
       
-      {/* Top Toolbar */}
-      <div className="flex items-center justify-between p-3 border-b shadow-sm sticky top-0 z-20 bg-white/90 backdrop-blur">
-        <div className="flex items-center gap-2">
-          {file && <button onClick={() => setShowMobileSidebar(true)} className="lg:hidden p-2 border rounded"><Menu size={18} /></button>}
-          <span className="font-bold truncate max-w-[200px]">{file ? file.name : "PDF Editor"}</span>
-        </div>
-        <div className="flex items-center gap-1 overflow-x-auto">
-          {!file ? null : (
-            <>
-              <button onClick={zoomOut} className="p-2 rounded bg-gray-100 hover:bg-gray-200"><Minus size={18}/></button>
-              <span className="text-sm font-bold w-12 text-center">{Math.round(scale * 100)}%</span>
-              <button onClick={zoomIn} className="p-2 rounded bg-gray-100 hover:bg-gray-200"><Plus size={18}/></button>
-              <button onClick={rotatePage} className="p-2 rounded bg-gray-100 hover:bg-gray-200" title="Rotate"><RotateCw size={18}/></button>
-              <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded bg-gray-100 hover:bg-gray-200">
-                {darkMode ? <Sun size={18}/> : <Moon size={18}/>}
-              </button>
-              <div className="relative ml-2 hidden md:block">
-                <Search size={16} className="absolute left-2 top-2.5 text-gray-400" />
-                <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={handleSearch} placeholder="Search text (Ctrl+F)" className="pl-8 pr-2 py-2 border rounded-lg w-48" />
-              </div>
-              <button onClick={saveAndDownload} disabled={isSaving} className="ml-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1">
-                {isSaving ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>} <span className="hidden md:inline">Save</span>
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Main Workspace */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Sidebar */}
-        <div className={`w-72 bg-white border-r p-4 overflow-y-auto absolute lg:relative h-full z-30 transition-transform ${showMobileSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-          <div className="flex justify-between mb-6">
-            <h3 className="text-xl font-bold">Tools</h3>
-            <button onClick={() => setShowMobileSidebar(false)} className="lg:hidden"><X size={20}/></button>
-          </div>
-          
-          {/* Active Tool Selector */}
-          <div className="grid grid-cols-2 gap-2 mb-6">
-            <button onClick={() => setActiveTool('select')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'select' ? 'border-[#E5322D] bg-red-50' : ''}`}>Select</button>
-            <button onClick={() => { setActiveTool('text'); addElement('text'); }} className="p-2 border rounded text-sm font-bold flex items-center justify-center gap-1"><Type size={14}/> Text</button>
-            <button onClick={() => setActiveTool('highlight')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'highlight' ? 'border-[#E5322D] bg-red-50' : ''}`}>Highlight</button>
-            <button onClick={openSignModal} className="p-2 border rounded text-sm font-bold">Sign</button>
-            <button onClick={() => setActiveTool('shape')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'shape' ? 'border-[#E5322D] bg-red-50' : ''}`}><Shapes size={14}/> Shape</button>
-            <button onClick={() => setActiveTool('redact')} className={`p-2 border rounded text-sm font-bold ${activeTool === 'redact' ? 'border-[#E5322D] bg-red-50' : ''}`}>Redact</button>
-          </div>
-
-          {/* Shape Settings */}
-          {activeTool === 'shape' && (
-            <div className="mb-4">
-              <select className="w-full p-2 border rounded" onChange={(e) => setSelectedShape(e.target.value)}>
-                <option value="rectangle">Rectangle</option>
-                <option value="circle">Circle</option>
-              </select>
-            </div>
-          )}
-
-          {/* Page Management */}
-          <div className="mb-6 border-t pt-4">
-            <h4 className="font-bold mb-2">Page Management</h4>
-            <button onClick={deleteCurrentPage} className={`w-full p-2 rounded mb-2 text-sm font-bold ${pagesToDelete.includes(currentPage) ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600'}`}>
-              {pagesToDelete.includes(currentPage) ? "Unmark Delete" : "Delete Current Page"}
-            </button>
-            <button onClick={extractPages} className="w-full bg-blue-50 text-blue-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><FileOutput size={16}/> Extract Pages</button>
-            <button onClick={splitPdf} className="w-full bg-purple-50 text-purple-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Split size={16}/> Split PDF</button>
-          </div>
-
-          {/* Security & AI */}
-          <div className="mb-6 border-t pt-4">
-            <h4 className="font-bold mb-2">Security & AI</h4>
-            <div className="flex gap-2 mb-2">
-              <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="flex-1 p-2 border rounded text-sm" />
-              <button onClick={() => callBackend('protect-pdf', { password })} className="bg-gray-800 text-white p-2 rounded" title="Encrypt"><KeyRound size={16}/></button>
-              <button onClick={() => callBackend('unlock-pdf', { password })} className="bg-gray-200 p-2 rounded" title="Decrypt"><Unlock size={16}/></button>
-            </div>
-            <button onClick={() => callBackend('ai-summarizer')} className="w-full bg-purple-100 text-purple-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><Bot size={16}/> AI Summarize</button>
-            <button onClick={() => callBackend('translate-pdf', { targetLanguage: 'Hindi' })} className="w-full bg-blue-100 text-blue-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Languages size={16}/> Translate (Hindi)</button>
-          </div>
-
-          {/* Collaboration (UI Only) */}
-          <div className="mb-6 border-t pt-4">
-            <h4 className="font-bold mb-2">Collaboration</h4>
-            <button onClick={() => alert("Real-time Editing needs WebSocket (Yjs/Liveblocks) backend integration.")} className="w-full bg-blue-50 text-blue-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><Users size={16}/> Invite Teammate</button>
-          </div>
-        </div>
-
-        {/* Main Viewer */}
-        <div ref={containerRef} className={`flex-1 overflow-auto p-6 ${darkMode ? 'bg-gray-800' : 'bg-[#E4E4E4]'}`}>
-          <div className="relative shadow-2xl mx-auto" style={{ transform: `scale(${scale}) rotate(${rotation}deg)` }}>
-            <Document file={fileUrl} loading={<div className="p-10">Loading...</div>}>
-              <Page 
-                pageNumber={currentPage} 
-                scale={1.2} 
-                renderTextLayer={true} // 🔥 Text Search (Ctrl+F) ab kaam karega
-                renderAnnotationLayer={false} 
-              />
-            </Document>
+      {/* 
+        =============================================
+        STEP 1: NO FILE SELECTED (UPLOAD SCREEN)
+        =============================================
+      */}
+      {!file ? (
+        <main className="flex-grow flex items-center justify-center p-6">
+          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-lg border border-gray-200 p-8 md:p-16 text-center">
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 tracking-tight">Advanced PDF Editor</h1>
+            <p className="text-lg text-gray-600 mb-10 font-medium">Draw, highlight, add text, sign, collaborate, and manage versions.</p>
             
-            {/* Elements Layer */}
-            {elements.filter(el => el.page === currentPage).map((el) => (
-              <Rnd key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
-                onDragStop={(e, d) => setElements(elements.map(x => x.id === el.id ? { ...x, x: d.x, y: d.y } : x))}
-                onResizeStop={(e, dir, ref, delta, pos) => setElements(elements.map(x => x.id === el.id ? { ...x, width: ref.offsetWidth, height: ref.offsetHeight, ...pos } : x))}
-                className="group absolute border-2 border-transparent hover:border-gray-400 border-dashed flex items-center justify-center z-20 touch-none">
-                <button onClick={() => setElements(elements.filter(x => x.id !== el.id))} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 text-xs opacity-0 group-hover:opacity-100"><X size={14}/></button>
+            <input type="file" id="file-upload" accept=".pdf" onChange={handleFileChange} className="hidden" />
+            <label htmlFor="file-upload" className="cursor-pointer inline-flex items-center gap-3 bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+              <UploadCloud size={28} /> Select PDF to Edit
+            </label>
+            <p className="mt-4 text-gray-500 font-medium">Browser-based Editor (Works without Adobe!)</p>
+          </div>
+        </main>
+      ) : (
+        // =============================================
+        // STEP 2: FILE SELECTED (FULL EDITOR UI)
+        // =============================================
+        <div className="flex flex-1 overflow-hidden relative">
+          
+          {/* Mobile Sidebar Overlay */}
+          <div className={`fixed inset-0 bg-black/50 z-40 transition-opacity lg:hidden ${showMobileSidebar ? 'opacity-100 visible' : 'opacity-0 invisible'}`} onClick={() => setShowMobileSidebar(false)} />
+          
+          {/* LEFT SIDEBAR (TOOLS) */}
+          <div className={`w-72 bg-white border-r border-gray-200 p-4 overflow-y-auto absolute lg:relative h-full z-50 transform transition-transform ${showMobileSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Tools</h3>
+              <button onClick={() => setShowMobileSidebar(false)} className="lg:hidden text-gray-500 hover:text-red-500"><X size={20}/></button>
+            </div>
+            
+            {/* Tool Grid */}
+            <div className="grid grid-cols-2 gap-2 mb-6">
+              <button onClick={() => setActiveTool('select')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'select' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Select</button>
+              <button onClick={() => { setActiveTool('text'); addElement('text'); }} className="p-2 border rounded text-sm font-bold text-gray-900 flex items-center justify-center gap-1 border-gray-300"><Type size={14}/> Text</button>
+              <button onClick={() => setActiveTool('highlight')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'highlight' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Highlight</button>
+              <button onClick={openSignModal} className="p-2 border rounded text-sm font-bold text-gray-900 border-gray-300">Sign</button>
+              <button onClick={() => setActiveTool('shape')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'shape' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}><Shapes size={14}/> Shape</button>
+              <button onClick={() => setActiveTool('redact')} className={`p-2 border rounded text-sm font-bold text-gray-900 ${activeTool === 'redact' ? 'border-[#E5322D] bg-red-50' : 'border-gray-300'}`}>Redact</button>
+            </div>
+
+            {/* Page Management */}
+            <div className="mb-6 border-t pt-4">
+              <h4 className="font-bold text-gray-900 mb-2">Page Management</h4>
+              <button onClick={deleteCurrentPage} className={`w-full p-2 rounded mb-2 text-sm font-bold ${pagesToDelete.includes(currentPage) ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600'}`}>
+                {pagesToDelete.includes(currentPage) ? "Unmark Delete" : "Delete Current Page"}
+              </button>
+              <button onClick={extractPages} className="w-full bg-blue-50 text-blue-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><FileOutput size={16}/> Extract Pages</button>
+              <button onClick={splitPdf} className="w-full bg-purple-50 text-purple-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Split size={16}/> Split PDF</button>
+            </div>
+
+            {/* Security & AI */}
+            <div className="mb-6 border-t pt-4">
+              <h4 className="font-bold text-gray-900 mb-2">Security & AI</h4>
+              <div className="flex gap-2 mb-2">
+                <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="flex-1 p-2 border rounded text-sm text-gray-900" />
+                <button onClick={() => callBackend('protect-pdf', { password })} className="bg-gray-800 text-white p-2 rounded" title="Encrypt"><KeyRound size={16}/></button>
+                <button onClick={() => callBackend('unlock-pdf', { password })} className="bg-gray-200 p-2 rounded" title="Decrypt"><Unlock size={16}/></button>
+              </div>
+              <button onClick={() => callBackend('ai-summarizer')} className="w-full bg-purple-100 text-purple-700 p-2 rounded mb-2 text-sm font-bold flex items-center justify-center gap-2"><Bot size={16}/> AI Summarize</button>
+              <button onClick={() => callBackend('translate-pdf', { targetLanguage: 'Hindi' })} className="w-full bg-blue-100 text-blue-700 p-2 rounded text-sm font-bold flex items-center justify-center gap-2"><Languages size={16}/> Translate (Hindi)</button>
+            </div>
+          </div>
+
+          {/* MAIN VIEWER */}
+          <div className="flex-1 flex flex-col h-screen overflow-hidden">
+            
+            {/* Top Action Bar */}
+            <div className="flex items-center justify-between p-3 border-b shadow-sm bg-white z-20">
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowMobileSidebar(true)} className="lg:hidden p-2 border rounded text-gray-700"><Menu size={18} /></button>
+                <span className="font-bold text-gray-900 truncate max-w-[120px] md:max-w-[300px]">{file.name}</span>
+              </div>
+              <div className="flex items-center gap-1 overflow-x-auto">
+                <button onClick={zoomOut} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"><Minus size={18}/></button>
+                <span className="text-sm font-bold text-gray-900 w-12 text-center">{Math.round(scale * 100)}%</span>
+                <button onClick={zoomIn} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"><Plus size={18}/></button>
+                <button onClick={rotatePage} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700" title="Rotate"><RotateCw size={18}/></button>
+                <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700">
+                  {darkMode ? <Sun size={18}/> : <Moon size={18}/>}
+                </button>
+                <div className="relative ml-2 hidden md:block">
+                  <Search size={16} className="absolute left-2 top-2.5 text-gray-500" />
+                  <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={handleSearch} placeholder="Search text" className="pl-8 pr-2 py-2 border rounded-lg w-48 text-gray-900" />
+                </div>
+                <button onClick={saveAndDownload} disabled={isSaving} className="ml-2 bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1 whitespace-nowrap">
+                  {isSaving ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>} <span className="hidden md:inline">Save</span>
+                </button>
+                <button onClick={() => setFile(null)} className="p-2 rounded bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-600 ml-1"><X size={20} /></button>
+              </div>
+            </div>
+
+            {/* Viewer Area */}
+            <div ref={containerRef} className={`flex-1 overflow-auto p-6 ${darkMode ? 'bg-gray-800' : 'bg-[#E4E4E4]'}`}>
+              <div className="relative shadow-2xl mx-auto" style={{ transform: `scale(${scale}) rotate(${rotation}deg)` }}>
+                <Document file={fileUrl} loading={<div className="p-10 text-gray-900">Loading...</div>}>
+                  <Page pageNumber={currentPage} scale={1.2} renderTextLayer={true} renderAnnotationLayer={false} />
+                </Document>
                 
-                {el.type === 'text' && <input value={el.value} onChange={(e) => setElements(elements.map(x => x.id === el.id ? { ...x, value: e.target.value } : x))} className="w-full h-full bg-transparent outline-none text-center font-bold" style={{ fontSize: `${el.fontSize}px` }} />}
-                {el.type === 'highlight' && <div className="w-full h-full" style={{ backgroundColor: el.color }}></div>}
-                {el.type === 'redact' && <div className="w-full h-full bg-black"></div>}
-                {el.type === 'shape' && el.shape === 'rectangle' && <div className="w-full h-full border-2 border-black"></div>}
-                {el.type === 'shape' && el.shape === 'circle' && <div className="w-full h-full border-2 border-black rounded-full"></div>}
-                {el.type === 'stamp' && <div className="w-full h-full flex items-center justify-center border-4 border-double border-red-600 text-red-600 font-black text-xl">{el.value}</div>}
-                {el.type === 'signature' && <img src={el.imgData} className="w-full h-full object-contain" />}
-              </Rnd>
-            ))}
+                {/* Elements Layer */}
+                {elements.filter(el => el.page === currentPage).map((el) => (
+                  <Rnd key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
+                    onDragStop={(e, d) => setElements(elements.map(x => x.id === el.id ? { ...x, x: d.x, y: d.y } : x))}
+                    onResizeStop={(e, dir, ref, delta, pos) => setElements(elements.map(x => x.id === el.id ? { ...x, width: ref.offsetWidth, height: ref.offsetHeight, ...pos } : x))}
+                    className="group absolute border-2 border-transparent hover:border-gray-400 border-dashed flex items-center justify-center z-20 touch-none">
+                    <button onClick={() => setElements(elements.filter(x => x.id !== el.id))} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 text-xs opacity-0 group-hover:opacity-100"><X size={14}/></button>
+                    
+                    {el.type === 'text' && <input value={el.value} onChange={(e) => setElements(elements.map(x => x.id === el.id ? { ...x, value: e.target.value } : x))} className="w-full h-full bg-transparent outline-none text-center font-bold text-gray-900" style={{ fontSize: `${el.fontSize}px` }} />}
+                    {el.type === 'highlight' && <div className="w-full h-full" style={{ backgroundColor: el.color }}></div>}
+                    {el.type === 'redact' && <div className="w-full h-full bg-black"></div>}
+                    {el.type === 'shape' && el.shape === 'rectangle' && <div className="w-full h-full border-2 border-black"></div>}
+                    {el.type === 'shape' && el.shape === 'circle' && <div className="w-full h-full border-2 border-black rounded-full"></div>}
+                    {el.type === 'stamp' && <div className="w-full h-full flex items-center justify-center border-4 border-double border-red-600 text-red-600 font-black text-xl">{el.value}</div>}
+                    {el.type === 'signature' && <img src={el.imgData} className="w-full h-full object-contain" />}
+                  </Rnd>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Signature Modal */}
       {showSignModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
             <div className="flex justify-between p-4 border-b">
-              <h3 className="font-bold">Draw Your Signature</h3>
-              <button onClick={() => setShowSignModal(false)}><X size={20}/></button>
+              <h3 className="font-bold text-gray-900">Draw Your Signature</h3>
+              <button onClick={() => setShowSignModal(false)} className="text-gray-500 hover:text-red-500"><X size={20}/></button>
             </div>
             <div className="p-4">
               <canvas ref={signCanvasRef} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} className="w-full h-40 border rounded cursor-crosshair" width={400} height={160} />
@@ -443,10 +438,10 @@ export default function EditPdf() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col">
             <div className="flex justify-between p-4 border-b">
-              <h3 className="font-bold">AI Result</h3>
-              <button onClick={() => setShowAiModal(false)}><X size={20}/></button>
+              <h3 className="font-bold text-gray-900">AI Result</h3>
+              <button onClick={() => setShowAiModal(false)} className="text-gray-500 hover:text-red-500"><X size={20}/></button>
             </div>
-            <div className="p-4 overflow-y-auto whitespace-pre-wrap">{aiResult || "Processing..."}</div>
+            <div className="p-4 overflow-y-auto whitespace-pre-wrap text-gray-900">{aiResult || "Processing..."}</div>
           </div>
         </div>
       )}
