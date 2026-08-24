@@ -390,7 +390,86 @@ if (!fileUrls || fileUrls.length === 0) {
     return res.status(500).json({ error: "Word to PDF conversion failed." });
   }
 }
-    else if (action === 'excel-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'xlsx');
+   else if (action === 'excel-to-pdf') {
+  try {
+    const options = req.body.options || {};
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl];
+    const outputUrls = [];
+
+    for (const url of fileUrls) {
+      const convertOptions = { File: url };
+
+      if (options.pageSize) convertOptions.PageSize = options.pageSize;
+      if (options.orientation) convertOptions.PageOrientation = options.orientation;
+      if (options.margins) {
+        if (options.margins === 'custom') {
+          const m = options.customMargins || {};
+          if (m.top) convertOptions.MarginTop = m.top + 'mm';
+          if (m.bottom) convertOptions.MarginBottom = m.bottom + 'mm';
+          if (m.left) convertOptions.MarginLeft = m.left + 'mm';
+          if (m.right) convertOptions.MarginRight = m.right + 'mm';
+        } else {
+          convertOptions.PageMargins = options.margins;
+        }
+      }
+      if (options.scaling) convertOptions.Scaling = options.scaling + '%';
+      if (options.fitToWidth) convertOptions.FitToWidth = 'true';
+      if (options.fitToOnePage) convertOptions.FitToOnePage = 'true';
+      if (options.gridlines) convertOptions.GridLines = 'true';
+      if (options.repeatHeader) convertOptions.RepeatHeader = 'true';
+      if (options.sheetSelection) convertOptions.SheetSelection = options.sheetSelection;
+      if (options.quality === 'high') convertOptions.ImageResolution = '300';
+      else if (options.quality === 'low') convertOptions.ImageResolution = '72';
+
+      const result = await convertapi.convert('pdf', convertOptions, 'xlsx');
+      outputUrls.push(result.response.Files[0].Url);
+    }
+
+    let finalUrl;
+    if (options.merge && outputUrls.length > 1) {
+      const mergedPdf = await PDFDocument.create();
+      for (const url of outputUrls) {
+        const pdfBytes = await fetch(url).then(res => res.arrayBuffer());
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const pages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+        pages.forEach(page => mergedPdf.addPage(page));
+      }
+      const mergedBytes = await mergedPdf.save();
+      const blob = await put(`merged-excel-${Date.now()}.pdf`, mergedBytes, { access: 'public', contentType: 'application/pdf' });
+      finalUrl = blob.url;
+    } else {
+      finalUrl = outputUrls[0];
+    }
+
+    if (options.password) {
+      const encryptResult = await convertapi.convert('encrypt', { File: finalUrl, UserPassword: options.password, OwnerPassword: options.password }, 'pdf');
+      finalUrl = encryptResult.response.Files[0].Url;
+    }
+
+    if (options.watermark) {
+      const watermarkResult = await convertapi.convert('watermark', {
+        File: finalUrl,
+        Text: options.watermark,
+        FontSize: options.watermarkFontSize || '24',
+        Opacity: options.watermarkOpacity || '30',
+        Rotation: options.watermarkRotation || '45',
+        HorizontalAlignment: options.watermarkPosition || 'center',
+        VerticalAlignment: options.watermarkPosition || 'center',
+        FontColor: options.watermarkColor || '#000000'
+      }, 'pdf');
+      finalUrl = watermarkResult.response.Files[0].Url;
+    }
+
+    if (outputUrls.length > 1 && !options.merge) {
+      return res.status(200).json({ success: true, downloadUrls: outputUrls });
+    } else {
+      return res.status(200).json({ success: true, downloadUrl: finalUrl });
+    }
+  } catch (excelToPdfError) {
+    console.error("Excel-to-PDF error:", excelToPdfError);
+    return res.status(500).json({ error: "Excel to PDF conversion failed." });
+  }
+}
     else if (action === 'powerpoint-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'pptx');
     else if (action === 'pdf-to-jpg') result = await convertapi.convert('jpg', { File: fileUrl }, 'pdf');
     
