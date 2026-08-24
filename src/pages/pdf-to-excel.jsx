@@ -12,7 +12,9 @@ import {
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+if (typeof window !== 'undefined') {
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+}
 
 const TOOL_TITLE = "PDF to Excel Converter";
 const TOOL_DESC = "Extract tables and data from PDF to Excel (XLSX) with OCR and advanced options.";
@@ -250,6 +252,10 @@ export default function PdfToExcel() {
         uploadedUrls.push(blob.url);
       }
 
+      // 🔥 SMART FIX: ConvertAPI "diagonal" crash fix
+      const apiWatermarkPosition = options.watermarkPosition === 'diagonal' ? 'center' : options.watermarkPosition;
+      const apiWatermarkRotation = options.watermarkPosition === 'diagonal' ? 45 : options.watermarkRotation;
+
       const body = {
         action: ACTION_NAME,
         fileUrls: uploadedUrls,
@@ -267,8 +273,8 @@ export default function PdfToExcel() {
           watermarkColor: options.watermarkColor,
           watermarkFontSize: options.watermarkFontSize,
           watermarkOpacity: options.watermarkOpacity,
-          watermarkRotation: options.watermarkRotation,
-          watermarkPosition: options.watermarkPosition,
+          watermarkRotation: apiWatermarkRotation, // <-- Updated
+          watermarkPosition: apiWatermarkPosition, // <-- Updated
           compress: options.compress,
           compressSize: options.compressSize,
           compressUnit: options.compressUnit
@@ -497,7 +503,7 @@ export default function PdfToExcel() {
                 />
                 {t.layoutPreserve}
               </label>
-              {/* DPI (keep, but add tooltip? We'll just keep label) */}
+              {/* DPI */}
               <div>
                 <label className="block text-sm font-medium mb-1">{t.dpi}</label>
                 <select
@@ -609,7 +615,9 @@ export default function PdfToExcel() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t.watermarkFontSize}</label>
+                  <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                    <Type size={14} /> {t.watermarkFontSize}
+                  </label>
                   <input
                     type="number"
                     min="1"
