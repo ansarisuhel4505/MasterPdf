@@ -251,16 +251,15 @@ if (!fileUrls || fileUrls.length === 0) {
 
     let finalUrl;
     if (options.merge && outputUrls.length > 1) {
-      // Merge logic - simply return first URL (or custom merge in future)
-      finalUrl = outputUrls[0];
+      finalUrl = outputUrls[0]; // Merge logic placeholder
     } else if (options.split && outputUrls.length > 1) {
       return res.status(200).json({ success: true, downloadUrls: outputUrls });
     } else {
       finalUrl = outputUrls[0];
     }
 
-    // 🔥 FIX: PPTX transforms via PDF bridge (ConvertAPI directly support nahi karta)
-    const needsTransform = options.password || options.watermark || options.compress;
+    // 🔥 PDF Bridge for advanced features (watermark, compress, password)
+    const needsTransform = options.watermark || options.compress || options.password;
 
     if (needsTransform) {
       let currentUrl = finalUrl;
@@ -269,14 +268,14 @@ if (!fileUrls || fileUrls.length === 0) {
       const pdfStep = await convertapi.convert('pdf', { File: currentUrl }, 'pptx');
       currentUrl = pdfStep.response.Files[0].Url;
 
-      // Step 2: Apply Watermark (on PDF)
+      // Step 2: Watermark (on PDF)
       if (options.watermark) {
         let hAlign = 'center', vAlign = 'center';
         if (options.watermarkPosition === 'top') vAlign = 'top';
         else if (options.watermarkPosition === 'bottom') vAlign = 'bottom';
         else if (options.watermarkPosition === 'left') hAlign = 'left';
         else if (options.watermarkPosition === 'right') hAlign = 'right';
-        
+
         const watermarkResult = await convertapi.convert('watermark', {
           File: currentUrl,
           Text: options.watermark,
@@ -290,13 +289,7 @@ if (!fileUrls || fileUrls.length === 0) {
         currentUrl = watermarkResult.response.Files[0].Url;
       }
 
-      // Step 3: Apply Password (on PDF)
-      if (options.password) {
-        const encryptResult = await convertapi.convert('encrypt', { File: currentUrl, UserPassword: options.password, OwnerPassword: options.password }, 'pdf');
-        currentUrl = encryptResult.response.Files[0].Url;
-      }
-
-      // Step 4: Apply Compress (on PDF)
+      // Step 3: Compress (BEFORE password, taaki fail na ho)
       if (options.compress) {
         try {
           const compressResult = await convertapi.convert('compress', { File: currentUrl }, 'pdf');
@@ -306,8 +299,17 @@ if (!fileUrls || fileUrls.length === 0) {
         }
       }
 
-      // Step 5: PDF -> PPTX (wapsi)
-      const pptxStep = await convertapi.convert(options.outputFormat === 'ppt' ? 'ppt' : 'pptx', { File: currentUrl }, 'pdf');
+      // Step 4: Password (on PDF)
+      if (options.password) {
+        const encryptResult = await convertapi.convert('encrypt', { File: currentUrl, UserPassword: options.password, OwnerPassword: options.password }, 'pdf');
+        currentUrl = encryptResult.response.Files[0].Url;
+      }
+
+      // Step 5: PDF -> PPTX (password unlock karne ke liye password pass karo)
+      const pptxStep = await convertapi.convert(options.outputFormat === 'ppt' ? 'ppt' : 'pptx', {
+        File: currentUrl,
+        ...(options.password ? { Password: options.password } : {})  // 🔥 Password unlock
+      }, 'pdf');
       finalUrl = pptxStep.response.Files[0].Url;
     }
 
