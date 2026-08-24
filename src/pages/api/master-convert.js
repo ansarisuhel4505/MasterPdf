@@ -225,7 +225,7 @@ if (!fileUrls || fileUrls.length === 0) {
     return res.status(500).json({ error: "PDF to Excel conversion failed." });
   }
 }
-   else if (action === 'pdf-to-powerpoint') {
+  else if (action === 'pdf-to-powerpoint') {
   try {
     const options = req.body.options || {};
     const fileUrls = req.body.fileUrls || [req.body.fileUrl];
@@ -239,7 +239,7 @@ if (!fileUrls || fileUrls.length === 0) {
         convertOptions.ImageResolution = options.dpi || '300';
       }
       if (options.preserveLayout) convertOptions.PreserveLayout = 'true';
-      if (options.aspectRatio) convertOptions.SlideSize = options.aspectRatio; // "16:9" or "4:3"
+      if (options.aspectRatio) convertOptions.SlideSize = options.aspectRatio;
       if (options.pageIndices && options.pageIndices.length > 0) {
         convertOptions.PageRange = options.pageIndices.map(i => i - 1).join(',');
       }
@@ -251,46 +251,64 @@ if (!fileUrls || fileUrls.length === 0) {
 
     let finalUrl;
     if (options.merge && outputUrls.length > 1) {
-      // ConvertAPI doesn't directly merge PPTs, we'll merge PDFs first then convert
-      // Simpler: convert each PDF to PPT and return first (or use external merge)
-      finalUrl = outputUrls[0]; // Placeholder for merge
+      // Merge logic - simply return first URL (or custom merge in future)
+      finalUrl = outputUrls[0];
     } else if (options.split && outputUrls.length > 1) {
       return res.status(200).json({ success: true, downloadUrls: outputUrls });
     } else {
       finalUrl = outputUrls[0];
     }
 
-    if (options.password) {
-      const encryptResult = await convertapi.convert('encrypt', { File: finalUrl, UserPassword: options.password, OwnerPassword: options.password }, 'pptx');
-      finalUrl = encryptResult.response.Files[0].Url;
-    }
+    // 🔥 FIX: PPTX transforms via PDF bridge (ConvertAPI directly support nahi karta)
+    const needsTransform = options.password || options.watermark || options.compress;
 
-    if (options.watermark) {
-      let hAlign = 'center', vAlign = 'center';
-      if (options.watermarkPosition === 'top') vAlign = 'top';
-      else if (options.watermarkPosition === 'bottom') vAlign = 'bottom';
-      else if (options.watermarkPosition === 'left') hAlign = 'left';
-      else if (options.watermarkPosition === 'right') hAlign = 'right';
-      const watermarkResult = await convertapi.convert('watermark', {
-        File: finalUrl,
-        Text: options.watermark,
-        FontSize: options.watermarkFontSize || '24',
-        Opacity: options.watermarkOpacity || '30',
-        Rotation: options.watermarkRotation || '45',
-        HorizontalAlignment: hAlign,
-        VerticalAlignment: vAlign,
-        FontColor: options.watermarkColor || '#000000'
-      }, 'pptx');
-      finalUrl = watermarkResult.response.Files[0].Url;
-    }
+    if (needsTransform) {
+      let currentUrl = finalUrl;
 
-    if (options.compress) {
-      try {
-        const compressResult = await convertapi.convert('compress', { File: finalUrl }, 'pptx');
-        finalUrl = compressResult.response.Files[0].Url;
-      } catch (compErr) {
-        console.log("Compress failed, returning original:", compErr.message);
+      // Step 1: PPTX -> PDF
+      const pdfStep = await convertapi.convert('pdf', { File: currentUrl }, 'pptx');
+      currentUrl = pdfStep.response.Files[0].Url;
+
+      // Step 2: Apply Watermark (on PDF)
+      if (options.watermark) {
+        let hAlign = 'center', vAlign = 'center';
+        if (options.watermarkPosition === 'top') vAlign = 'top';
+        else if (options.watermarkPosition === 'bottom') vAlign = 'bottom';
+        else if (options.watermarkPosition === 'left') hAlign = 'left';
+        else if (options.watermarkPosition === 'right') hAlign = 'right';
+        
+        const watermarkResult = await convertapi.convert('watermark', {
+          File: currentUrl,
+          Text: options.watermark,
+          FontSize: options.watermarkFontSize || '24',
+          Opacity: options.watermarkOpacity || '30',
+          Rotation: options.watermarkRotation || '45',
+          HorizontalAlignment: hAlign,
+          VerticalAlignment: vAlign,
+          FontColor: options.watermarkColor || '#000000'
+        }, 'pdf');
+        currentUrl = watermarkResult.response.Files[0].Url;
       }
+
+      // Step 3: Apply Password (on PDF)
+      if (options.password) {
+        const encryptResult = await convertapi.convert('encrypt', { File: currentUrl, UserPassword: options.password, OwnerPassword: options.password }, 'pdf');
+        currentUrl = encryptResult.response.Files[0].Url;
+      }
+
+      // Step 4: Apply Compress (on PDF)
+      if (options.compress) {
+        try {
+          const compressResult = await convertapi.convert('compress', { File: currentUrl }, 'pdf');
+          currentUrl = compressResult.response.Files[0].Url;
+        } catch (compErr) {
+          console.log("Compress failed, returning uncompressed:", compErr.message);
+        }
+      }
+
+      // Step 5: PDF -> PPTX (wapsi)
+      const pptxStep = await convertapi.convert(options.outputFormat === 'ppt' ? 'ppt' : 'pptx', { File: currentUrl }, 'pdf');
+      finalUrl = pptxStep.response.Files[0].Url;
     }
 
     return res.status(200).json({ success: true, downloadUrl: finalUrl });
