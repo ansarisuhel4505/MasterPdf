@@ -1,227 +1,769 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { UploadCloud, FileText, X, ArrowRight, Settings, Presentation, Loader2, Trash2, History, CheckCircle2, ScanText, FolderOpen } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
+import { Document, Page, pdfjs } from 'react-pdf';
+import {
+  UploadCloud, FileText, X, ArrowRight, Settings, Trash2,
+  Plus, ChevronDown, ChevronUp, History, Sun, Moon, Lock, Palette,
+  Combine, Split, Cloud, Mail, Share2, Download, SlidersHorizontal, Type,
+  ScanText, CheckCircle2, Loader2
+} from 'lucide-react';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
+const TOOL_TITLE = "PDF to PowerPoint Converter";
+const TOOL_DESC = "Convert PDF files into editable PPTX/PPT slideshows with advanced options.";
+const ACTION_NAME = "pdf-to-powerpoint";
+const ACCEPT_FORMAT = ".pdf";
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+
+// i18n Dictionary
+const translations = {
+  en: {
+    drag: "Drag & drop PDF files here",
+    or: "or",
+    browse: "Browse Files",
+    convert: "Convert to PowerPoint",
+    processing: "Processing...",
+    cancel: "Cancel",
+    clearAll: "Clear All",
+    options: "Conversion Options",
+    advanced: "Advanced Options",
+    basic: "Basic Options",
+    pageSize: "Page Size",
+    orientation: "Orientation",
+    margins: "Margins",
+    customMargins: "Custom Margins (mm)",
+    scaling: "Scaling",
+    dpi: "Image DPI",
+    quality: "Quality",
+    password: "Password Protection",
+    passwordConfirm: "Confirm Password",
+    permissions: "Permissions",
+    watermark: "Watermark Text",
+    watermarkColor: "Watermark Color",
+    watermarkFontSize: "Watermark Font Size",
+    watermarkOpacity: "Watermark Opacity",
+    watermarkRotation: "Rotation",
+    watermarkPosition: "Position",
+    merge: "Merge all PDFs into one PPT",
+    split: "Split each PDF into separate PPT",
+    compress: "Compress to target size",
+    compressSize: "Target Size",
+    compressUnit: "Unit",
+    share: "Share Link",
+    email: "Email Result",
+    history: "History",
+    clearHistory: "Clear History",
+    success: "Conversion successful!",
+    error: "Something went wrong. Please try again.",
+    invalidType: "Invalid file type. Only PDF allowed.",
+    tooLarge: "File too large. Max size is 100 MB.",
+    selectedCount: "Selected",
+    addMore: "Add More Files",
+    ocr: "OCR (Scanned PDFs)",
+    pageRange: "Page Range (e.g., 1-5,8)",
+    layoutPreserve: "Preserve Layout",
+    outputFormat: "Output Format",
+    aspectRatio: "Aspect Ratio",
+    slideSize: "Slide Size"
+  },
+  hi: {
+    drag: "PDF फ़ाइलें यहाँ खींचें और छोड़ें",
+    or: "या",
+    browse: "फ़ाइलें ब्राउज़ करें",
+    convert: "PowerPoint में कन्वर्ट करें",
+    processing: "प्रोसेस हो रहा है...",
+    cancel: "रद्द करें",
+    clearAll: "सभी हटाएँ",
+    options: "कन्वर्शन विकल्प",
+    advanced: "उन्नत विकल्प",
+    basic: "मूल विकल्प",
+    pageSize: "पेज साइज़",
+    orientation: "ओरिएंटेशन",
+    margins: "मार्जिन",
+    customMargins: "कस्टम मार्जिन (mm)",
+    scaling: "स्केलिंग",
+    dpi: "इमेज DPI",
+    quality: "गुणवत्ता",
+    password: "पासवर्ड सुरक्षा",
+    passwordConfirm: "पासवर्ड की पुष्टि करें",
+    permissions: "अनुमतियाँ",
+    watermark: "वॉटरमार्क टेक्स्ट",
+    watermarkColor: "वॉटरमार्क रंग",
+    watermarkFontSize: "वॉटरमार्क फ़ॉन्ट साइज़",
+    watermarkOpacity: "वॉटरमार्क अपारदर्शिता",
+    watermarkRotation: "रोटेशन",
+    watermarkPosition: "स्थिति",
+    merge: "सभी PDF को एक PPT में मर्ज करें",
+    split: "प्रत्येक PDF को अलग PPT में विभाजित करें",
+    compress: "टारगेट साइज़ में कंप्रेस करें",
+    compressSize: "टारगेट साइज़",
+    compressUnit: "इकाई",
+    share: "लिंक साझा करें",
+    email: "ईमेल पर भेजें",
+    history: "इतिहास",
+    clearHistory: "इतिहास साफ़ करें",
+    success: "कन्वर्शन सफल!",
+    error: "कुछ गड़बड़ हुई।",
+    invalidType: "अमान्य फ़ाइल प्रकार। केवल PDF की अनुमति है।",
+    tooLarge: "फ़ाइल बहुत बड़ी है। अधिकतम 100 MB है।",
+    selectedCount: "चयनित",
+    addMore: "और फ़ाइलें जोड़ें",
+    ocr: "OCR (स्कैन की गई PDF)",
+    pageRange: "पेज रेंज (जैसे 1-5,8)",
+    layoutPreserve: "लेआउट संरक्षित करें",
+    outputFormat: "आउटपुट फॉर्मेट",
+    aspectRatio: "आस्पेक्ट रेशियो",
+    slideSize: "स्लाइड साइज़"
+  }
+};
 
 export default function PdfToPowerpoint() {
   const [files, setFiles] = useState([]);
   const [isConverting, setIsConverting] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [dragActive, setDragActive] = useState(false);
-  
-  // 🔥 Blur Fix: High Quality Default ON
-  const [highQuality, setHighQuality] = useState(true);
-  const [ocrEnabled, setOcrEnabled] = useState(false);
-  const [preserveLayout, setPreserveLayout] = useState(true);
-  
-  const [recentFiles, setRecentFiles] = useState([]);
+  const [options, setOptions] = useState({
+    ocr: false,
+    pageRange: '',
+    layoutPreserve: true,
+    dpi: '300',
+    outputFormat: 'pptx',
+    aspectRatio: '16:9',
+    quality: 'high',
+    password: '',
+    passwordConfirm: '',
+    watermark: '',
+    watermarkColor: '#000000',
+    watermarkFontSize: '24',
+    watermarkOpacity: 50,
+    watermarkRotation: 45,
+    watermarkPosition: 'center',
+    merge: false,
+    split: false,
+    compress: false,
+    compressSize: '500',
+    compressUnit: 'KB'
+  });
+  const [darkMode, setDarkMode] = useState(false);
+  const [lang, setLang] = useState('en');
+  const [history, setHistory] = useState([]);
+  const [toast, setToast] = useState(null);
+  const [shareLink, setShareLink] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const fileInputRef = useRef(null);
   const dragCounter = useRef(0);
-  const progressInterval = useRef(null);
 
-  // Load Recent Files
-  useEffect(() => {
-    const saved = localStorage.getItem('masterpdf-ppt-recent');
-    if (saved) setRecentFiles(JSON.parse(saved));
-    return () => clearInterval(progressInterval.current);
-  }, []);
+  const t = translations[lang];
 
-  const handleFileChange = (e) => {
-    if (!e.target.files) return;
-    const selectedFiles = Array.from(e.target.files);
-    const pdfFiles = selectedFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-    if (pdfFiles.length > 0) setFiles(prev => [...prev, ...pdfFiles]);
-    else alert("Please upload valid PDF files only.");
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
   };
 
-  const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index));
-  const clearAll = () => setFiles([]);
-
-  // Drag & Drop
-  const handleDragEnter = (e) => { e.preventDefault(); dragCounter.current++; setDragActive(true); };
-  const handleDragLeave = (e) => { e.preventDefault(); dragCounter.current--; if (dragCounter.current === 0) setDragActive(false); };
-  const handleDrop = (e) => { e.preventDefault(); setDragActive(false); 
-    const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-    if (droppedFiles.length > 0) setFiles(prev => [...prev, ...droppedFiles]);
+  const validateFile = (file) => {
+    if (file.type !== 'application/pdf') {
+      showToast(t.invalidType, 'error');
+      return false;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      showToast(t.tooLarge, 'error');
+      return false;
+    }
+    return true;
   };
 
-  const startProgressSimulation = () => {
-    setProgress(0);
-    progressInterval.current = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 95) { clearInterval(progressInterval.current); return prev; }
-        return prev + 5;
-      });
-    }, 200);
-  };
-
-  const convertToPowerpoint = async () => {
-    if (files.length === 0) return;
-    setIsConverting(true);
-    startProgressSimulation();
-
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
-
-        const response = await fetch('/api/master-convert', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            action: 'pdf-to-powerpoint', 
-            fileUrl: blob.url,
-            highQuality,
-            ocrEnabled,
-            preserveLayout
-          }),
-        });
-        
-        const data = await response.json();
-        if (response.ok && data.downloadUrl) {
-          // 🔥 Fix: target="_blank" hata diya taaki direct download ho
-          const link = document.createElement('a');
-          link.href = data.downloadUrl;
-          link.setAttribute('download', `MasterPdf_Converted_${file.name.split('.')[0]}.pptx`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-
-          // Save to Recent
-          const newRecent = [{ name: file.name, time: new Date().toLocaleString() }, ...recentFiles].slice(0, 5);
-          setRecentFiles(newRecent);
-          localStorage.setItem('masterpdf-ppt-recent', JSON.stringify(newRecent));
-        } else {
-          alert(`Conversion Failed for ${file.name}: ${data.error}`);
-        }
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Server connection failed. Check /api/upload and /api/master-convert routes.");
-    } finally {
-      clearInterval(progressInterval.current);
-      setProgress(100);
-      setTimeout(() => { setProgress(0); setIsConverting(false); }, 1000);
+  const addFiles = (newFiles) => {
+    const valid = [];
+    for (const f of newFiles) {
+      if (validateFile(f)) valid.push(f);
+    }
+    if (valid.length) {
+      setFiles(prev => [...prev, ...valid]);
+      setShareLink('');
     }
   };
 
+  const handleFileChange = (e) => {
+    addFiles(Array.from(e.target.files));
+    e.target.value = '';
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    addFiles(Array.from(e.dataTransfer.files));
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    dragCounter.current++;
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    dragCounter.current--;
+  };
+
+  const removeFile = (index) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const clearAll = () => {
+    setFiles([]);
+    setShareLink('');
+  };
+
+  const moveFile = (fromIndex, toIndex) => {
+    const updated = [...files];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    setFiles(updated);
+  };
+
+  const processFiles = async () => {
+    if (!files.length) return;
+    if (options.password && options.password !== options.passwordConfirm) {
+      showToast("Passwords do not match!", 'error');
+      return;
+    }
+    setIsConverting(true);
+    setProgress(0);
+    setShareLink('');
+
+    try {
+      const progressInterval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 5;
+        });
+      }, 300);
+
+      // Upload each file
+      const uploadedUrls = [];
+      for (const file of files) {
+        const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
+        uploadedUrls.push(blob.url);
+      }
+
+      const body = {
+        action: ACTION_NAME,
+        fileUrls: uploadedUrls,
+        options: {
+          ocrEnabled: options.ocr,
+          highQuality: options.quality === 'high' || options.dpi === '300' || options.dpi === '600',
+          preserveLayout: options.layoutPreserve,
+          pageIndices: parsePageRange(options.pageRange),
+          outputFormat: options.outputFormat,
+          aspectRatio: options.aspectRatio,
+          quality: options.quality,
+          password: options.password,
+          watermark: options.watermark,
+          watermarkColor: options.watermarkColor,
+          watermarkFontSize: options.watermarkFontSize,
+          watermarkOpacity: options.watermarkOpacity,
+          watermarkRotation: options.watermarkRotation,
+          watermarkPosition: options.watermarkPosition,
+          merge: options.merge,
+          split: options.split,
+          compress: options.compress,
+          compressSize: options.compressSize,
+          compressUnit: options.compressUnit
+        }
+      };
+
+      const response = await fetch('/api/master-convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      const data = await response.json();
+
+      if (response.ok && (data.downloadUrl || data.downloadUrls)) {
+        // BLOB DOWNLOAD FIX
+        if (data.downloadUrls && data.downloadUrls.length > 0) {
+          for (let i = 0; i < data.downloadUrls.length; i++) {
+            const resp = await fetch(data.downloadUrls[i]);
+            const blob = await resp.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `MasterPdf_Converted_${i + 1}.pptx`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+          }
+          setShareLink(data.downloadUrls[0]);
+        } else if (data.downloadUrl) {
+          const resp = await fetch(data.downloadUrl);
+          const blob = await resp.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', `MasterPdf_Converted.pptx`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          setShareLink(data.downloadUrl);
+        }
+
+        const newEntry = { time: new Date().toLocaleString(), files: files.map(f => f.name), url: data.downloadUrl || (data.downloadUrls && data.downloadUrls[0]) };
+        setHistory(prev => [newEntry, ...prev].slice(0, 10));
+        showToast(t.success, 'success');
+      } else {
+        throw new Error(data.error || 'Conversion failed');
+      }
+
+      clearInterval(progressInterval);
+      setProgress(100);
+    } catch (error) {
+      console.error(error);
+      showToast(t.error, 'error');
+    } finally {
+      setIsConverting(false);
+      setTimeout(() => setProgress(0), 500);
+    }
+  };
+
+  const cancelConversion = () => {
+    setIsConverting(false);
+    setProgress(0);
+    showToast('Conversion cancelled', 'info');
+  };
+
+  const parsePageRange = (range) => {
+    if (!range) return [];
+    const pages = [];
+    range.split(',').forEach(part => {
+      part = part.trim();
+      if (part.includes('-')) {
+        const [start, end] = part.split('-').map(Number);
+        for (let i = start; i <= end; i++) pages.push(i);
+      } else if (part) {
+        pages.push(Number(part));
+      }
+    });
+    return pages;
+  };
+
+  // History
+  useEffect(() => {
+    const saved = localStorage.getItem('masterpdf_history_ppt');
+    if (saved) setHistory(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('masterpdf_history_ppt', JSON.stringify(history));
+  }, [history]);
+
+  const clearHistory = () => {
+    setHistory([]);
+    localStorage.removeItem('masterpdf_history_ppt');
+  };
+
+  const downloadFromHistory = (url) => {
+    // Use blob method
+    const fetchAndDownload = async () => {
+      const resp = await fetch(url);
+      const blob = await resp.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.setAttribute('download', `MasterPdf_Download.pptx`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
+    };
+    fetchAndDownload();
+  };
+
+  const handleCloud = (provider) => {
+    showToast(`${provider} integration coming soon!`, 'info');
+  };
+
+  const handleEmail = () => {
+    const email = prompt('Enter your email address:');
+    if (email) {
+      showToast(`Result will be sent to ${email} (demo)`, 'info');
+    }
+  };
+
+  const handleShare = async () => {
+    if (shareLink) {
+      try {
+        await navigator.clipboard.writeText(shareLink);
+        showToast('Link copied!', 'success');
+      } catch {
+        showToast('Copy failed', 'error');
+      }
+    } else {
+      showToast('No converted file yet.', 'info');
+    }
+  };
+
+  // Thumbnail component using react-pdf
+  const PdfThumbnails = ({ file }) => {
+    const [numPages, setNumPages] = useState(null);
+    function onDocumentLoadSuccess({ numPages }) {
+      setNumPages(numPages);
+    }
+    return (
+      <div className="w-full">
+        <Document file={file} onLoadSuccess={onDocumentLoadSuccess} className="w-full">
+          {numPages && Array.from(new Array(numPages), (el, index) => (
+            <div key={index} className="mb-3">
+              <Page
+                pageNumber={index + 1}
+                width={120}
+                renderTextLayer={false}
+                renderAnnotationLayer={false}
+                className="border rounded shadow-sm"
+              />
+              <p className="text-xs text-center mt-1">Page {index + 1}</p>
+            </div>
+          ))}
+        </Document>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+    <div className={`min-h-screen flex flex-col font-sans ${darkMode ? 'dark' : ''} ${darkMode ? 'bg-gray-900 text-white' : 'bg-[#F5F5F7] text-gray-900'}`}>
       <Head>
         <title>Convert PDF to PowerPoint Online Free | MasterPdf</title>
         <meta name="description" content="Turn your PDF files into easy to edit PPT and PPTX slideshows online for free. No watermarks." />
+        <meta name="keywords" content="pdf to ppt, pdf to pptx, convert pdf to powerpoint, masterpdf, Suhel Ansari" />
       </Head>
 
       <Navbar />
 
-      <main className="flex-grow flex flex-col items-center justify-center p-6 mt-16 mb-10">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4 tracking-tight">PDF to PowerPoint</h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Convert multiple PDF files into editable PPTX slideshows instantly. Supports huge files.
-          </p>
+      <main className="flex-grow flex flex-col p-4 sm:p-6 mt-16 mb-10">
+        <div className="text-center mb-6">
+          <h1 className="text-3xl sm:text-4xl font-bold mb-2">{TOOL_TITLE}</h1>
+          <p className="text-base sm:text-lg opacity-80">{TOOL_DESC}</p>
         </div>
 
-        <div 
-          className={`w-full max-w-5xl bg-white rounded-2xl shadow-sm border p-8 min-h-[500px] flex flex-col items-center justify-center relative transition-all ${dragActive ? 'border-dashed border-4 border-[#E5322D] bg-red-50' : 'border-gray-200'}`}
-          onDragEnter={handleDragEnter}
-          onDragOver={(e) => e.preventDefault()}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {!isConverting && files.length === 0 && (
-            <div className="text-center w-full">
-              <input type="file" id="file-upload" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
-              <label htmlFor="file-upload" className="cursor-pointer bg-[#E5322D] hover:bg-red-700 text-white text-xl font-bold py-6 px-12 rounded-xl inline-flex items-center gap-3 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
-                <UploadCloud size={28} /> Select PDF files
+        {/* Toolbar */}
+        <div className="flex justify-end mb-4 gap-2">
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="p-2 rounded-full bg-white dark:bg-gray-800 shadow"
+            title={t.darkMode}
+          >
+            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value)}
+            className="p-2 rounded-lg border bg-white dark:bg-gray-800"
+          >
+            <option value="en">English</option>
+            <option value="hi">हिन्दी</option>
+          </select>
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-6 w-full max-w-7xl mx-auto">
+          {/* SIDEBAR – Options */}
+          <div className={`md:w-72 w-full p-4 rounded-2xl border shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <SlidersHorizontal size={18} /> {t.options}
+            </h3>
+
+            {/* Basic Options */}
+            <div className="space-y-4">
+              {/* OCR */}
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={options.ocr} onChange={(e) => setOptions({ ...options, ocr: e.target.checked })} />
+                <ScanText size={16} /> {t.ocr}
               </label>
-              <p className="text-gray-500 mt-4 font-medium">or Drag & Drop your PDFs here</p>
-              <p className="text-gray-400 text-sm mt-2">*No file size limits (100MB max via Blob)</p>
-            </div>
-          )}
-
-          {!isConverting && files.length > 0 && (
-            <div className="w-full h-full flex flex-col gap-6">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xl font-bold text-gray-900">{files.length} PDF File(s) Selected</h3>
-                <button onClick={clearAll} className="text-red-500 hover:text-red-700 font-bold text-sm flex items-center gap-1">
-                  <Trash2 size={16}/> Clear All
-                </button>
+              {/* Page Range */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t.pageRange}</label>
+                <input
+                  type="text"
+                  value={options.pageRange}
+                  onChange={(e) => setOptions({ ...options, pageRange: e.target.value })}
+                  placeholder="e.g., 1-5,8"
+                  className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                />
               </div>
+              {/* Layout Preserve */}
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={options.layoutPreserve} onChange={(e) => setOptions({ ...options, layoutPreserve: e.target.checked })} />
+                <CheckCircle2 size={16} /> {t.layoutPreserve}
+              </label>
+              {/* DPI */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t.dpi}</label>
+                <select
+                  value={options.dpi}
+                  onChange={(e) => setOptions({ ...options, dpi: e.target.value })}
+                  className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                >
+                  <option value="72">72 DPI</option>
+                  <option value="150">150 DPI</option>
+                  <option value="300">300 DPI</option>
+                  <option value="600">600 DPI</option>
+                </select>
+              </div>
+              {/* Output Format */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t.outputFormat}</label>
+                <select
+                  value={options.outputFormat}
+                  onChange={(e) => setOptions({ ...options, outputFormat: e.target.value })}
+                  className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                >
+                  <option value="pptx">PPTX</option>
+                  <option value="ppt">PPT (Legacy)</option>
+                </select>
+              </div>
+              {/* Aspect Ratio */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t.aspectRatio}</label>
+                <select
+                  value={options.aspectRatio}
+                  onChange={(e) => setOptions({ ...options, aspectRatio: e.target.value })}
+                  className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                >
+                  <option value="16:9">16:9 (Widescreen)</option>
+                  <option value="4:3">4:3 (Traditional)</option>
+                </select>
+              </div>
+              {/* Quality */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t.quality}</label>
+                <select
+                  value={options.quality}
+                  onChange={(e) => setOptions({ ...options, quality: e.target.value })}
+                  className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                >
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+            </div>
 
-              {/* 🔥 Advanced Settings (No Blur ka asli formula) */}
-                            {/* 🔥 FIX: Text ko Dark aur Bold karke Blur hataya gaya hai */}
-              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
-                  <ScanText size={18} className="text-gray-900"/>
-                  <span className="font-bold text-gray-900">Enable OCR</span>
+            {/* Advanced Toggle */}
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="mt-4 w-full flex items-center justify-center gap-2 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            >
+              {showAdvanced ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              {showAdvanced ? t.basic : t.advanced}
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-4 space-y-4">
+                {/* Password */}
+                <div>
+                  <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                    <Lock size={14} /> {t.password}
+                  </label>
+                  <input type="password" value={options.password} onChange={(e) => setOptions({ ...options, password: e.target.value })} placeholder="Enter password" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.passwordConfirm}</label>
+                  <input type="password" value={options.passwordConfirm} onChange={(e) => setOptions({ ...options, passwordConfirm: e.target.value })} placeholder="Confirm password" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                </div>
+                {/* Watermark */}
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.watermark}</label>
+                  <input type="text" value={options.watermark} onChange={(e) => setOptions({ ...options, watermark: e.target.value })} placeholder="Your watermark" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                    <Palette size={14} /> {t.watermarkColor}
+                  </label>
+                  <input type="color" value={options.watermarkColor} onChange={(e) => setOptions({ ...options, watermarkColor: e.target.value })} className="w-full p-1 border rounded bg-white dark:bg-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.watermarkFontSize}</label>
+                  <input type="number" min="1" max="100" value={options.watermarkFontSize} onChange={(e) => setOptions({ ...options, watermarkFontSize: e.target.value })} className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.watermarkOpacity}</label>
+                  <input type="number" min="0" max="100" value={options.watermarkOpacity} onChange={(e) => setOptions({ ...options, watermarkOpacity: e.target.value })} className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.watermarkRotation}</label>
+                  <input type="number" value={options.watermarkRotation} onChange={(e) => setOptions({ ...options, watermarkRotation: e.target.value })} className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.watermarkPosition}</label>
+                  <select value={options.watermarkPosition} onChange={(e) => setOptions({ ...options, watermarkPosition: e.target.value })} className="w-full p-2 border rounded bg-white dark:bg-gray-900">
+                    <option value="center">Center</option>
+                    <option value="top">Top</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                    {/* diagonal not supported by ConvertAPI */}
+                  </select>
+                </div>
+                {/* Merge */}
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={options.merge} onChange={(e) => setOptions({ ...options, merge: e.target.checked })} />
+                  <Combine size={16} /> {t.merge}
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={highQuality} onChange={(e) => setHighQuality(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
-                  <CheckCircle2 size={18} className="text-gray-900"/>
-                  <span className="font-bold text-gray-900">High Quality (Blur Fix)</span>
+                {/* Split */}
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={options.split} onChange={(e) => setOptions({ ...options, split: e.target.checked })} />
+                  <Split size={16} /> {t.split}
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={preserveLayout} onChange={(e) => setPreserveLayout(e.target.checked)} className="w-5 h-5 accent-[#E5322D]" />
-                  <FileText size={18} className="text-gray-900"/>
-                  <span className="font-bold text-gray-900">Preserve Layout</span>
+                {/* Compress */}
+                <div>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={options.compress} onChange={(e) => setOptions({ ...options, compress: e.target.checked })} />
+                    {t.compress}
+                  </label>
+                  {options.compress && (
+                    <div className="flex gap-2 mt-2">
+                      <input type="number" min="1" placeholder={t.compressSize} value={options.compressSize} onChange={(e) => setOptions({ ...options, compressSize: e.target.value })} className="p-2 border rounded bg-white dark:bg-gray-900 flex-1" />
+                      <select value={options.compressUnit} onChange={(e) => setOptions({ ...options, compressUnit: e.target.value })} className="p-2 border rounded bg-white dark:bg-gray-900">
+                        <option value="KB">KB</option>
+                        <option value="MB">MB</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* MAIN AREA */}
+          <div className="flex-1">
+            <div className={`rounded-2xl shadow-sm border p-6 min-h-[450px] flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+              {/* Drag & Drop */}
+              <div
+                onDragEnter={handleDragEnter}
+                onDragOver={(e) => e.preventDefault()}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-xl p-10 text-center transition ${darkMode ? 'border-gray-600 hover:border-blue-400' : 'border-gray-300 hover:border-blue-500'} ${files.length ? 'hidden' : ''}`}
+              >
+                <input type="file" id="file-upload" accept={ACCEPT_FORMAT} onChange={handleFileChange} multiple className="hidden" ref={fileInputRef} />
+                <label htmlFor="file-upload" className="cursor-pointer inline-flex flex-col items-center gap-3">
+                  <UploadCloud size={48} className="text-blue-500" />
+                  <span className="text-lg font-semibold">{t.drag}</span>
+                  <span className="text-sm opacity-70">{t.or}</span>
+                  <span className="bg-[#E5322D] text-white px-8 py-3 rounded-xl font-bold shadow hover:bg-red-700 transition">{t.browse}</span>
                 </label>
+                <p className="text-xs mt-3 opacity-60">Max 100 MB per file</p>
               </div>
 
               {/* File List */}
-              <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                {files.map((file, index) => (
-                  <div key={index} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <FileText size={24} className="text-[#E5322D] shrink-0"/>
-                      <span className="text-sm font-bold text-gray-800 truncate max-w-[300px]">{file.name}</span>
-                      <span className="text-xs text-gray-500">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
-                    </div>
-                    <button onClick={() => removeFile(index)} className="text-gray-400 hover:text-red-500 p-1">
-                      <X size={18}/>
+              {files.length > 0 && (
+                <div className="w-full">
+                  <div className="flex justify-between items-center mb-4">
+                    <button onClick={() => fileInputRef.current.click()} className="flex items-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600">
+                      <Plus size={18} />
+                      <span>{files.length} {t.selectedCount}</span>
+                    </button>
+                    <button onClick={clearAll} className="text-red-500 hover:text-red-700 flex items-center gap-1">
+                      <Trash2 size={16} /> {t.clearAll}
                     </button>
                   </div>
-                ))}
-              </div>
 
-              <div className="mt-4 flex justify-end">
-                 <button onClick={convertToPowerpoint} disabled={isConverting} className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700 hover:shadow-lg disabled:bg-gray-400">
-                   <FolderOpen size={24}/> Convert All to PPTX <ArrowRight size={24}/>
-                 </button>
-              </div>
-            </div>
-          )}
-
-          {isConverting && (
-            <div className="w-full max-w-lg text-center">
-              <Loader2 className="animate-spin text-[#E5322D] mx-auto mb-4" size={48}/>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Converting...</h3>
-              <div className="w-full bg-gray-200 rounded-full h-4 mb-2">
-                <div className="bg-[#E5322D] h-4 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
-              </div>
-              <p className="text-sm text-gray-500 font-bold">Progress: {progress}%</p>
-            </div>
-          )}
-
-          {recentFiles.length > 0 && !isConverting && files.length === 0 && (
-            <div className="mt-8 w-full max-w-lg border-t pt-6">
-              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                <History size={16} className="text-gray-500"/> Recent Conversions
-              </h3>
-              <div className="space-y-2">
-                {recentFiles.map((item, i) => (
-                  <div key={i} className="text-xs text-gray-600 border-l-2 border-gray-300 pl-3">
-                    <span className="font-bold text-gray-800">{item.name}</span> at {item.time}
+                  {/* Files + Thumbnails */}
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {files.map((file, index) => (
+                      <div key={index} className={`flex items-start justify-between p-3 rounded-lg border ${darkMode ? 'border-gray-600' : 'border-gray-200'} bg-gray-50 dark:bg-gray-700`}>
+                        <div className="flex items-center gap-3 flex-1">
+                          <button onClick={() => moveFile(index, index - 1)} disabled={index === 0} className="text-gray-500 disabled:opacity-30">
+                            <ChevronUp size={16} />
+                          </button>
+                          <button onClick={() => moveFile(index, index + 1)} disabled={index === files.length - 1} className="text-gray-500 disabled:opacity-30">
+                            <ChevronDown size={16} />
+                          </button>
+                          <div className="flex-1">
+                            <p className="font-semibold text-sm truncate max-w-[200px]">{file.name}</p>
+                            <p className="text-xs opacity-60">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                            {/* Thumbnails */}
+                            <div className="mt-2">
+                              <PdfThumbnails file={file} />
+                            </div>
+                          </div>
+                        </div>
+                        <button onClick={() => removeFile(index)} className="text-gray-500 hover:text-red-500 ml-2">
+                          <X size={18} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+
+                  {/* Convert Button */}
+                  <div className="mt-6 flex flex-col sm:flex-row gap-4">
+                    {!isConverting ? (
+                      <button onClick={processFiles} className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700">
+                        {t.convert} <ArrowRight size={24} />
+                      </button>
+                    ) : (
+                      <>
+                        <button onClick={cancelConversion} className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-bold text-lg bg-gray-300 hover:bg-gray-400 text-gray-800">{t.cancel}</button>
+                        <div className="flex-1 flex flex-col items-center justify-center">
+                          <div className="w-full bg-gray-200 rounded-full h-4">
+                            <div className="bg-blue-500 h-4 rounded-full transition-all" style={{ width: `${progress}%` }}></div>
+                          </div>
+                          <span className="text-sm mt-1">{progress}%</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Share / Email / Cloud */}
+                  {shareLink && !isConverting && (
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button onClick={handleShare} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"><Share2 size={18} /> {t.share}</button>
+                      <button onClick={handleEmail} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"><Mail size={18} /> {t.email}</button>
+                      <button onClick={() => handleCloud('Google Drive')} className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600"><Cloud size={18} /> Google Drive</button>
+                      <button onClick={() => handleCloud('Dropbox')} className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600"><Cloud size={18} /> Dropbox</button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* History */}
+            {history.length > 0 && (
+              <div className="mt-6 border-t pt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-bold flex items-center gap-2"><History size={18} /> {t.history}</h4>
+                  <button onClick={clearHistory} className="text-red-500 text-sm hover:underline">{t.clearHistory}</button>
+                </div>
+                <ul className="space-y-2 max-h-40 overflow-y-auto">
+                  {history.map((item, idx) => (
+                    <li key={idx} className="flex justify-between items-center text-sm bg-gray-50 dark:bg-gray-700 p-2 rounded">
+                      <span>{item.files.join(', ')} <span className="opacity-50">({item.time})</span></span>
+                      <button onClick={() => downloadFromHistory(item.url)} className="text-blue-500 hover:underline flex items-center gap-1"><Download size={14} /> Download</button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       </main>
+
       <Footer />
+
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg text-white ${toast.type === 'error' ? 'bg-red-500' : toast.type === 'info' ? 'bg-blue-500' : 'bg-green-500'}`}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }
