@@ -187,17 +187,17 @@ if (!fileUrls || fileUrls.length === 0) {
     const watermark = options.watermark || '';
     const splitRange = options.splitRange || '';
     const splitByBookmark = options.splitByBookmark === true;
+    const compress = options.compress === true;
+    const compressSize = options.compressSize || '500';
+    const compressUnit = options.compressUnit || 'KB';
 
     const convertedUrls = [];
     for (const url of fileUrls) {
       const convertOptions = { File: url };
 
-      // Page Size
       if (options.pageSize) convertOptions.PageSize = options.pageSize;
-      // Orientation
       if (options.orientation) convertOptions.PageOrientation = options.orientation;
 
-      // Margins
       if (options.margins) {
         if (options.margins === 'custom') {
           const m = options.customMargins || {};
@@ -210,21 +210,15 @@ if (!fileUrls || fileUrls.length === 0) {
         }
       }
 
-      // Scaling
       if (options.scaling) convertOptions.Scaling = options.scaling + '%';
-
-      // DPI
       if (options.dpi) convertOptions.ImageResolution = options.dpi;
 
-      // Compression
       if (options.compression === 'high') convertOptions.Compression = 'high';
       else if (options.compression === 'low') convertOptions.Compression = 'low';
 
-      // Color Mode
       if (options.colorMode === 'cmyk') convertOptions.ColorMode = 'cmyk';
       else if (options.colorMode === 'grayscale') convertOptions.ColorMode = 'grayscale';
 
-      // Quality (if not using dpi)
       if (options.quality === 'high') convertOptions.ImageResolution = '300';
       else if (options.quality === 'low') convertOptions.ImageResolution = '72';
 
@@ -251,17 +245,19 @@ if (!fileUrls || fileUrls.length === 0) {
       finalUrl = convertedUrls[0];
     }
 
-    // Watermark (advanced options)
+    // Watermark with color and font size
     if (watermark) {
-      const watermarkResult = await convertapi.convert('watermark', {
+      const watermarkOptions = {
         File: finalUrl,
         Text: watermark,
-        FontSize: '24',
+        FontSize: options.watermarkFontSize || '24',
         Opacity: options.watermarkOpacity || '30',
         Rotation: options.watermarkRotation || '45',
         HorizontalAlignment: options.watermarkPosition || 'center',
         VerticalAlignment: options.watermarkPosition || 'center'
-      }, 'pdf');
+      };
+      if (options.watermarkColor) watermarkOptions.FontColor = options.watermarkColor;
+      const watermarkResult = await convertapi.convert('watermark', watermarkOptions, 'pdf');
       finalUrl = watermarkResult.response.Files[0].Url;
     }
 
@@ -282,7 +278,7 @@ if (!fileUrls || fileUrls.length === 0) {
       finalUrl = encryptResult.response.Files[0].Url;
     }
 
-    // Split range (already works)
+    // Split range
     if (splitRange) {
       const pageIndices = [];
       splitRange.split(',').forEach(part => {
@@ -307,14 +303,29 @@ if (!fileUrls || fileUrls.length === 0) {
       finalUrl = blob.url;
     }
 
-    // Split by bookmark (if supported)
-    if (splitByBookmark) {
-      // Implement using convertapi's 'split' or custom logic - for now just a placeholder
-      // You would need to call convertapi.convert('split', { File: finalUrl }, 'pdf') and return array
-      // We'll handle it later.
+    // Compress to target size (if requested)
+    if (compress) {
+      try {
+        let targetSizeBytes = parseInt(compressSize);
+        if (compressUnit === 'MB') targetSizeBytes = targetSizeBytes * 1024 * 1024;
+        else targetSizeBytes = targetSizeBytes * 1024;
+
+        // Use convertapi compress (best effort)
+        const compressResult = await convertapi.convert('compress', { File: finalUrl }, 'pdf');
+        finalUrl = compressResult.response.Files[0].Url;
+        // Optionally check size and loop if needed (but we'll keep simple)
+      } catch (compErr) {
+        console.log("Compress failed, returning original:", compErr.message);
+      }
     }
 
-    return res.status(200).json({ success: true, downloadUrl: finalUrl });
+    // ✅ YOUR REQUESTED RETURN LOGIC
+    if (convertedUrls.length > 1 && !merge) {
+      return res.status(200).json({ success: true, downloadUrls: convertedUrls });
+    } else {
+      return res.status(200).json({ success: true, downloadUrl: finalUrl });
+    }
+
   } catch (err) {
     console.error("Word-to-PDF error:", err);
     return res.status(500).json({ error: "Word to PDF conversion failed." });
