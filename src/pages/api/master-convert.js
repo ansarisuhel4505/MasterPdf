@@ -393,12 +393,13 @@ if (!fileUrls || fileUrls.length === 0) {
    else if (action === 'excel-to-pdf') {
   try {
     const options = req.body.options || {};
-    const fileUrls = req.body.fileUrls || [req.body.fileUrl];
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl]; // Multiple files support
     const outputUrls = [];
 
     for (const url of fileUrls) {
       const convertOptions = { File: url };
 
+      // Safe ConvertAPI Options (Only supported ones)
       if (options.pageSize) convertOptions.PageSize = options.pageSize;
       if (options.orientation) convertOptions.PageOrientation = options.orientation;
       if (options.margins) {
@@ -413,11 +414,7 @@ if (!fileUrls || fileUrls.length === 0) {
         }
       }
       if (options.scaling) convertOptions.Scaling = options.scaling + '%';
-      if (options.fitToWidth) convertOptions.FitToWidth = 'true';
-      if (options.fitToOnePage) convertOptions.FitToOnePage = 'true';
-      if (options.gridlines) convertOptions.GridLines = 'true';
-      if (options.repeatHeader) convertOptions.RepeatHeader = 'true';
-      if (options.sheetSelection) convertOptions.SheetSelection = options.sheetSelection;
+      
       if (options.quality === 'high') convertOptions.ImageResolution = '300';
       else if (options.quality === 'low') convertOptions.ImageResolution = '72';
 
@@ -427,6 +424,7 @@ if (!fileUrls || fileUrls.length === 0) {
 
     let finalUrl;
     if (options.merge && outputUrls.length > 1) {
+      // Merge PDFs using pdf-lib
       const mergedPdf = await PDFDocument.create();
       for (const url of outputUrls) {
         const pdfBytes = await fetch(url).then(res => res.arrayBuffer());
@@ -441,11 +439,13 @@ if (!fileUrls || fileUrls.length === 0) {
       finalUrl = outputUrls[0];
     }
 
+    // Password Protection
     if (options.password) {
       const encryptResult = await convertapi.convert('encrypt', { File: finalUrl, UserPassword: options.password, OwnerPassword: options.password }, 'pdf');
       finalUrl = encryptResult.response.Files[0].Url;
     }
 
+    // Watermark
     if (options.watermark) {
       const watermarkResult = await convertapi.convert('watermark', {
         File: finalUrl,
@@ -460,6 +460,7 @@ if (!fileUrls || fileUrls.length === 0) {
       finalUrl = watermarkResult.response.Files[0].Url;
     }
 
+    // Return proper URL(s)
     if (outputUrls.length > 1 && !options.merge) {
       return res.status(200).json({ success: true, downloadUrls: outputUrls });
     } else {
