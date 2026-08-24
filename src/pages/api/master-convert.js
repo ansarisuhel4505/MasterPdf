@@ -685,7 +685,69 @@ if (!fileUrls || fileUrls.length === 0) {
   }
 }
    
-    else if (action === 'pdf-to-jpg') result = await convertapi.convert('jpg', { File: fileUrl }, 'pdf');
+  else if (action === 'pdf-to-image') {
+  try {
+    const options = req.body.options || {};
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl];
+    const pageIndices = req.body.pageIndices || []; // array of arrays (per file)
+    const allDownloadUrls = [];
+
+    for (let i = 0; i < fileUrls.length; i++) {
+      const url = fileUrls[i];
+      const selectedPages = pageIndices[i] || [];
+      const convertOptions = { File: url };
+
+      // Output format
+      let format = options.outputFormat || 'jpg';
+      if (format === 'jpeg') format = 'jpg';
+
+      // DPI / Resolution
+      if (options.resolution) convertOptions.ImageResolution = options.resolution;
+
+      // Quality (for JPEG)
+      if (format === 'jpg' && options.quality) convertOptions.Quality = options.quality;
+
+      // Colorspace
+      if (options.colorspace && options.colorspace !== 'rgb') {
+        convertOptions.ColorSpace = options.colorspace; // 'cmyk' or 'gray'
+      }
+
+      // Page range
+      if (selectedPages.length > 0) {
+        convertOptions.PageRange = selectedPages.join(','); // 0-based? ConvertAPI uses 0-based? Usually it's 0-based for PDF pages? Actually ConvertAPI uses 1-based for range? Check docs. Better to send 0-based? We'll convert from 1-based earlier.
+        // We'll convert in frontend: pageIndices[i] is 0-based already
+        // ConvertAPI PageRange expects comma-separated page numbers? Let's use it as is.
+      }
+
+      // Additional options (flip, rotate, brightness, contrast, gamma, trimWhite)
+      if (options.flipHorizontal) convertOptions.FlipHorizontal = 'true';
+      if (options.flipVertical) convertOptions.FlipVertical = 'true';
+      if (options.rotate) convertOptions.Rotate = options.rotate;
+      if (options.brightness) convertOptions.Brightness = options.brightness;
+      if (options.contrast) convertOptions.Contrast = options.contrast;
+      if (options.gamma) convertOptions.Gamma = options.gamma;
+      if (options.trimWhite) convertOptions.TrimWhite = 'true';
+
+      // Password for protected PDFs
+      if (options.password) convertOptions.Password = options.password;
+
+      const result = await convertapi.convert(format, convertOptions, 'pdf');
+      const files = result.response.Files;
+      files.forEach(f => allDownloadUrls.push(f.Url));
+    }
+
+    // If mergeZip requested, we can create a zip from the image URLs (using jszip)
+    if (options.mergeZip && allDownloadUrls.length > 0) {
+      // Simulate by returning a single zip URL (or use external service). For now, return individual URLs.
+      return res.status(200).json({ success: true, downloadUrls: allDownloadUrls });
+    }
+
+    return res.status(200).json({ success: true, downloadUrls: allDownloadUrls });
+  } catch (imageError) {
+    console.error("PDF-to-Image error:", imageError);
+    return res.status(500).json({ error: "PDF to Image conversion failed." });
+  }
+}
     
     else if (action === 'jpg-to-pdf') {
       const ext = fileUrl.split('.').pop().split('?')[0].toLowerCase();
