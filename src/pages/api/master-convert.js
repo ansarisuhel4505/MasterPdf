@@ -567,7 +567,8 @@ if (!fileUrls || fileUrls.length === 0) {
     console.error("Excel-to-PDF error:", excelToPdfError);
     return res.status(500).json({ error: "Excel to PDF conversion failed." });
   }
-}else if (action === 'powerpoint-to-pdf') {
+}
+    else if (action === 'powerpoint-to-pdf') {
   try {
     const options = req.body.options || {};
     const fileUrls = req.body.fileUrls || [req.body.fileUrl];
@@ -577,49 +578,36 @@ if (!fileUrls || fileUrls.length === 0) {
       const convertOptions = { File: url };
 
       // Basic Options
-      if (options.pageRange && options.pageRange.length > 0) {
-        convertOptions.PageRange = options.pageRange.join(','); // e.g., "1,2,3"
-      }
+      if (options.pageRange && options.pageRange.length > 0) convertOptions.PageRange = options.pageRange.join(',');
       if (options.publishWhat) convertOptions.PublishWhat = options.publishWhat;
       if (options.slidesPerPage) convertOptions.SlidesPerPage = options.slidesPerPage;
       if (options.frameSlides) convertOptions.FrameSlides = 'true';
       if (options.includeHidden) convertOptions.IncludeHidden = 'true';
+
+      // Quality & Image
       if (options.quality === 'high') convertOptions.Quality = 'high';
       else if (options.quality === 'min') convertOptions.Quality = 'min';
-
-      // Advanced Options
       if (options.dpi) convertOptions.ImageResolution = options.dpi;
       if (options.jpegCompression) convertOptions.JpegCompression = options.jpegCompression;
       if (options.textCompression) convertOptions.TextCompression = options.textCompression;
       if (options.fontEmbedding) convertOptions.FontEmbedding = options.fontEmbedding;
-      if (options.pdfa && options.pdfa !== 'none') convertOptions.Pdfa = options.pdfa;
-      if (options.pdfua) convertOptions.Pdfua = 'true';
-      if (options.encryption) convertOptions.Encryption = 'AES-256';
-      if (options.metadata) convertOptions.PreserveMetadata = 'true';
-      if (options.digitalSignature) convertOptions.Sign = 'true'; // Demo
 
-      // Password
-      if (options.password) {
-        convertOptions.UserPassword = options.password;
-        convertOptions.OwnerPassword = options.password;
-        if (options.permissions) {
-          let perms = [];
-          if (options.permissions.print) perms.push('Print');
-          if (options.permissions.highPrint) perms.push('HighQualityPrint');
-          if (options.permissions.copy) perms.push('Copy');
-          if (options.permissions.modify) perms.push('Modify');
-          if (perms.length > 0) convertOptions.Permissions = perms.join(',');
-        }
+      // 🔥 FIX: PDF/A Compliance
+      if (options.pdfa && options.pdfa !== 'none') {
+        convertOptions.Pdfa = 'true'; // Boolean required
+        convertOptions.PdfaFormat = options.pdfa; // pdfa1b, pdfa2b, pdfa3b
       }
 
-      // Watermark (after conversion to PDF via bridge)
-      // We'll do watermark after conversion
+      // Metadata & Accessibility
+      if (options.metadata) convertOptions.PreserveMetadata = 'true';
+      if (options.pdfua) convertOptions.Pdfua = 'true';
 
+      // Conversion
       const result = await convertapi.convert('pdf', convertOptions, 'pptx');
       outputUrls.push(result.response.Files[0].Url);
     }
 
-    // Merge if requested
+    // Merge if needed
     let finalUrl;
     if (options.merge && outputUrls.length > 1) {
       const mergedPdf = await PDFDocument.create();
@@ -636,13 +624,14 @@ if (!fileUrls || fileUrls.length === 0) {
       finalUrl = outputUrls[0];
     }
 
-    // Watermark (PDF already)
+    // Watermark (on PDF)
     if (options.watermark) {
       let hAlign = 'center', vAlign = 'center';
       if (options.watermarkPosition === 'top') vAlign = 'top';
       else if (options.watermarkPosition === 'bottom') vAlign = 'bottom';
       else if (options.watermarkPosition === 'left') hAlign = 'left';
       else if (options.watermarkPosition === 'right') hAlign = 'right';
+
       const watermarkResult = await convertapi.convert('watermark', {
         File: finalUrl,
         Text: options.watermark,
@@ -656,7 +645,25 @@ if (!fileUrls || fileUrls.length === 0) {
       finalUrl = watermarkResult.response.Files[0].Url;
     }
 
-    // Compress if requested
+    // Password Protection (on PDF)
+    if (options.password) {
+      const perms = [];
+      if (options.permissions && options.permissions.print) perms.push('Print');
+      if (options.permissions && options.permissions.highPrint) perms.push('HighQualityPrint');
+      if (options.permissions && options.permissions.copy) perms.push('Copy');
+      if (options.permissions && options.permissions.modify) perms.push('Modify');
+
+      const encryptOptions = {
+        File: finalUrl,
+        UserPassword: options.password,
+        OwnerPassword: options.password
+      };
+      if (perms.length > 0) encryptOptions.Permissions = perms.join(',');
+      const encryptResult = await convertapi.convert('encrypt', encryptOptions, 'pdf');
+      finalUrl = encryptResult.response.Files[0].Url;
+    }
+
+    // Compress (Safely - after password)
     if (options.compress) {
       try {
         const compressResult = await convertapi.convert('compress', { File: finalUrl }, 'pdf');
@@ -666,7 +673,7 @@ if (!fileUrls || fileUrls.length === 0) {
       }
     }
 
-    // Return URL(s)
+    // Return logic
     if (outputUrls.length > 1 && !options.merge) {
       return res.status(200).json({ success: true, downloadUrls: outputUrls });
     } else {
