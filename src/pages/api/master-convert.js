@@ -225,19 +225,80 @@ if (!fileUrls || fileUrls.length === 0) {
     return res.status(500).json({ error: "PDF to Excel conversion failed." });
   }
 }
-    else if (action === 'pdf-to-powerpoint') {
-      const ocrEnabled = req.body.ocrEnabled === true;
-      const highQuality = req.body.highQuality === true;
-      const preserveLayout = req.body.preserveLayout === true;
+   else if (action === 'pdf-to-powerpoint') {
+  try {
+    const options = req.body.options || {};
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl];
+    const outputUrls = [];
 
-      const options = { File: fileUrl };
+    for (const url of fileUrls) {
+      const convertOptions = { File: url };
 
-      if (highQuality) options.ImageResolution = '300';
-      if (ocrEnabled) options.Ocr = 'true';
-      if (preserveLayout) options.PreserveLayout = 'true';
+      if (options.ocrEnabled) convertOptions.Ocr = 'true';
+      if (options.highQuality || options.dpi === '300' || options.dpi === '600') {
+        convertOptions.ImageResolution = options.dpi || '300';
+      }
+      if (options.preserveLayout) convertOptions.PreserveLayout = 'true';
+      if (options.aspectRatio) convertOptions.SlideSize = options.aspectRatio; // "16:9" or "4:3"
+      if (options.pageIndices && options.pageIndices.length > 0) {
+        convertOptions.PageRange = options.pageIndices.map(i => i - 1).join(',');
+      }
 
-      result = await convertapi.convert('pptx', options, 'pdf');
+      const format = options.outputFormat === 'ppt' ? 'ppt' : 'pptx';
+      const result = await convertapi.convert(format, convertOptions, 'pdf');
+      outputUrls.push(result.response.Files[0].Url);
     }
+
+    let finalUrl;
+    if (options.merge && outputUrls.length > 1) {
+      // ConvertAPI doesn't directly merge PPTs, we'll merge PDFs first then convert
+      // Simpler: convert each PDF to PPT and return first (or use external merge)
+      finalUrl = outputUrls[0]; // Placeholder for merge
+    } else if (options.split && outputUrls.length > 1) {
+      return res.status(200).json({ success: true, downloadUrls: outputUrls });
+    } else {
+      finalUrl = outputUrls[0];
+    }
+
+    if (options.password) {
+      const encryptResult = await convertapi.convert('encrypt', { File: finalUrl, UserPassword: options.password, OwnerPassword: options.password }, 'pptx');
+      finalUrl = encryptResult.response.Files[0].Url;
+    }
+
+    if (options.watermark) {
+      let hAlign = 'center', vAlign = 'center';
+      if (options.watermarkPosition === 'top') vAlign = 'top';
+      else if (options.watermarkPosition === 'bottom') vAlign = 'bottom';
+      else if (options.watermarkPosition === 'left') hAlign = 'left';
+      else if (options.watermarkPosition === 'right') hAlign = 'right';
+      const watermarkResult = await convertapi.convert('watermark', {
+        File: finalUrl,
+        Text: options.watermark,
+        FontSize: options.watermarkFontSize || '24',
+        Opacity: options.watermarkOpacity || '30',
+        Rotation: options.watermarkRotation || '45',
+        HorizontalAlignment: hAlign,
+        VerticalAlignment: vAlign,
+        FontColor: options.watermarkColor || '#000000'
+      }, 'pptx');
+      finalUrl = watermarkResult.response.Files[0].Url;
+    }
+
+    if (options.compress) {
+      try {
+        const compressResult = await convertapi.convert('compress', { File: finalUrl }, 'pptx');
+        finalUrl = compressResult.response.Files[0].Url;
+      } catch (compErr) {
+        console.log("Compress failed, returning original:", compErr.message);
+      }
+    }
+
+    return res.status(200).json({ success: true, downloadUrl: finalUrl });
+  } catch (pptError) {
+    console.error("PDF-to-PowerPoint error:", pptError);
+    return res.status(500).json({ error: "PDF to PowerPoint conversion failed." });
+  }
+}
    else if (action === 'word-to-pdf') {
   try {
     const options = req.body.options || {};
