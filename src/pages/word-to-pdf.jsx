@@ -175,7 +175,19 @@ export default function WordToPdf() {
         uploadedUrls.push(blob.url);
       }
 
-      const body = { action: ACTION_NAME, fileUrls: uploadedUrls, options, merge: options.merge };
+      // 🔥 FIX FOR ConvertAPI CRASH (Code: 4000)
+      // ConvertAPI does not support "diagonal", so we map it to "center" and 45 degree rotation.
+      const apiWatermarkPosition = options.watermarkPosition === 'diagonal' ? 'center' : options.watermarkPosition;
+      const apiWatermarkRotation = options.watermarkPosition === 'diagonal' ? 45 : options.watermarkRotation;
+
+      const apiOptions = {
+        ...options,
+        watermarkPosition: apiWatermarkPosition,
+        watermarkRotation: apiWatermarkRotation
+      };
+
+      const body = { action: ACTION_NAME, fileUrls: uploadedUrls, options: apiOptions, merge: options.merge };
+      
       const response = await fetch('/api/master-convert', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
       });
