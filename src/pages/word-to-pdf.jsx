@@ -3,18 +3,49 @@ import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import {
-  UploadCloud, FileText, X, ArrowRight, Settings, Trash2, Download,
-  Cloud, Mail, Share2, History, Sun, Moon, Lock, Image as ImageIcon,
-  Combine, Split, ChevronDown, ChevronUp, Plus, Palette, Type, SlidersHorizontal
+  UploadCloud, 
+  FileText, 
+  X, 
+  ArrowRight, 
+  Settings, 
+  Trash2, 
+  Download,
+  Cloud, 
+  Mail, 
+  Share2, 
+  History, 
+  Sun, 
+  Moon, 
+  Lock, 
+  Image as ImageIcon,
+  Combine, 
+  Split, 
+  ChevronDown, 
+  ChevronUp, 
+  Plus, 
+  Palette, 
+  Type, 
+  SlidersHorizontal,
+  ZoomIn,
+  ZoomOut,
+  Eye
 } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
+
+// PDF Viewer Imports
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
+
+if (typeof window !== 'undefined') {
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+}
 
 const TOOL_TITLE = "Word to PDF Converter";
 const TOOL_DESC = "Make DOC and DOCX files easy to read by converting them to PDF.";
 const ACTION_NAME = "word-to-pdf";
 const ACCEPT_FORMAT = ".doc,.docx";
 
-// i18n dictionary (abhi English aur Hindi)
 const translations = {
   en: {
     select: "Select File",
@@ -155,6 +186,13 @@ export default function WordToPdf() {
   const fileInputRef = useRef(null);
   const dragCounter = useRef(0);
 
+  // Preview Feature States
+  const [previewMode, setPreviewMode] = useState(false);
+  const [convertedPdfUrl, setConvertedPdfUrl] = useState(null);
+  const [numPages, setNumPages] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [zoom, setZoom] = useState(1.0);
+
   const t = translations[lang];
 
   const showToast = (message, type = 'success') => {
@@ -162,7 +200,6 @@ export default function WordToPdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // File validation (no size limit)
   const validateFile = (file) => {
     const ext = file.name.split('.').pop().toLowerCase();
     if (!['doc', 'docx'].includes(ext)) {
@@ -180,6 +217,8 @@ export default function WordToPdf() {
     if (valid.length) {
       setFiles(prev => [...prev, ...valid]);
       setShareLink('');
+      setPreviewMode(false);
+      setConvertedPdfUrl(null);
     }
   };
 
@@ -211,6 +250,8 @@ export default function WordToPdf() {
   const clearAll = () => {
     setFiles([]);
     setShareLink('');
+    setPreviewMode(false);
+    setConvertedPdfUrl(null);
   };
 
   const moveFile = (fromIndex, toIndex) => {
@@ -229,6 +270,7 @@ export default function WordToPdf() {
     setIsConverting(true);
     setProgress(0);
     setShareLink('');
+    setPreviewMode(false);
 
     try {
       const progressInterval = setInterval(() => {
@@ -289,6 +331,9 @@ export default function WordToPdf() {
       const data = await response.json();
 
       if (response.ok && (data.downloadUrl || data.downloadUrls)) {
+        let previewUrl = data.downloadUrl || (data.downloadUrls && data.downloadUrls[0]);
+
+        // Trigger Auto Download as per original code
         if (data.downloadUrls && data.downloadUrls.length > 0) {
           data.downloadUrls.forEach((url, idx) => {
             const link = document.createElement('a');
@@ -311,10 +356,15 @@ export default function WordToPdf() {
           setShareLink(data.downloadUrl);
         }
 
+        // Enable Preview Mode
+        setConvertedPdfUrl(previewUrl);
+        setPreviewMode(true);
+
+        // Update History
         const newEntry = {
           time: new Date().toLocaleString(),
           files: files.map(f => f.name),
-          url: data.downloadUrl || (data.downloadUrls && data.downloadUrls[0])
+          url: previewUrl
         };
         setHistory(prev => [newEntry, ...prev].slice(0, 10));
         showToast(t.success, 'success');
@@ -339,7 +389,13 @@ export default function WordToPdf() {
     showToast('Conversion cancelled', 'info');
   };
 
-  // History
+  // Document Preview Success Handler
+  const onDocumentLoadSuccess = ({ numPages }) => {
+    setNumPages(numPages);
+    setCurrentPage(1);
+  };
+
+  // History Load/Save
   useEffect(() => {
     const saved = localStorage.getItem('masterpdf_history');
     if (saved) setHistory(JSON.parse(saved));
@@ -418,7 +474,7 @@ export default function WordToPdf() {
         </div>
 
         <div className="flex flex-col md:flex-row gap-6 w-full max-w-7xl mx-auto">
-          {/* SIDEBAR - Options */}
+          {/* SIDEBAR - Options (All Options Fully Preserved) */}
           <div className={`md:w-72 w-full p-4 rounded-2xl border shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <SlidersHorizontal size={18} /> {t.options}
@@ -467,10 +523,34 @@ export default function WordToPdf() {
               </div>
               {options.margins === 'custom' && (
                 <div className="grid grid-cols-2 gap-2">
-                  <input type="number" placeholder="Top" value={options.customMargins.top} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, top: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
-                  <input type="number" placeholder="Bottom" value={options.customMargins.bottom} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, bottom: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
-                  <input type="number" placeholder="Left" value={options.customMargins.left} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, left: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
-                  <input type="number" placeholder="Right" value={options.customMargins.right} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, right: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
+                  <input
+                    type="number"
+                    placeholder="Top"
+                    value={options.customMargins.top}
+                    onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, top: e.target.value } })}
+                    className="p-2 border rounded bg-white dark:bg-gray-900"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Bottom"
+                    value={options.customMargins.bottom}
+                    onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, bottom: e.target.value } })}
+                    className="p-2 border rounded bg-white dark:bg-gray-900"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Left"
+                    value={options.customMargins.left}
+                    onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, left: e.target.value } })}
+                    className="p-2 border rounded bg-white dark:bg-gray-900"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Right"
+                    value={options.customMargins.right}
+                    onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, right: e.target.value } })}
+                    className="p-2 border rounded bg-white dark:bg-gray-900"
+                  />
                 </div>
               )}
               <div>
@@ -733,137 +813,197 @@ export default function WordToPdf() {
             </div>
           </div>
 
-          {/* MAIN AREA - File upload & convert */}
-          <div className="flex-1">
-            <div className={`rounded-2xl shadow-sm border p-6 min-h-[450px] flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-              {/* Drag & Drop Area */}
-              <div
-                onDragEnter={handleDragEnter}
-                onDragOver={(e) => e.preventDefault()}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-xl p-10 text-center transition ${darkMode ? 'border-gray-600 hover:border-blue-400' : 'border-gray-300 hover:border-blue-500'} ${files.length ? 'hidden' : ''}`}
-              >
-                <input type="file" id="file-upload" accept={ACCEPT_FORMAT} onChange={handleFileChange} multiple className="hidden" ref={fileInputRef} />
-                <label htmlFor="file-upload" className="cursor-pointer inline-flex flex-col items-center gap-3">
-                  <UploadCloud size={48} className="text-blue-500" />
-                  <span className="text-lg font-semibold">{t.drag}</span>
-                  <span className="text-sm opacity-70">{t.or}</span>
-                  <span className="bg-[#E5322D] text-white px-8 py-3 rounded-xl font-bold shadow hover:bg-red-700 transition">
-                    {t.browse}
-                  </span>
-                </label>
-                <p className="text-xs mt-3 opacity-60">No size limit</p>
-              </div>
-
-              {/* File List */}
-              {files.length > 0 && (
-                <div className="w-full">
-                  <div className="flex justify-between items-center mb-4">
-                    <button
-                      onClick={() => fileInputRef.current.click()}
-                      className="flex items-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600"
-                    >
-                      <Plus size={18} />
-                      <span>{files.length} {t.selectedCount}</span>
-                    </button>
-                    <button onClick={clearAll} className="text-red-500 hover:text-red-700 flex items-center gap-1">
-                      <Trash2 size={16} /> Clear All
-                    </button>
+          {/* MAIN AREA - Preview or File list */}
+          <div className="flex-1 flex flex-col">
+            
+            {/* If Not in Preview Mode -> Show Original Upload UI */}
+            {!previewMode ? (
+              <>
+                <div className={`rounded-2xl shadow-sm border p-6 min-h-[450px] flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                  {/* Drag & Drop Area */}
+                  <div
+                    onDragEnter={handleDragEnter}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-xl p-10 text-center transition flex-grow flex flex-col items-center justify-center ${darkMode ? 'border-gray-600 hover:border-blue-400' : 'border-gray-300 hover:border-blue-500'} ${files.length ? 'hidden' : ''}`}
+                  >
+                    <input type="file" id="file-upload" accept={ACCEPT_FORMAT} onChange={handleFileChange} multiple className="hidden" ref={fileInputRef} />
+                    <label htmlFor="file-upload" className="cursor-pointer inline-flex flex-col items-center gap-3">
+                      <UploadCloud size={48} className="text-blue-500" />
+                      <span className="text-lg font-semibold">{t.drag}</span>
+                      <span className="text-sm opacity-70">{t.or}</span>
+                      <span className="bg-[#E5322D] text-white px-8 py-3 rounded-xl font-bold shadow hover:bg-red-700 transition">
+                        {t.browse}
+                      </span>
+                    </label>
+                    <p className="text-xs mt-3 opacity-60">No size limit</p>
                   </div>
 
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {files.map((file, index) => (
-                      <div key={index} className={`flex items-center justify-between p-3 rounded-lg border ${darkMode ? 'border-gray-600' : 'border-gray-200'} bg-gray-50 dark:bg-gray-700`}>
-                        <div className="flex items-center gap-3 flex-1">
-                          <button onClick={() => moveFile(index, index - 1)} disabled={index === 0} className="text-gray-500 disabled:opacity-30">
-                            <ChevronUp size={16} />
-                          </button>
-                          <button onClick={() => moveFile(index, index + 1)} disabled={index === files.length - 1} className="text-gray-500 disabled:opacity-30">
-                            <ChevronDown size={16} />
-                          </button>
-                          <FileText size={24} className="text-[#E5322D]" />
-                          <div className="flex-1">
-                            <p className="font-semibold text-sm truncate max-w-[200px]">{file.name}</p>
-                            <p className="text-xs opacity-60">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                          </div>
-                        </div>
-                        <button onClick={() => removeFile(index)} className="text-gray-500 hover:text-red-500">
-                          <X size={18} />
+                  {/* File List */}
+                  {files.length > 0 && (
+                    <div className="w-full flex flex-col h-full">
+                      <div className="flex justify-between items-center mb-4">
+                        <button
+                          onClick={() => fileInputRef.current.click()}
+                          className="flex items-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600"
+                        >
+                          <Plus size={18} />
+                          <span>{files.length} {t.selectedCount}</span>
+                        </button>
+                        <button onClick={clearAll} className="text-red-500 hover:text-red-700 flex items-center gap-1">
+                          <Trash2 size={16} /> Clear All
                         </button>
                       </div>
-                    ))}
-                  </div>
 
-                  {/* Convert Button */}
-                  <div className="mt-6 flex flex-col sm:flex-row gap-4">
-                    {!isConverting ? (
-                      <button
-                        onClick={processFiles}
-                        className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700"
-                      >
-                        {t.convert} <ArrowRight size={24} />
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          onClick={cancelConversion}
-                          className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-bold text-lg bg-gray-300 hover:bg-gray-400 text-gray-800"
-                        >
-                          {t.cancel}
-                        </button>
-                        <div className="flex-1 flex flex-col items-center justify-center">
-                          <div className="w-full bg-gray-200 rounded-full h-4">
-                            <div className="bg-blue-500 h-4 rounded-full transition-all" style={{ width: `${progress}%` }}></div>
+                      <div className="space-y-2 max-h-60 overflow-y-auto flex-grow custom-scrollbar">
+                        {files.map((file, index) => (
+                          <div key={index} className={`flex items-center justify-between p-3 rounded-lg border ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'}`}>
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className="flex flex-col">
+                                <button onClick={() => moveFile(index, index - 1)} disabled={index === 0} className="text-gray-500 disabled:opacity-30">
+                                  <ChevronUp size={16} />
+                                </button>
+                                <button onClick={() => moveFile(index, index + 1)} disabled={index === files.length - 1} className="text-gray-500 disabled:opacity-30">
+                                  <ChevronDown size={16} />
+                                </button>
+                              </div>
+                              <FileText size={24} className="text-[#E5322D]" />
+                              <div className="flex-1">
+                                <p className="font-semibold text-sm truncate max-w-[200px]">{file.name}</p>
+                                <p className="text-xs opacity-60">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                              </div>
+                            </div>
+                            <button onClick={() => removeFile(index)} className="text-gray-500 hover:text-red-500">
+                              <X size={18} />
+                            </button>
                           </div>
-                          <span className="text-sm mt-1">{progress}%</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                        ))}
+                      </div>
 
-                  {/* Share / Email / Cloud */}
-                  {shareLink && !isConverting && (
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button onClick={handleShare} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-                        <Share2 size={18} /> {t.share}
-                      </button>
-                      <button onClick={handleEmail} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
-                        <Mail size={18} /> {t.email}
-                      </button>
-                      <button onClick={() => handleCloud('Google Drive')} className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600">
-                        <Cloud size={18} /> Google Drive
-                      </button>
-                      <button onClick={() => handleCloud('Dropbox')} className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">
-                        <Cloud size={18} /> Dropbox
-                      </button>
+                      {/* Convert Button */}
+                      <div className="mt-6 flex flex-col sm:flex-row gap-4 shrink-0">
+                        {!isConverting ? (
+                          <button
+                            onClick={processFiles}
+                            className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700"
+                          >
+                            {t.convert} <ArrowRight size={24} />
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={cancelConversion}
+                              className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-bold text-lg bg-gray-300 hover:bg-gray-400 text-gray-800"
+                            >
+                              {t.cancel}
+                            </button>
+                            <div className="flex-1 flex flex-col items-center justify-center">
+                              <div className="w-full bg-gray-200 rounded-full h-4">
+                                <div className="bg-blue-500 h-4 rounded-full transition-all" style={{ width: `${progress}%` }}></div>
+                              </div>
+                              <span className="text-sm mt-1 font-bold">{progress}%</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* History */}
-            {history.length > 0 && (
-              <div className="mt-6 border-t pt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-bold flex items-center gap-2">
-                    <History size={18} /> {t.history}
-                  </h4>
-                  <button onClick={clearHistory} className="text-red-500 text-sm hover:underline">
-                    {t.clearHistory}
-                  </button>
-                </div>
-                <ul className="space-y-2 max-h-40 overflow-y-auto">
-                  {history.map((item, idx) => (
-                    <li key={idx} className="flex justify-between items-center text-sm bg-gray-50 dark:bg-gray-700 p-2 rounded">
-                      <span>{item.files.join(', ')} <span className="opacity-50">({item.time})</span></span>
-                      <button onClick={() => downloadFromHistory(item.url)} className="text-blue-500 hover:underline flex items-center gap-1">
-                        <Download size={14} /> Download
+                {/* History Section Below Upload */}
+                {history.length > 0 && (
+                  <div className="mt-6 border-t pt-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="font-bold flex items-center gap-2">
+                        <History size={18} /> {t.history}
+                      </h4>
+                      <button onClick={clearHistory} className="text-red-500 text-sm hover:underline">
+                        {t.clearHistory}
                       </button>
-                    </li>
-                  ))}
-                </ul>
+                    </div>
+                    <ul className="space-y-2 max-h-40 overflow-y-auto">
+                      {history.map((item, idx) => (
+                        <li key={idx} className={`flex justify-between items-center text-sm p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                          <span>{item.files.join(', ')} <span className="opacity-50">({item.time})</span></span>
+                          <button onClick={() => downloadFromHistory(item.url)} className="text-blue-500 hover:underline flex items-center gap-1 font-bold">
+                            <Download size={14} /> Download
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            ) : (
+
+              /* PREVIEW UI (Mini Pages & Bada Page) */
+              <div className={`rounded-2xl shadow-sm border overflow-hidden flex flex-col md:flex-row h-full min-h-[600px] relative ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
+                
+                {/* Header Toolbar inside Preview */}
+                <div className={`absolute top-0 left-0 w-full h-14 border-b flex justify-between items-center px-4 z-20 backdrop-blur-sm ${darkMode ? 'bg-gray-800/90 border-gray-700' : 'bg-white/90 border-gray-300'}`}>
+                  <div className="flex items-center gap-2">
+                    <Eye size={18} className="text-green-600"/> 
+                    <span className="font-bold text-sm">Converted Successfully</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Share / Email / Cloud directly in Toolbar */}
+                    {shareLink && (
+                      <div className="hidden lg:flex items-center gap-2 mr-4">
+                        <button onClick={handleShare} className="flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-xs font-bold transition">
+                          <Share2 size={14} /> Share
+                        </button>
+                        <button onClick={handleEmail} className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 text-xs font-bold transition">
+                          <Mail size={14} /> Email
+                        </button>
+                        <button onClick={() => handleCloud('Google Drive')} className="flex items-center gap-1 px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 text-xs font-bold transition">
+                          <Cloud size={14} /> Drive
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1 bg-gray-200 dark:bg-gray-700 rounded p-1">
+                      <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} className="p-1 hover:bg-white dark:hover:bg-gray-600 rounded shadow-sm"><ZoomOut size={16}/></button>
+                      <span className="text-xs font-bold w-10 text-center">{Math.round(zoom * 100)}%</span>
+                      <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} className="p-1 hover:bg-white dark:hover:bg-gray-600 rounded shadow-sm"><ZoomIn size={16}/></button>
+                    </div>
+                    <button onClick={() => {setPreviewMode(false); setConvertedPdfUrl(null); setFiles([]);}} className="p-2 text-gray-500 hover:text-red-500 ml-2">
+                      <X size={20}/>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Left Mini Pages */}
+                <div className={`w-32 md:w-44 border-r p-4 pt-16 overflow-y-auto flex flex-col items-center gap-4 shrink-0 custom-scrollbar z-10 hidden md:flex ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-300 bg-gray-200'}`}>
+                  <Document file={convertedPdfUrl} onLoadSuccess={onDocumentLoadSuccess}>
+                    {Array.from({ length: numPages || 0 }, (_, i) => (
+                      <div key={i} onClick={() => setCurrentPage(i + 1)} className="flex flex-col items-center mb-4 cursor-pointer group">
+                        <div className={`border-2 p-1 bg-white shadow-md transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105' : 'border-transparent group-hover:border-gray-400'}`}>
+                          <Page pageNumber={i + 1} width={100} renderTextLayer={false} renderAnnotationLayer={false} />
+                        </div>
+                        <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
+                      </div>
+                    ))}
+                  </Document>
+                </div>
+
+                {/* Center Bada Page Viewer */}
+                <div className={`flex-1 overflow-y-auto pt-16 pb-20 p-4 flex flex-col items-center custom-scrollbar relative min-w-0 ${darkMode ? 'bg-gray-950' : 'bg-[#E4E4E4]'}`}>
+                  <div className="shadow-2xl bg-white select-none">
+                    <Document file={convertedPdfUrl} loading={<div className="p-10 font-bold text-gray-500">Loading Preview...</div>}>
+                      <Page pageNumber={currentPage} scale={zoom} renderTextLayer={false} renderAnnotationLayer={false} />
+                    </Document>
+                  </div>
+
+                  {/* Navigation Overlay */}
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-900/90 text-white px-4 py-2 rounded-full flex items-center gap-4 shadow-xl z-30">
+                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="hover:text-[#E5322D] transition"><ChevronLeft size={24}/></button>
+                    <span className="text-sm font-bold w-20 text-center">Pg {currentPage}/{numPages}</span>
+                    <button onClick={() => setCurrentPage(p => Math.min(numPages || 1, p + 1))} className="hover:text-[#E5322D] transition"><ChevronRight size={24}/></button>
+                  </div>
+                </div>
+
               </div>
             )}
           </div>
@@ -872,9 +1012,9 @@ export default function WordToPdf() {
 
       <Footer />
 
-      {/* Toast */}
+      {/* Toast Notification */}
       {toast && (
-        <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg text-white ${toast.type === 'error' ? 'bg-red-500' : toast.type === 'info' ? 'bg-blue-500' : 'bg-green-500'}`}>
+        <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-xl text-white font-bold z-[100] transition-opacity ${toast.type === 'error' ? 'bg-red-500' : toast.type === 'info' ? 'bg-blue-500' : 'bg-green-500'}`}>
           {toast.message}
         </div>
       )}
