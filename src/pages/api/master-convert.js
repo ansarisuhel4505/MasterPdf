@@ -154,18 +154,77 @@ if (!fileUrls || fileUrls.length === 0) {
 
       result = await convertapi.convert('docx', options, 'pdf');
     }
-    else if (action === 'pdf-to-excel') {
-      try {
-        result = await convertapi.convert('xlsx', { File: fileUrl }, 'pdf');
-      } catch (excelError) {
-        if (excelError.message && excelError.message.includes('tables')) {
-          return res.status(400).json({ 
-            error: "No Tables Found! Excel conversion ke liye PDF mein Data Tables hona zaroori hai." 
-          });
-        }
-        throw excelError;
+   else if (action === 'pdf-to-excel') {
+  try {
+    // Frontend se aaye options
+    const options = req.body.options || {};
+    const ocrEnabled = options.ocrEnabled === true;
+    const highQuality = options.highQuality === true;
+    const preserveLayout = options.preserveLayout === true;
+    const pageIndices = options.pageIndices || [];
+    const outputFormat = options.outputFormat || 'xlsx';
+    const multiSheet = options.multiSheet === true;
+    const headerFooter = options.headerFooter === true;
+    const dataCleaning = options.dataCleaning === true;
+    const password = options.password || '';
+    const watermark = options.watermark || '';
+
+    // Agar multiple files hain, toh loop karo
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl];
+    const outputUrls = [];
+
+    for (const fileUrl of fileUrls) {
+      const convertOptions = { File: fileUrl };
+
+      if (ocrEnabled) convertOptions.Ocr = 'true';
+      if (highQuality) convertOptions.ImageResolution = '300';
+      if (preserveLayout) convertOptions.PreserveLayout = 'true';
+      if (pageIndices.length > 0) {
+        convertOptions.PageRange = pageIndices.map(i => i - 1).join(',');
       }
+      if (multiSheet) convertOptions.MultiSheet = 'true';
+      if (headerFooter) convertOptions.IncludeHeaderFooter = 'true';
+      if (dataCleaning) convertOptions.CleanData = 'true';
+
+      let format = outputFormat === 'csv' ? 'csv' : 'xlsx';
+      const result = await convertapi.convert(format, convertOptions, 'pdf');
+      outputUrls.push(result.response.Files[0].Url);
     }
+
+    // Merge if requested
+    let finalUrl;
+    if (options.merge && outputUrls.length > 1) {
+      // Use pdf-lib or convertapi to merge workbooks (simplified placeholder)
+      // Actually merging Excel files is complex; you might need a separate library or use convertapi's merge.
+      finalUrl = outputUrls[0]; // placeholder
+    } else if (outputUrls.length === 1) {
+      finalUrl = outputUrls[0];
+    } else {
+      return res.status(200).json({ success: true, downloadUrls: outputUrls });
+    }
+
+    // Apply password if provided
+    if (password) {
+      const encryptResult = await convertapi.convert('encrypt', { File: finalUrl, UserPassword: password, OwnerPassword: password }, 'xlsx');
+      finalUrl = encryptResult.response.Files[0].Url;
+    }
+
+    // Apply watermark if provided (for Excel, watermark is tricky, may need image overlay - placeholder)
+    if (watermark) {
+      // Implement if possible
+    }
+
+    return res.status(200).json({ success: true, downloadUrl: finalUrl });
+  } catch (excelError) {
+    if (excelError.message && excelError.message.includes('tables')) {
+      return res.status(400).json({ 
+        error: "No Tables Found! Excel conversion ke liye PDF mein Data Tables hona zaroori hai." 
+      });
+    }
+    console.error("PDF-to-Excel error:", excelError);
+    return res.status(500).json({ error: "PDF to Excel conversion failed." });
+  }
+}
     else if (action === 'pdf-to-powerpoint') {
       const ocrEnabled = req.body.ocrEnabled === true;
       const highQuality = req.body.highQuality === true;
