@@ -7,7 +7,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import {
   UploadCloud, FileText, X, ArrowRight, Settings, FileSpreadsheet, Trash2,
   Plus, ChevronDown, ChevronUp, History, Sun, Moon, Lock, Palette, Combine,
-  Split, Cloud, Mail, Share2, Download, Loader, SlidersHorizontal, Image as ImageIcon
+  Split, Cloud, Mail, Share2, Download, Loader, SlidersHorizontal, Image as ImageIcon, Type
 } from 'lucide-react';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
@@ -40,6 +40,9 @@ const translations = {
     password: "Password Protection",
     passwordConfirm: "Confirm Password",
     permissions: "Permissions",
+    allowPrint: "Allow Printing",
+    allowCopy: "Allow Copying",
+    allowModify: "Allow Modifying",
     watermark: "Watermark Text",
     watermarkColor: "Watermark Color",
     watermarkFontSize: "Watermark Font Size",
@@ -86,6 +89,9 @@ const translations = {
     password: "पासवर्ड सुरक्षा",
     passwordConfirm: "पासवर्ड की पुष्टि करें",
     permissions: "अनुमतियाँ",
+    allowPrint: "प्रिंटिंग की अनुमति दें",
+    allowCopy: "कॉपी करने की अनुमति दें",
+    allowModify: "संशोधन की अनुमति दें",
     watermark: "वॉटरमार्क टेक्स्ट",
     watermarkColor: "वॉटरमार्क रंग",
     watermarkFontSize: "वॉटरमार्क फ़ॉन्ट साइज़",
@@ -121,6 +127,8 @@ export default function PdfToExcel() {
   const [files, setFiles] = useState([]);
   const [isConverting, setIsConverting] = useState(false);
   const [progress, setProgress] = useState(0);
+  
+  // 🔥 BUG FIX: Added permissions here to prevent Black Screen crash!
   const [options, setOptions] = useState({
     ocr: false,
     pageRange: '',
@@ -132,6 +140,7 @@ export default function PdfToExcel() {
     dataCleaning: false,
     password: '',
     passwordConfirm: '',
+    permissions: { print: true, copy: true, modify: true }, // <-- Yahan missing tha!
     watermark: '',
     watermarkColor: '#000000',
     watermarkFontSize: '24',
@@ -143,6 +152,7 @@ export default function PdfToExcel() {
     compressUnit: 'KB',
     merge: false
   });
+  
   const [darkMode, setDarkMode] = useState(false);
   const [lang, setLang] = useState('en');
   const [history, setHistory] = useState([]);
@@ -159,7 +169,6 @@ export default function PdfToExcel() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // File validation
   const validateFile = (file) => {
     if (file.type !== 'application/pdf') {
       showToast(t.invalidType, 'error');
@@ -252,7 +261,7 @@ export default function PdfToExcel() {
         uploadedUrls.push(blob.url);
       }
 
-      // 🔥 SMART FIX: ConvertAPI "diagonal" crash fix
+      // ConvertAPI "diagonal" crash fix
       const apiWatermarkPosition = options.watermarkPosition === 'diagonal' ? 'center' : options.watermarkPosition;
       const apiWatermarkRotation = options.watermarkPosition === 'diagonal' ? 45 : options.watermarkRotation;
 
@@ -269,12 +278,13 @@ export default function PdfToExcel() {
           headerFooter: options.headerFooter,
           dataCleaning: options.dataCleaning,
           password: options.password,
+          permissions: options.permissions,
           watermark: options.watermark,
           watermarkColor: options.watermarkColor,
           watermarkFontSize: options.watermarkFontSize,
           watermarkOpacity: options.watermarkOpacity,
-          watermarkRotation: apiWatermarkRotation, // <-- Updated
-          watermarkPosition: apiWatermarkPosition, // <-- Updated
+          watermarkRotation: apiWatermarkRotation, 
+          watermarkPosition: apiWatermarkPosition, 
           compress: options.compress,
           compressSize: options.compressSize,
           compressUnit: options.compressUnit
@@ -592,6 +602,38 @@ export default function PdfToExcel() {
                     className="w-full p-2 border rounded bg-white dark:bg-gray-900"
                   />
                 </div>
+                
+                {/* Permissions */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">{t.permissions}</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={options.permissions.print}
+                        onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, print: e.target.checked } })}
+                      />
+                      {t.allowPrint}
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={options.permissions.copy}
+                        onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, copy: e.target.checked } })}
+                      />
+                      {t.allowCopy}
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={options.permissions.modify}
+                        onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, modify: e.target.checked } })}
+                      />
+                      {t.allowModify}
+                    </label>
+                  </div>
+                </div>
+
                 {/* Watermark */}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t.watermark}</label>
