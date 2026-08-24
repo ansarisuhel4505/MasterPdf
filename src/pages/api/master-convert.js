@@ -567,8 +567,117 @@ if (!fileUrls || fileUrls.length === 0) {
     console.error("Excel-to-PDF error:", excelToPdfError);
     return res.status(500).json({ error: "Excel to PDF conversion failed." });
   }
+}else if (action === 'powerpoint-to-pdf') {
+  try {
+    const options = req.body.options || {};
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl];
+    const outputUrls = [];
+
+    for (const url of fileUrls) {
+      const convertOptions = { File: url };
+
+      // Basic Options
+      if (options.pageRange && options.pageRange.length > 0) {
+        convertOptions.PageRange = options.pageRange.join(','); // e.g., "1,2,3"
+      }
+      if (options.publishWhat) convertOptions.PublishWhat = options.publishWhat;
+      if (options.slidesPerPage) convertOptions.SlidesPerPage = options.slidesPerPage;
+      if (options.frameSlides) convertOptions.FrameSlides = 'true';
+      if (options.includeHidden) convertOptions.IncludeHidden = 'true';
+      if (options.quality === 'high') convertOptions.Quality = 'high';
+      else if (options.quality === 'min') convertOptions.Quality = 'min';
+
+      // Advanced Options
+      if (options.dpi) convertOptions.ImageResolution = options.dpi;
+      if (options.jpegCompression) convertOptions.JpegCompression = options.jpegCompression;
+      if (options.textCompression) convertOptions.TextCompression = options.textCompression;
+      if (options.fontEmbedding) convertOptions.FontEmbedding = options.fontEmbedding;
+      if (options.pdfa && options.pdfa !== 'none') convertOptions.Pdfa = options.pdfa;
+      if (options.pdfua) convertOptions.Pdfua = 'true';
+      if (options.encryption) convertOptions.Encryption = 'AES-256';
+      if (options.metadata) convertOptions.PreserveMetadata = 'true';
+      if (options.digitalSignature) convertOptions.Sign = 'true'; // Demo
+
+      // Password
+      if (options.password) {
+        convertOptions.UserPassword = options.password;
+        convertOptions.OwnerPassword = options.password;
+        if (options.permissions) {
+          let perms = [];
+          if (options.permissions.print) perms.push('Print');
+          if (options.permissions.highPrint) perms.push('HighQualityPrint');
+          if (options.permissions.copy) perms.push('Copy');
+          if (options.permissions.modify) perms.push('Modify');
+          if (perms.length > 0) convertOptions.Permissions = perms.join(',');
+        }
+      }
+
+      // Watermark (after conversion to PDF via bridge)
+      // We'll do watermark after conversion
+
+      const result = await convertapi.convert('pdf', convertOptions, 'pptx');
+      outputUrls.push(result.response.Files[0].Url);
+    }
+
+    // Merge if requested
+    let finalUrl;
+    if (options.merge && outputUrls.length > 1) {
+      const mergedPdf = await PDFDocument.create();
+      for (const url of outputUrls) {
+        const pdfBytes = await fetch(url).then(res => res.arrayBuffer());
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const pages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+        pages.forEach(page => mergedPdf.addPage(page));
+      }
+      const mergedBytes = await mergedPdf.save();
+      const blob = await put(`merged-${Date.now()}.pdf`, mergedBytes, { access: 'public', contentType: 'application/pdf' });
+      finalUrl = blob.url;
+    } else {
+      finalUrl = outputUrls[0];
+    }
+
+    // Watermark (PDF already)
+    if (options.watermark) {
+      let hAlign = 'center', vAlign = 'center';
+      if (options.watermarkPosition === 'top') vAlign = 'top';
+      else if (options.watermarkPosition === 'bottom') vAlign = 'bottom';
+      else if (options.watermarkPosition === 'left') hAlign = 'left';
+      else if (options.watermarkPosition === 'right') hAlign = 'right';
+      const watermarkResult = await convertapi.convert('watermark', {
+        File: finalUrl,
+        Text: options.watermark,
+        FontSize: options.watermarkFontSize || '24',
+        Opacity: options.watermarkOpacity || '30',
+        Rotation: options.watermarkRotation || '45',
+        HorizontalAlignment: hAlign,
+        VerticalAlignment: vAlign,
+        FontColor: options.watermarkColor || '#000000'
+      }, 'pdf');
+      finalUrl = watermarkResult.response.Files[0].Url;
+    }
+
+    // Compress if requested
+    if (options.compress) {
+      try {
+        const compressResult = await convertapi.convert('compress', { File: finalUrl }, 'pdf');
+        finalUrl = compressResult.response.Files[0].Url;
+      } catch (compErr) {
+        console.log("Compress failed, returning uncompressed:", compErr.message);
+      }
+    }
+
+    // Return URL(s)
+    if (outputUrls.length > 1 && !options.merge) {
+      return res.status(200).json({ success: true, downloadUrls: outputUrls });
+    } else {
+      return res.status(200).json({ success: true, downloadUrl: finalUrl });
+    }
+  } catch (pptError) {
+    console.error("PowerPoint-to-PDF error:", pptError);
+    return res.status(500).json({ error: "PowerPoint to PDF conversion failed." });
+  }
 }
-    else if (action === 'powerpoint-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'pptx');
+   
     else if (action === 'pdf-to-jpg') result = await convertapi.convert('jpg', { File: fileUrl }, 'pdf');
     
     else if (action === 'jpg-to-pdf') {
