@@ -5,7 +5,7 @@ import Footer from '../components/Footer';
 import {
   UploadCloud, FileText, X, ArrowRight, Settings, Trash2, Download,
   Cloud, Mail, Share2, History, Sun, Moon, Globe, Lock, Image as ImageIcon,
-  Combine, Split, Loader
+  Combine, Split, Loader, ChevronDown, ChevronUp, GripVertical
 } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
 
@@ -15,7 +15,7 @@ const ACTION_NAME = "word-to-pdf";
 const ACCEPT_FORMAT = ".doc,.docx";
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
-// Simple i18n dictionary
+// i18n dictionary (extended with deep features)
 const translations = {
   en: {
     select: "Select File",
@@ -31,11 +31,26 @@ const translations = {
     pageSize: "Page Size",
     orientation: "Orientation",
     margins: "Margins",
+    customMargins: "Custom Margins (mm)",
+    scaling: "Scaling",
     quality: "Quality",
+    dpi: "Image DPI",
+    compression: "Compression",
+    colorMode: "Color Mode",
     password: "Password Protection (optional)",
+    passwordConfirm: "Confirm Password",
+    permissions: "Permissions",
+    allowPrint: "Allow Printing",
+    allowCopy: "Allow Copying",
+    allowModify: "Allow Modifying",
     watermark: "Watermark Text (optional)",
+    watermarkOpacity: "Watermark Opacity (%)",
+    watermarkRotation: "Rotation (°)",
+    watermarkPosition: "Position",
     merge: "Merge all files into one PDF",
+    mergeOrder: "Merge Order (drag to reorder)",
     split: "Split pages (range, e.g. 1-5,8)",
+    splitByBookmark: "Split by Bookmark (if available)",
     share: "Share Link",
     email: "Email Result",
     history: "History",
@@ -48,7 +63,12 @@ const translations = {
     success: "Conversion successful!",
     error: "Something went wrong. Please try again.",
     invalidType: "Invalid file type. Only .doc and .docx allowed.",
-    tooLarge: "File too large. Max size is 50 MB."
+    tooLarge: "File too large. Max size is 50 MB.",
+    advanced: "Advanced Options",
+    basic: "Basic Options",
+    reorder: "Reorder",
+    delete: "Delete",
+    addMore: "Add More Files"
   },
   hi: {
     select: "फ़ाइल चुनें",
@@ -64,11 +84,26 @@ const translations = {
     pageSize: "पेज साइज़",
     orientation: "ओरिएंटेशन",
     margins: "मार्जिन",
+    customMargins: "कस्टम मार्जिन (mm)",
+    scaling: "स्केलिंग",
     quality: "गुणवत्ता",
+    dpi: "इमेज DPI",
+    compression: "संपीड़न",
+    colorMode: "रंग मोड",
     password: "पासवर्ड सुरक्षा (वैकल्पिक)",
+    passwordConfirm: "पासवर्ड की पुष्टि करें",
+    permissions: "अनुमतियाँ",
+    allowPrint: "प्रिंटिंग की अनुमति दें",
+    allowCopy: "कॉपी करने की अनुमति दें",
+    allowModify: "संशोधन की अनुमति दें",
     watermark: "वॉटरमार्क टेक्स्ट (वैकल्पिक)",
+    watermarkOpacity: "वॉटरमार्क अपारदर्शिता (%)",
+    watermarkRotation: "रोटेशन (°)",
+    watermarkPosition: "स्थिति",
     merge: "सभी फ़ाइलों को एक PDF में मर्ज करें",
+    mergeOrder: "मर्ज क्रम (क्रम बदलने के लिए खींचें)",
     split: "पेज विभाजित करें (रेंज, जैसे 1-5,8)",
+    splitByBookmark: "बुकमार्क से विभाजित करें (यदि उपलब्ध हो)",
     share: "लिंक साझा करें",
     email: "ईमेल पर भेजें",
     history: "इतिहास",
@@ -81,37 +116,52 @@ const translations = {
     success: "कन्वर्शन सफल!",
     error: "कुछ गड़बड़ हुई। कृपया पुनः प्रयास करें।",
     invalidType: "अमान्य फ़ाइल प्रकार। केवल .doc और .docx की अनुमति है।",
-    tooLarge: "फ़ाइल बहुत बड़ी है। अधिकतम आकार 50 MB है।"
+    tooLarge: "फ़ाइल बहुत बड़ी है। अधिकतम आकार 50 MB है।",
+    advanced: "उन्नत विकल्प",
+    basic: "मूल विकल्प",
+    reorder: "क्रम बदलें",
+    delete: "हटाएँ",
+    addMore: "और फ़ाइलें जोड़ें"
   }
 };
 
 export default function WordToPdf() {
   // ========== STATE ==========
-  const [files, setFiles] = useState([]); // array of file objects
+  const [files, setFiles] = useState([]);
   const [isConverting, setIsConverting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [options, setOptions] = useState({
     pageSize: 'A4',
     orientation: 'portrait',
     margins: 'normal',
+    customMargins: { top: 20, bottom: 20, left: 20, right: 20 },
+    scaling: '100',
     quality: 'high',
+    dpi: '300',
+    compression: 'medium',
+    colorMode: 'rgb',
     password: '',
+    passwordConfirm: '',
+    permissions: { print: true, copy: true, modify: true },
     watermark: '',
+    watermarkOpacity: 50,
+    watermarkRotation: 45,
+    watermarkPosition: 'center',
     merge: false,
-    splitRange: ''
+    splitRange: '',
+    splitByBookmark: false
   });
   const [darkMode, setDarkMode] = useState(false);
   const [lang, setLang] = useState('en');
   const [history, setHistory] = useState([]);
-  const [toast, setToast] = useState(null); // {type, message}
+  const [toast, setToast] = useState(null);
   const [shareLink, setShareLink] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const fileInputRef = useRef(null);
   const dragCounter = useRef(0);
 
-  // ========== TRANSLATIONS ==========
   const t = translations[lang];
 
-  // ========== TOAST HELPER ==========
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -175,15 +225,27 @@ export default function WordToPdf() {
     setShareLink('');
   };
 
+  // ========== REORDER FILES (Merge order) ==========
+  const moveFile = (fromIndex, toIndex) => {
+    const updated = [...files];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    setFiles(updated);
+  };
+
   // ========== CONVERSION ==========
   const processFiles = async () => {
     if (!files.length) return;
+    if (options.password && options.password !== options.passwordConfirm) {
+      showToast("Passwords do not match!", 'error');
+      return;
+    }
     setIsConverting(true);
     setProgress(0);
     setShareLink('');
 
     try {
-      // Simulate progress (since real progress is server‑side)
+      // Simulate progress
       const progressInterval = setInterval(() => {
         setProgress(prev => {
           if (prev >= 90) {
@@ -204,7 +266,7 @@ export default function WordToPdf() {
         uploadedUrls.push(blob.url);
       }
 
-      // Prepare request body
+      // Prepare request body with all options
       const body = {
         action: ACTION_NAME,
         fileUrls: uploadedUrls,
@@ -212,10 +274,20 @@ export default function WordToPdf() {
           pageSize: options.pageSize,
           orientation: options.orientation,
           margins: options.margins,
+          customMargins: options.customMargins,
+          scaling: options.scaling,
           quality: options.quality,
+          dpi: options.dpi,
+          compression: options.compression,
+          colorMode: options.colorMode,
           password: options.password,
+          permissions: options.permissions,
           watermark: options.watermark,
-          splitRange: options.splitRange
+          watermarkOpacity: options.watermarkOpacity,
+          watermarkRotation: options.watermarkRotation,
+          watermarkPosition: options.watermarkPosition,
+          splitRange: options.splitRange,
+          splitByBookmark: options.splitByBookmark
         },
         merge: options.merge
       };
@@ -228,24 +300,35 @@ export default function WordToPdf() {
 
       const data = await response.json();
 
-      if (response.ok && data.downloadUrl) {
-        // Auto‑download
-        const link = document.createElement('a');
-        link.href = data.downloadUrl;
-        link.setAttribute('download', `MasterPdf_Converted.pdf`);
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        // Show share link
-        setShareLink(data.downloadUrl);
+      if (response.ok && (data.downloadUrl || data.downloadUrls)) {
+        // If multiple URLs returned, download all
+        if (data.downloadUrls && data.downloadUrls.length > 0) {
+          data.downloadUrls.forEach((url, idx) => {
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `MasterPdf_Converted_${idx + 1}.pdf`);
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          });
+          setShareLink(data.downloadUrls[0]); // show first link for sharing
+        } else if (data.downloadUrl) {
+          const link = document.createElement('a');
+          link.href = data.downloadUrl;
+          link.setAttribute('download', `MasterPdf_Converted.pdf`);
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setShareLink(data.downloadUrl);
+        }
 
         // Add to history
         const newEntry = {
           time: new Date().toLocaleString(),
           files: files.map(f => f.name),
-          url: data.downloadUrl
+          url: data.downloadUrl || (data.downloadUrls && data.downloadUrls[0])
         };
         setHistory(prev => [newEntry, ...prev].slice(0, 10));
 
@@ -268,7 +351,6 @@ export default function WordToPdf() {
   const cancelConversion = () => {
     setIsConverting(false);
     setProgress(0);
-    // Abort any pending fetch? Can't easily abort, but we clear state
     showToast('Conversion cancelled', 'info');
   };
 
@@ -303,7 +385,7 @@ export default function WordToPdf() {
   const handleEmail = () => {
     const email = prompt('Enter your email address:');
     if (email) {
-      // You could call an API endpoint here
+      // You can call an API endpoint here
       showToast(`Result will be sent to ${email} (demo)`, 'info');
     }
   };
@@ -323,7 +405,7 @@ export default function WordToPdf() {
 
   // ========== RENDER ==========
   return (
-    <div className={`min-h-screen flex flex-col font-sans ${darkMode ? 'bg-gray-900 text-white' : 'bg-[#F5F5F7] text-gray-900'}`}>
+    <div className={`min-h-screen flex flex-col font-sans ${darkMode ? 'dark' : ''} ${darkMode ? 'bg-gray-900 text-white' : 'bg-[#F5F5F7] text-gray-900'}`}>
       <Head>
         <title>Convert Word to PDF Online Free | MasterPdf</title>
         <meta name="description" content="Convert Word documents (Docx/Doc) to PDF format easily and securely. 100% Free online tool by MasterPdf. Created by Suhel Ansari." />
@@ -335,7 +417,7 @@ export default function WordToPdf() {
       <Navbar />
 
       <main className="flex-grow flex flex-col items-center justify-center p-4 sm:p-6 mt-16 mb-10">
-        {/* ===== Toolbar (dark mode + language) ===== */}
+        {/* Toolbar */}
         <div className="w-full max-w-5xl flex justify-between items-center mb-4">
           <button
             onClick={() => setDarkMode(!darkMode)}
@@ -360,7 +442,7 @@ export default function WordToPdf() {
         </div>
 
         <div className={`w-full max-w-5xl rounded-2xl shadow-sm border p-4 sm:p-8 min-h-[450px] flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          {/* ===== Drag & Drop Area ===== */}
+          {/* Drag & Drop Area */}
           <div
             onDragEnter={handleDragEnter}
             onDragOver={(e) => e.preventDefault()}
@@ -380,22 +462,29 @@ export default function WordToPdf() {
             <p className="text-xs mt-3 opacity-60">Max size: 50 MB per file</p>
           </div>
 
-          {/* ===== File List ===== */}
+          {/* File List & Options */}
           {files.length > 0 && (
             <div className="w-full">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold">{files.length} file(s) selected</h3>
                 <button onClick={clearAll} className="text-red-500 hover:text-red-700 flex items-center gap-1">
-                  <Trash2 size={16} /> Clear All
+                  <Trash2 size={16} /> {t.clearAll || 'Clear All'}
                 </button>
               </div>
 
+              {/* Reorderable File List */}
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {files.map((file, index) => (
                   <div key={index} className={`flex items-center justify-between p-3 rounded-lg border ${darkMode ? 'border-gray-600' : 'border-gray-200'} bg-gray-50 dark:bg-gray-700`}>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1">
+                      <button onClick={() => moveFile(index, index - 1)} disabled={index === 0} className="text-gray-500 disabled:opacity-30">
+                        <ChevronUp size={16} />
+                      </button>
+                      <button onClick={() => moveFile(index, index + 1)} disabled={index === files.length - 1} className="text-gray-500 disabled:opacity-30">
+                        <ChevronDown size={16} />
+                      </button>
                       <FileText size={24} className="text-[#E5322D]" />
-                      <div>
+                      <div className="flex-1">
                         <p className="font-semibold text-sm truncate max-w-[200px]">{file.name}</p>
                         <p className="text-xs opacity-60">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                       </div>
@@ -407,11 +496,21 @@ export default function WordToPdf() {
                 ))}
               </div>
 
-              {/* ===== Conversion Options ===== */}
+              {/* Add More Files Button */}
+              <button
+                onClick={() => fileInputRef.current.click()}
+                className="mt-3 text-blue-500 hover:text-blue-700 text-sm font-semibold"
+              >
+                + {t.addMore}
+              </button>
+
+              {/* Conversion Options */}
               <div className="mt-6 border-t pt-4">
                 <h4 className="font-bold mb-3 flex items-center gap-2">
                   <Settings size={18} /> {t.options}
                 </h4>
+
+                {/* Basic Options (always visible) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Page Size */}
                   <div>
@@ -422,8 +521,11 @@ export default function WordToPdf() {
                       className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
                     >
                       <option value="A4">A4</option>
+                      <option value="A3">A3</option>
+                      <option value="A5">A5</option>
                       <option value="Letter">Letter</option>
                       <option value="Legal">Legal</option>
+                      <option value="Tabloid">Tabloid</option>
                     </select>
                   </div>
                   {/* Orientation */}
@@ -449,6 +551,57 @@ export default function WordToPdf() {
                       <option value="normal">Normal</option>
                       <option value="narrow">Narrow</option>
                       <option value="wide">Wide</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+                  {/* Custom Margins (shown if custom selected) */}
+                  {options.margins === 'custom' && (
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <input
+                          type="number"
+                          placeholder="Top (mm)"
+                          value={options.customMargins.top}
+                          onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, top: e.target.value } })}
+                          className="p-2 border rounded bg-white dark:bg-gray-800"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Bottom (mm)"
+                          value={options.customMargins.bottom}
+                          onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, bottom: e.target.value } })}
+                          className="p-2 border rounded bg-white dark:bg-gray-800"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Left (mm)"
+                          value={options.customMargins.left}
+                          onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, left: e.target.value } })}
+                          className="p-2 border rounded bg-white dark:bg-gray-800"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Right (mm)"
+                          value={options.customMargins.right}
+                          onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, right: e.target.value } })}
+                          className="p-2 border rounded bg-white dark:bg-gray-800"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {/* Scaling */}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t.scaling}</label>
+                    <select
+                      value={options.scaling}
+                      onChange={(e) => setOptions({ ...options, scaling: e.target.value })}
+                      className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                    >
+                      <option value="100">Fit to Page (100%)</option>
+                      <option value="110">110%</option>
+                      <option value="90">90%</option>
+                      <option value="75">75%</option>
+                      <option value="50">50%</option>
                     </select>
                   </div>
                   {/* Quality */}
@@ -464,33 +617,168 @@ export default function WordToPdf() {
                       <option value="low">Low</option>
                     </select>
                   </div>
-                  {/* Password */}
-                  <div>
-                    <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-                      <Lock size={14} /> {t.password}
-                    </label>
-                    <input
-                      type="password"
-                      value={options.password}
-                      onChange={(e) => setOptions({ ...options, password: e.target.value })}
-                      placeholder="Enter password"
-                      className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
-                    />
-                  </div>
-                  {/* Watermark */}
-                  <div>
-                    <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-                      <ImageIcon size={14} /> {t.watermark}
-                    </label>
-                    <input
-                      type="text"
-                      value={options.watermark}
-                      onChange={(e) => setOptions({ ...options, watermark: e.target.value })}
-                      placeholder="Your watermark"
-                      className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
-                    />
-                  </div>
                 </div>
+
+                {/* Advanced Options Toggle */}
+                <div className="mt-4 flex items-center">
+                  <button
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="flex items-center gap-2 text-blue-500 hover:text-blue-700 font-semibold"
+                  >
+                    {showAdvanced ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    {showAdvanced ? t.basic : t.advanced}
+                  </button>
+                </div>
+
+                {showAdvanced && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                    {/* DPI */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">{t.dpi}</label>
+                      <select
+                        value={options.dpi}
+                        onChange={(e) => setOptions({ ...options, dpi: e.target.value })}
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      >
+                        <option value="72">72 DPI</option>
+                        <option value="150">150 DPI</option>
+                        <option value="300">300 DPI</option>
+                        <option value="600">600 DPI</option>
+                      </select>
+                    </div>
+                    {/* Compression */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">{t.compression}</label>
+                      <select
+                        value={options.compression}
+                        onChange={(e) => setOptions({ ...options, compression: e.target.value })}
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      >
+                        <option value="low">Low (Best quality)</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High (Smallest size)</option>
+                      </select>
+                    </div>
+                    {/* Color Mode */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">{t.colorMode}</label>
+                      <select
+                        value={options.colorMode}
+                        onChange={(e) => setOptions({ ...options, colorMode: e.target.value })}
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      >
+                        <option value="rgb">RGB</option>
+                        <option value="cmyk">CMYK</option>
+                        <option value="grayscale">Grayscale</option>
+                      </select>
+                    </div>
+                    {/* Password */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                        <Lock size={14} /> {t.password}
+                      </label>
+                      <input
+                        type="password"
+                        value={options.password}
+                        onChange={(e) => setOptions({ ...options, password: e.target.value })}
+                        placeholder="Enter password"
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      />
+                    </div>
+                    {/* Password Confirm */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">{t.passwordConfirm}</label>
+                      <input
+                        type="password"
+                        value={options.passwordConfirm}
+                        onChange={(e) => setOptions({ ...options, passwordConfirm: e.target.value })}
+                        placeholder="Confirm password"
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      />
+                    </div>
+                    {/* Permissions checkboxes */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+                      <label className="block text-sm font-medium mb-2">{t.permissions}</label>
+                      <div className="flex flex-wrap gap-4">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={options.permissions.print}
+                            onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, print: e.target.checked } })}
+                          />
+                          {t.allowPrint}
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={options.permissions.copy}
+                            onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, copy: e.target.checked } })}
+                          />
+                          {t.allowCopy}
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={options.permissions.modify}
+                            onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, modify: e.target.checked } })}
+                          />
+                          {t.allowModify}
+                        </label>
+                      </div>
+                    </div>
+                    {/* Watermark */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                        <ImageIcon size={14} /> {t.watermark}
+                      </label>
+                      <input
+                        type="text"
+                        value={options.watermark}
+                        onChange={(e) => setOptions({ ...options, watermark: e.target.value })}
+                        placeholder="Your watermark"
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      />
+                    </div>
+                    {/* Watermark Opacity */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">{t.watermarkOpacity}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={options.watermarkOpacity}
+                        onChange={(e) => setOptions({ ...options, watermarkOpacity: e.target.value })}
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      />
+                    </div>
+                    {/* Watermark Rotation */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">{t.watermarkRotation}</label>
+                      <input
+                        type="number"
+                        value={options.watermarkRotation}
+                        onChange={(e) => setOptions({ ...options, watermarkRotation: e.target.value })}
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      />
+                    </div>
+                    {/* Watermark Position */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">{t.watermarkPosition}</label>
+                      <select
+                        value={options.watermarkPosition}
+                        onChange={(e) => setOptions({ ...options, watermarkPosition: e.target.value })}
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      >
+                        <option value="center">Center</option>
+                        <option value="top">Top</option>
+                        <option value="bottom">Bottom</option>
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                        <option value="diagonal">Diagonal</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
 
                 {/* Merge / Split */}
                 <div className="flex flex-wrap gap-4 mt-4">
@@ -512,10 +800,18 @@ export default function WordToPdf() {
                       className="p-1 border rounded bg-white dark:bg-gray-800 text-sm"
                     />
                   </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={options.splitByBookmark}
+                      onChange={(e) => setOptions({ ...options, splitByBookmark: e.target.checked })}
+                    />
+                    <Combine size={16} /> {t.splitByBookmark}
+                  </label>
                 </div>
               </div>
 
-              {/* ===== Action Buttons ===== */}
+              {/* Action Buttons */}
               <div className="mt-6 flex flex-col sm:flex-row gap-4">
                 {!isConverting ? (
                   <button
@@ -542,7 +838,7 @@ export default function WordToPdf() {
                 )}
               </div>
 
-              {/* ===== Share / Email / Cloud buttons after conversion ===== */}
+              {/* Share / Email / Cloud buttons after conversion */}
               {shareLink && !isConverting && (
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button onClick={handleShare} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
@@ -562,7 +858,7 @@ export default function WordToPdf() {
             </div>
           )}
 
-          {/* ===== History Section ===== */}
+          {/* History Section */}
           {history.length > 0 && (
             <div className="mt-8 border-t pt-4">
               <div className="flex justify-between items-center mb-2">
@@ -590,7 +886,7 @@ export default function WordToPdf() {
 
       <Footer />
 
-      {/* ===== Toast Notification ===== */}
+      {/* Toast Notification */}
       {toast && (
         <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg text-white ${toast.type === 'error' ? 'bg-red-500' : toast.type === 'info' ? 'bg-blue-500' : 'bg-green-500'}`}>
           {toast.message}
