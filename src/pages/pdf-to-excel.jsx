@@ -19,7 +19,7 @@ const TOOL_DESC = "Extract tables and data from PDF to Excel (XLSX) with OCR and
 const ACTION_NAME = "pdf-to-excel";
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
-// i18n dictionary (English + Hindi)
+// i18n dictionary
 const translations = {
   en: {
     drag: "Drag & drop PDF files here",
@@ -33,15 +33,8 @@ const translations = {
     options: "Conversion Options",
     advanced: "Advanced Options",
     basic: "Basic Options",
-    pageSize: "Page Size",
-    orientation: "Orientation",
-    margins: "Margins",
-    customMargins: "Custom Margins",
-    scaling: "Scaling",
-    quality: "Quality",
-    dpi: "Image DPI",
+    dpi: "Image DPI (Quality)",
     compression: "Compression",
-    colorMode: "Color Mode",
     password: "Password Protection",
     passwordConfirm: "Confirm Password",
     permissions: "Permissions",
@@ -86,7 +79,7 @@ const translations = {
     options: "कन्वर्शन विकल्प",
     advanced: "उन्नत विकल्प",
     basic: "मूल विकल्प",
-    dpi: "इमेज DPI",
+    dpi: "इमेज DPI (गुणवत्ता)",
     compression: "संपीड़न",
     password: "पासवर्ड सुरक्षा",
     passwordConfirm: "पासवर्ड की पुष्टि करें",
@@ -401,29 +394,30 @@ export default function PdfToExcel() {
     }
   };
 
-  // PDF thumbnails (using react-pdf)
-  const PdfThumbnail = ({ file }) => {
+  // Component to show ALL pages thumbnails of a PDF file in a grid
+  const PdfThumbnails = ({ file }) => {
     const [numPages, setNumPages] = useState(null);
-    const [pageNumber, setPageNumber] = useState(1);
 
     function onDocumentLoadSuccess({ numPages }) {
       setNumPages(numPages);
     }
 
     return (
-      <div className="flex flex-col items-center border rounded-lg p-2 bg-gray-50 dark:bg-gray-800">
+      <div className="w-full">
         <Document file={file} onLoadSuccess={onDocumentLoadSuccess} className="w-full">
-          <Page pageNumber={pageNumber} width={150} renderTextLayer={false} renderAnnotationLayer={false} />
+          {numPages && Array.from(new Array(numPages), (el, index) => (
+            <div key={index} className="mb-3">
+              <Page
+                pageNumber={index + 1}
+                width={120}
+                renderTextLayer={false}
+                renderAnnotationLayer={false}
+                className="border rounded shadow-sm"
+              />
+              <p className="text-xs text-center mt-1">Page {index + 1}</p>
+            </div>
+          ))}
         </Document>
-        <div className="flex items-center gap-2 mt-2">
-          <button onClick={() => setPageNumber(prev => Math.max(1, prev - 1))} disabled={pageNumber <= 1} className="text-gray-500 disabled:opacity-30">
-            <ChevronUp size={16} />
-          </button>
-          <span className="text-xs">{pageNumber} / {numPages}</span>
-          <button onClick={() => setPageNumber(prev => Math.min(numPages, prev + 1))} disabled={pageNumber >= numPages} className="text-gray-500 disabled:opacity-30">
-            <ChevronDown size={16} />
-          </button>
-        </div>
       </div>
     );
   };
@@ -503,7 +497,7 @@ export default function PdfToExcel() {
                 />
                 {t.layoutPreserve}
               </label>
-              {/* DPI */}
+              {/* DPI (keep, but add tooltip? We'll just keep label) */}
               <div>
                 <label className="block text-sm font-medium mb-1">{t.dpi}</label>
                 <select
@@ -760,9 +754,9 @@ export default function PdfToExcel() {
                           <div className="flex-1">
                             <p className="font-semibold text-sm truncate max-w-[200px]">{file.name}</p>
                             <p className="text-xs opacity-60">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                            {/* Thumbnail Preview */}
+                            {/* ALL Pages Thumbnails */}
                             <div className="mt-2">
-                              <PdfThumbnail file={file} />
+                              <PdfThumbnails file={file} />
                             </div>
                           </div>
                         </div>
