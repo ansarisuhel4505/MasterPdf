@@ -5,7 +5,7 @@ import Footer from '../components/Footer';
 import {
   UploadCloud, FileText, X, ArrowRight, Settings, Trash2, Download,
   Cloud, Mail, Share2, History, Sun, Moon, Globe, Lock, Image as ImageIcon,
-  Combine, Split, Loader, ChevronDown, ChevronUp, GripVertical
+  Combine, Split, Loader, ChevronDown, ChevronUp, Plus, Palette, Type
 } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
 
@@ -13,9 +13,9 @@ const TOOL_TITLE = "Word to PDF Converter";
 const TOOL_DESC = "Make DOC and DOCX files easy to read by converting them to PDF.";
 const ACTION_NAME = "word-to-pdf";
 const ACCEPT_FORMAT = ".doc,.docx";
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+// ✅ FILE LIMIT HATA DI - Ab koi MAX_SIZE nahi hai
 
-// i18n dictionary (extended with deep features)
+// i18n dictionary
 const translations = {
   en: {
     select: "Select File",
@@ -44,13 +44,17 @@ const translations = {
     allowCopy: "Allow Copying",
     allowModify: "Allow Modifying",
     watermark: "Watermark Text (optional)",
+    watermarkColor: "Watermark Color (hex)",
+    watermarkFontSize: "Watermark Font Size",
     watermarkOpacity: "Watermark Opacity (%)",
     watermarkRotation: "Rotation (°)",
     watermarkPosition: "Position",
     merge: "Merge all files into one PDF",
-    mergeOrder: "Merge Order (drag to reorder)",
     split: "Split pages (range, e.g. 1-5,8)",
     splitByBookmark: "Split by Bookmark (if available)",
+    compress: "Compress PDF to target size",
+    compressSize: "Target Size (KB/MB)",
+    compressUnit: "Unit",
     share: "Share Link",
     email: "Email Result",
     history: "History",
@@ -66,9 +70,8 @@ const translations = {
     tooLarge: "File too large. Max size is 50 MB.",
     advanced: "Advanced Options",
     basic: "Basic Options",
-    reorder: "Reorder",
-    delete: "Delete",
-    addMore: "Add More Files"
+    addMore: "Add More Files",
+    selectedCount: "Selected"
   },
   hi: {
     select: "फ़ाइल चुनें",
@@ -97,13 +100,17 @@ const translations = {
     allowCopy: "कॉपी करने की अनुमति दें",
     allowModify: "संशोधन की अनुमति दें",
     watermark: "वॉटरमार्क टेक्स्ट (वैकल्पिक)",
+    watermarkColor: "वॉटरमार्क रंग (hex)",
+    watermarkFontSize: "वॉटरमार्क फ़ॉन्ट साइज़",
     watermarkOpacity: "वॉटरमार्क अपारदर्शिता (%)",
     watermarkRotation: "रोटेशन (°)",
     watermarkPosition: "स्थिति",
     merge: "सभी फ़ाइलों को एक PDF में मर्ज करें",
-    mergeOrder: "मर्ज क्रम (क्रम बदलने के लिए खींचें)",
     split: "पेज विभाजित करें (रेंज, जैसे 1-5,8)",
     splitByBookmark: "बुकमार्क से विभाजित करें (यदि उपलब्ध हो)",
+    compress: "PDF को टारगेट साइज़ में कंप्रेस करें",
+    compressSize: "टारगेट साइज़ (KB/MB)",
+    compressUnit: "इकाई",
     share: "लिंक साझा करें",
     email: "ईमेल पर भेजें",
     history: "इतिहास",
@@ -119,9 +126,8 @@ const translations = {
     tooLarge: "फ़ाइल बहुत बड़ी है। अधिकतम आकार 50 MB है।",
     advanced: "उन्नत विकल्प",
     basic: "मूल विकल्प",
-    reorder: "क्रम बदलें",
-    delete: "हटाएँ",
-    addMore: "और फ़ाइलें जोड़ें"
+    addMore: "और फ़ाइलें जोड़ें",
+    selectedCount: "चयनित"
   }
 };
 
@@ -144,12 +150,17 @@ export default function WordToPdf() {
     passwordConfirm: '',
     permissions: { print: true, copy: true, modify: true },
     watermark: '',
+    watermarkColor: '#000000',
+    watermarkFontSize: '24',
     watermarkOpacity: 50,
     watermarkRotation: 45,
     watermarkPosition: 'center',
     merge: false,
     splitRange: '',
-    splitByBookmark: false
+    splitByBookmark: false,
+    compress: false,
+    compressSize: '500',
+    compressUnit: 'KB'
   });
   const [darkMode, setDarkMode] = useState(false);
   const [lang, setLang] = useState('en');
@@ -167,17 +178,14 @@ export default function WordToPdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ========== FILE HANDLING ==========
+  // ========== FILE HANDLING (NO SIZE LIMIT) ==========
   const validateFile = (file) => {
     const ext = file.name.split('.').pop().toLowerCase();
     if (!['doc', 'docx'].includes(ext)) {
       showToast(t.invalidType, 'error');
       return false;
     }
-    if (file.size > MAX_FILE_SIZE) {
-      showToast(t.tooLarge, 'error');
-      return false;
-    }
+    // ✅ SIZE LIMIT HATA DI – Ab koi check nahi
     return true;
   };
 
@@ -283,11 +291,16 @@ export default function WordToPdf() {
           password: options.password,
           permissions: options.permissions,
           watermark: options.watermark,
+          watermarkColor: options.watermarkColor,
+          watermarkFontSize: options.watermarkFontSize,
           watermarkOpacity: options.watermarkOpacity,
           watermarkRotation: options.watermarkRotation,
           watermarkPosition: options.watermarkPosition,
           splitRange: options.splitRange,
-          splitByBookmark: options.splitByBookmark
+          splitByBookmark: options.splitByBookmark,
+          compress: options.compress,
+          compressSize: options.compressSize,
+          compressUnit: options.compressUnit
         },
         merge: options.merge
       };
@@ -312,7 +325,7 @@ export default function WordToPdf() {
             link.click();
             document.body.removeChild(link);
           });
-          setShareLink(data.downloadUrls[0]); // show first link for sharing
+          setShareLink(data.downloadUrls[0]);
         } else if (data.downloadUrl) {
           const link = document.createElement('a');
           link.href = data.downloadUrl;
@@ -385,7 +398,6 @@ export default function WordToPdf() {
   const handleEmail = () => {
     const email = prompt('Enter your email address:');
     if (email) {
-      // You can call an API endpoint here
       showToast(`Result will be sent to ${email} (demo)`, 'info');
     }
   };
@@ -459,16 +471,24 @@ export default function WordToPdf() {
                 {t.browse}
               </span>
             </label>
-            <p className="text-xs mt-3 opacity-60">Max size: 50 MB per file</p>
+            <p className="text-xs mt-3 opacity-60">No size limit</p>
           </div>
 
           {/* File List & Options */}
           {files.length > 0 && (
             <div className="w-full">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold">{files.length} file(s) selected</h3>
+                {/* + icon with count */}
+                <button
+                  onClick={() => fileInputRef.current.click()}
+                  className="flex items-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600"
+                  title={t.addMore}
+                >
+                  <Plus size={18} />
+                  <span>{files.length} {t.selectedCount}</span>
+                </button>
                 <button onClick={clearAll} className="text-red-500 hover:text-red-700 flex items-center gap-1">
-                  <Trash2 size={16} /> {t.clearAll || 'Clear All'}
+                  <Trash2 size={16} /> Clear All
                 </button>
               </div>
 
@@ -496,21 +516,13 @@ export default function WordToPdf() {
                 ))}
               </div>
 
-              {/* Add More Files Button */}
-              <button
-                onClick={() => fileInputRef.current.click()}
-                className="mt-3 text-blue-500 hover:text-blue-700 text-sm font-semibold"
-              >
-                + {t.addMore}
-              </button>
-
               {/* Conversion Options */}
               <div className="mt-6 border-t pt-4">
                 <h4 className="font-bold mb-3 flex items-center gap-2">
                   <Settings size={18} /> {t.options}
                 </h4>
 
-                {/* Basic Options (always visible) */}
+                {/* Basic Options */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Page Size */}
                   <div>
@@ -554,7 +566,7 @@ export default function WordToPdf() {
                       <option value="custom">Custom</option>
                     </select>
                   </div>
-                  {/* Custom Margins (shown if custom selected) */}
+                  {/* Custom Margins */}
                   {options.margins === 'custom' && (
                     <div className="col-span-1 sm:col-span-2 lg:col-span-3">
                       <div className="grid grid-cols-2 gap-2 mt-2">
@@ -696,7 +708,7 @@ export default function WordToPdf() {
                         className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
                       />
                     </div>
-                    {/* Permissions checkboxes */}
+                    {/* Permissions */}
                     <div className="col-span-1 sm:col-span-2 lg:col-span-3">
                       <label className="block text-sm font-medium mb-2">{t.permissions}</label>
                       <div className="flex flex-wrap gap-4">
@@ -739,6 +751,32 @@ export default function WordToPdf() {
                         className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
                       />
                     </div>
+                    {/* Watermark Color */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                        <Palette size={14} /> {t.watermarkColor}
+                      </label>
+                      <input
+                        type="color"
+                        value={options.watermarkColor}
+                        onChange={(e) => setOptions({ ...options, watermarkColor: e.target.value })}
+                        className="w-full p-1 border rounded-lg bg-white dark:bg-gray-800"
+                      />
+                    </div>
+                    {/* Watermark Font Size */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                        <Type size={14} /> {t.watermarkFontSize}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={options.watermarkFontSize}
+                        onChange={(e) => setOptions({ ...options, watermarkFontSize: e.target.value })}
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      />
+                    </div>
                     {/* Watermark Opacity */}
                     <div>
                       <label className="block text-sm font-medium mb-1">{t.watermarkOpacity}</label>
@@ -776,6 +814,37 @@ export default function WordToPdf() {
                         <option value="right">Right</option>
                         <option value="diagonal">Diagonal</option>
                       </select>
+                    </div>
+                    {/* Compress Section */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={options.compress}
+                          onChange={(e) => setOptions({ ...options, compress: e.target.checked })}
+                        />
+                        <Combine size={16} /> {t.compress}
+                      </label>
+                      {options.compress && (
+                        <div className="flex gap-2 mt-2">
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder={t.compressSize}
+                            value={options.compressSize}
+                            onChange={(e) => setOptions({ ...options, compressSize: e.target.value })}
+                            className="p-2 border rounded bg-white dark:bg-gray-800 flex-1"
+                          />
+                          <select
+                            value={options.compressUnit}
+                            onChange={(e) => setOptions({ ...options, compressUnit: e.target.value })}
+                            className="p-2 border rounded bg-white dark:bg-gray-800"
+                          >
+                            <option value="KB">KB</option>
+                            <option value="MB">MB</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -838,7 +907,7 @@ export default function WordToPdf() {
                 )}
               </div>
 
-              {/* Share / Email / Cloud buttons after conversion */}
+              {/* Share / Email / Cloud buttons */}
               {shareLink && !isConverting && (
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button onClick={handleShare} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
