@@ -10,6 +10,14 @@ export default async function handler(req, res) {
   }
 
   const { action, fileUrl, password, boxes, pageIndices } = req.body;
+  // Handle multiple files: if fileUrls array is present, use it; else convert single fileUrl to array
+let fileUrls = req.body.fileUrls;
+if (!fileUrls && fileUrl) {
+  fileUrls = [fileUrl];
+}
+if (!fileUrls || fileUrls.length === 0) {
+  return res.status(400).json({ error: 'No file URLs provided' });
+}
 
   if (!fileUrl) {
     return res.status(400).json({ error: 'No file URL provided' });
@@ -174,7 +182,116 @@ export default async function handler(req, res) {
 
       result = await convertapi.convert('pptx', options, 'pdf');
     }
-    else if (action === 'word-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'docx');
+   else if (action === 'word-to-pdf') {
+  try {
+    // 1. Options lo frontend se
+    const options = req.body.options || {};
+    const merge = options.merge === true;
+    const password = options.password || '';
+    const watermark = options.watermark || '';
+    const splitRange = options.splitRange || '';
+    
+    // 2. Convert each file to PDF with options
+    const convertedUrls = [];
+    for (const url of fileUrls) {
+      const convertOptions = { File: url };
+      
+      // Page Size
+      if (options.pageSize) convertOptions.PageSize = options.pageSize;
+      // Orientation
+      if (options.orientation) convertOptions.PageOrientation = options.orientation;
+      // Margins
+      if (options.margins) convertOptions.PageMargins = options.margins;
+      // Quality (ImageResolution)
+      if (options.quality === 'high') convertOptions.ImageResolution = '300';
+      else if (options.quality === 'low') convertOptions.ImageResolution = '72';
+      // Default medium: no need to set
+      
+      const result = await convertapi.convert('pdf', convertOptions, 'docx');
+      convertedUrls.push(result.response.Files[0].Url);
+    }
+    
+    // 3. Merge if needed
+    let finalUrl;
+    if (merge && convertedUrls.length > 1) {
+      // Use pdf-lib to merge
+      const mergedPdf = await PDFDocument.create();
+      for (const url of convertedUrls) {
+        const pdfBytes = await fetch(url).then(res => res.arrayBuffer());
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const pages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+        pages.forEach(page => mergedPdf.addPage(page));
+      }
+      const mergedBytes = await mergedPdf.save();
+      const blob = await put(`merged-${Date.now()}.pdf`, mergedBytes, {
+        access: 'public',
+        contentType: 'application/pdf'
+      });
+      finalUrl = blob.url;
+    } else {
+      // Single file (or merge false) - return first URL
+      finalUrl = convertedUrls[0];
+    }
+    
+    // 4. Apply watermark if provided
+    if (watermark) {
+      const watermarkResult = await convertapi.convert('watermark', {
+        File: finalUrl,
+        Text: watermark,
+        FontSize: '24',
+        Opacity: '30',
+        HorizontalAlignment: 'center',
+        VerticalAlignment: 'center',
+        Rotation: '45'
+      }, 'pdf');
+      finalUrl = watermarkResult.response.Files[0].Url;
+    }
+    
+    // 5. Apply password if provided
+    if (password) {
+      const encryptResult = await convertapi.convert('encrypt', {
+        File: finalUrl,
+        UserPassword: password,
+        OwnerPassword: password
+      }, 'pdf');
+      finalUrl = encryptResult.response.Files[0].Url;
+    }
+    
+    // 6. Handle split range (extract specific pages)
+    if (splitRange) {
+      // Parse "1-5,8" into array of page numbers
+      const pageIndices = [];
+      splitRange.split(',').forEach(part => {
+        part = part.trim();
+        if (part.includes('-')) {
+          const [start, end] = part.split('-').map(Number);
+          for (let i = start; i <= end; i++) pageIndices.push(i);
+        } else if (part) {
+          pageIndices.push(Number(part));
+        }
+      });
+      
+      // Use extract-pages logic (0-based index)
+      const pdfBytes = await fetch(finalUrl).then(res => res.arrayBuffer());
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const newDoc = await PDFDocument.create();
+      const copiedPages = await newDoc.copyPages(pdfDoc, pageIndices.map(i => i - 1));
+      copiedPages.forEach(page => newDoc.addPage(page));
+      const extractedBytes = await newDoc.save();
+      const blob = await put(`extracted-${Date.now()}.pdf`, extractedBytes, {
+        access: 'public',
+        contentType: 'application/pdf'
+      });
+      finalUrl = blob.url;
+    }
+    
+    // Return final URL
+    return res.status(200).json({ success: true, downloadUrl: finalUrl });
+  } catch (err) {
+    console.error("Word-to-PDF error:", err);
+    return res.status(500).json({ error: "Word to PDF conversion failed." });
+  }
+}
     else if (action === 'excel-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'xlsx');
     else if (action === 'powerpoint-to-pdf') result = await convertapi.convert('pdf', { File: fileUrl }, 'pptx');
     else if (action === 'pdf-to-jpg') result = await convertapi.convert('jpg', { File: fileUrl }, 'pdf');
