@@ -390,16 +390,16 @@ if (!fileUrls || fileUrls.length === 0) {
     return res.status(500).json({ error: "Word to PDF conversion failed." });
   }
 }
-   else if (action === 'excel-to-pdf') {
+  else if (action === 'excel-to-pdf') {
   try {
     const options = req.body.options || {};
-    const fileUrls = req.body.fileUrls || [req.body.fileUrl]; // Multiple files support
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl];
     const outputUrls = [];
 
     for (const url of fileUrls) {
       const convertOptions = { File: url };
 
-      // Safe ConvertAPI Options (Only supported ones)
+      // Safe options (jo API support karti hai)
       if (options.pageSize) convertOptions.PageSize = options.pageSize;
       if (options.orientation) convertOptions.PageOrientation = options.orientation;
       if (options.margins) {
@@ -414,7 +414,6 @@ if (!fileUrls || fileUrls.length === 0) {
         }
       }
       if (options.scaling) convertOptions.Scaling = options.scaling + '%';
-      
       if (options.quality === 'high') convertOptions.ImageResolution = '300';
       else if (options.quality === 'low') convertOptions.ImageResolution = '72';
 
@@ -424,7 +423,6 @@ if (!fileUrls || fileUrls.length === 0) {
 
     let finalUrl;
     if (options.merge && outputUrls.length > 1) {
-      // Merge PDFs using pdf-lib
       const mergedPdf = await PDFDocument.create();
       for (const url of outputUrls) {
         const pdfBytes = await fetch(url).then(res => res.arrayBuffer());
@@ -439,28 +437,46 @@ if (!fileUrls || fileUrls.length === 0) {
       finalUrl = outputUrls[0];
     }
 
-    // Password Protection
+    // Password
     if (options.password) {
       const encryptResult = await convertapi.convert('encrypt', { File: finalUrl, UserPassword: options.password, OwnerPassword: options.password }, 'pdf');
       finalUrl = encryptResult.response.Files[0].Url;
     }
 
-    // Watermark
+    // Watermark - FIX: diagonal ko handle karo
     if (options.watermark) {
+      let hAlign = 'center';
+      let vAlign = 'center';
+      if (options.watermarkPosition === 'top') vAlign = 'top';
+      else if (options.watermarkPosition === 'bottom') vAlign = 'bottom';
+      else if (options.watermarkPosition === 'left') hAlign = 'left';
+      else if (options.watermarkPosition === 'right') hAlign = 'right';
+      // 'diagonal' ke liye center/center use karo aur Rotation se diagonal dikhega
+
       const watermarkResult = await convertapi.convert('watermark', {
         File: finalUrl,
         Text: options.watermark,
         FontSize: options.watermarkFontSize || '24',
         Opacity: options.watermarkOpacity || '30',
-        Rotation: options.watermarkRotation || '45',
-        HorizontalAlignment: options.watermarkPosition || 'center',
-        VerticalAlignment: options.watermarkPosition || 'center',
+        Rotation: options.watermarkRotation || '45', // Diagonal effect yahin se aayega
+        HorizontalAlignment: hAlign,
+        VerticalAlignment: vAlign,
         FontColor: options.watermarkColor || '#000000'
       }, 'pdf');
       finalUrl = watermarkResult.response.Files[0].Url;
     }
 
-    // Return proper URL(s)
+    // Compress (optional)
+    if (options.compress) {
+      try {
+        const compressResult = await convertapi.convert('compress', { File: finalUrl }, 'pdf');
+        finalUrl = compressResult.response.Files[0].Url;
+      } catch (compErr) {
+        console.log("Compress failed, returning original:", compErr.message);
+      }
+    }
+
+    // Return logic
     if (outputUrls.length > 1 && !options.merge) {
       return res.status(200).json({ success: true, downloadUrls: outputUrls });
     } else {
