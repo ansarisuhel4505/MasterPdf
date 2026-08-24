@@ -372,7 +372,6 @@ export default function PdfToPowerpoint() {
   };
 
   const downloadFromHistory = (url) => {
-    // Use blob method
     const fetchAndDownload = async () => {
       const resp = await fetch(url);
       const blob = await resp.blob();
@@ -412,28 +411,39 @@ export default function PdfToPowerpoint() {
     }
   };
 
-  // Thumbnail component using react-pdf
+  // ✅ FIXED THUMBNAIL COMPONENT (using blob URL)
   const PdfThumbnails = ({ file }) => {
     const [numPages, setNumPages] = useState(null);
+    const [fileUrl, setFileUrl] = useState(null);
+
+    useEffect(() => {
+      const url = URL.createObjectURL(file);
+      setFileUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }, [file]);
+
     function onDocumentLoadSuccess({ numPages }) {
       setNumPages(numPages);
     }
+
     return (
       <div className="w-full">
-        <Document file={file} onLoadSuccess={onDocumentLoadSuccess} className="w-full">
-          {numPages && Array.from(new Array(numPages), (el, index) => (
-            <div key={index} className="mb-3">
-              <Page
-                pageNumber={index + 1}
-                width={120}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-                className="border rounded shadow-sm"
-              />
-              <p className="text-xs text-center mt-1">Page {index + 1}</p>
-            </div>
-          ))}
-        </Document>
+        {fileUrl && (
+          <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess} className="w-full">
+            {numPages && Array.from(new Array(numPages), (el, index) => (
+              <div key={index} className="mb-3">
+                <Page
+                  pageNumber={index + 1}
+                  width={120}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                  className="border rounded shadow-sm"
+                />
+                <p className="text-xs text-center mt-1">Page {index + 1}</p>
+              </div>
+            ))}
+          </Document>
+        )}
       </div>
     );
   };
