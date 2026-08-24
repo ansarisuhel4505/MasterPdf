@@ -709,23 +709,31 @@ if (!fileUrls || fileUrls.length === 0) {
 
       // Colorspace
       if (options.colorspace && options.colorspace !== 'rgb') {
-        convertOptions.ColorSpace = options.colorspace; // 'cmyk' or 'gray'
+        convertOptions.ColorSpace = options.colorspace;
       }
 
-      // Page range
+      // 🔥 FIX: PageRange – convert 0-based to 1-based and join with comma
       if (selectedPages.length > 0) {
-        convertOptions.PageRange = selectedPages.join(','); // 0-based? ConvertAPI uses 0-based? Usually it's 0-based for PDF pages? Actually ConvertAPI uses 1-based for range? Check docs. Better to send 0-based? We'll convert from 1-based earlier.
-        // We'll convert in frontend: pageIndices[i] is 0-based already
-        // ConvertAPI PageRange expects comma-separated page numbers? Let's use it as is.
+        const pages = selectedPages.map(p => p + 1); // 0-based → 1-based
+        convertOptions.PageRange = pages.join(',');
       }
 
-      // Additional options (flip, rotate, brightness, contrast, gamma, trimWhite)
+      // 🔥 FIX: Rotate – map numeric to valid string
+      const rotateMap = { 0: 'default', 90: 'rotate90', 180: 'rotate180', 270: 'rotate270' };
+      if (options.rotate !== undefined && options.rotate !== null) {
+        convertOptions.Rotate = rotateMap[options.rotate] || 'default';
+      }
+
+      // Flip
       if (options.flipHorizontal) convertOptions.FlipHorizontal = 'true';
       if (options.flipVertical) convertOptions.FlipVertical = 'true';
-      if (options.rotate) convertOptions.Rotate = options.rotate;
+
+      // Brightness, Contrast, Gamma
       if (options.brightness) convertOptions.Brightness = options.brightness;
       if (options.contrast) convertOptions.Contrast = options.contrast;
       if (options.gamma) convertOptions.Gamma = options.gamma;
+
+      // Trim white margins
       if (options.trimWhite) convertOptions.TrimWhite = 'true';
 
       // Password for protected PDFs
@@ -736,12 +744,7 @@ if (!fileUrls || fileUrls.length === 0) {
       files.forEach(f => allDownloadUrls.push(f.Url));
     }
 
-    // If mergeZip requested, we can create a zip from the image URLs (using jszip)
-    if (options.mergeZip && allDownloadUrls.length > 0) {
-      // Simulate by returning a single zip URL (or use external service). For now, return individual URLs.
-      return res.status(200).json({ success: true, downloadUrls: allDownloadUrls });
-    }
-
+    // Return all URLs (individual images)
     return res.status(200).json({ success: true, downloadUrls: allDownloadUrls });
   } catch (imageError) {
     console.error("PDF-to-Image error:", imageError);
