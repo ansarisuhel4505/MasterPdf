@@ -8,7 +8,7 @@ import {
   UploadCloud, FileText, X, ArrowRight, Settings, Trash2,
   Plus, ChevronDown, ChevronUp, History, Sun, Moon, Lock, Palette,
   Cloud, Mail, Share2, Download, SlidersHorizontal, Image as ImageIcon,
-  CheckSquare, Square, Layers, SlidersHorizontal, Type, RotateCw, FlipHorizontal2
+  CheckSquare, Square, Layers, Type, RotateCw, FlipHorizontal2
 } from 'lucide-react';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
