@@ -62,7 +62,7 @@ const translations = {
 };
 
 export default function WordToPdf() {
-  // --- 1. Original Word to PDF States ---
+  // --- WORD TO PDF STATES ---
   const [files, setFiles] = useState([]);
   const [isConverting, setIsConverting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -84,9 +84,9 @@ export default function WordToPdf() {
   const fileInputRef = useRef(null);
   const dragCounter = useRef(0);
 
-  // --- 2. Post-Conversion Editor States ---
+  // --- EDITOR PREVIEW STATES ---
   const [previewMode, setPreviewMode] = useState(false);
-  const [convertedPdfUrl, setConvertedPdfUrl] = useState(null); 
+  const [convertedPdfUrl, setConvertedPdfUrl] = useState(null);
   const [originalPdfBuffer, setOriginalPdfBuffer] = useState(null);
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -109,7 +109,7 @@ export default function WordToPdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // --- File Upload Handlers ---
+  // --- FILE HANDLERS ---
   const validateFile = (file) => {
     const ext = file.name.split('.').pop().toLowerCase();
     if (!['doc', 'docx'].includes(ext)) {
@@ -138,9 +138,12 @@ export default function WordToPdf() {
   const handleDrop = (e) => { e.preventDefault(); dragCounter.current = 0; addFiles(Array.from(e.dataTransfer.files)); };
   const handleDragEnter = (e) => { e.preventDefault(); dragCounter.current++; };
   const handleDragLeave = (e) => { e.preventDefault(); dragCounter.current--; };
-
   const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index));
-  const clearAll = () => { setFiles([]); setShareLink(''); setPreviewMode(false); setConvertedPdfUrl(null); setElements([]); };
+  
+  const clearAll = () => { 
+    setFiles([]); setShareLink(''); setPreviewMode(false); 
+    setConvertedPdfUrl(null); setOriginalPdfBuffer(null); setElements([]); 
+  };
 
   const moveFile = (fromIndex, toIndex) => {
     const updated = [...files];
@@ -181,25 +184,26 @@ export default function WordToPdf() {
       if (response.ok && (data.downloadUrl || data.downloadUrls)) {
         let finalUrl = data.downloadUrl || (data.downloadUrls && data.downloadUrls[0]);
         
-        // Fix for Blank Screen: Fetch the PDF from URL, create a local Blob URL
+        // Blank Screen Fix: Fetch the PDF to a Blob Buffer so react-pdf can read it instantly
         try {
           const pdfResponse = await fetch(finalUrl);
           const arrayBuffer = await pdfResponse.arrayBuffer();
           const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
           const localUrl = URL.createObjectURL(blob);
           
-          setOriginalPdfBuffer(arrayBuffer); // Save for pdf-lib export later
-          setConvertedPdfUrl(localUrl); // Use local URL for react-pdf
-          setShareLink(finalUrl); // Keep real URL for sharing
-          setPreviewMode(true);
+          setOriginalPdfBuffer(arrayBuffer); 
+          setConvertedPdfUrl(localUrl); 
+          setShareLink(finalUrl); 
+          setPreviewMode(true); 
           
           const newEntry = { time: new Date().toLocaleString(), files: files.map(f => f.name), url: finalUrl };
           setHistory(prev => [newEntry, ...prev].slice(0, 10));
           showToast(t.success, 'success');
         } catch (fetchErr) {
-          console.error("Failed to load PDF preview securely:", fetchErr);
-          showToast("Conversion successful but preview blocked. You can download.", "info");
+          console.error("PDF Preview blocked by browser security:", fetchErr);
+          showToast("Conversion successful but preview blocked. You can download the file.", "info");
           setShareLink(finalUrl);
+          window.open(finalUrl, '_blank');
         }
       } else {
         throw new Error(data.error || 'Conversion failed');
@@ -217,17 +221,14 @@ export default function WordToPdf() {
 
   const cancelConversion = () => { setIsConverting(false); setProgress(0); showToast('Conversion cancelled', 'info'); };
 
-  // --- EDITOR / PREVIEW FUNCTIONS ---
+  // --- EDITOR FUNCTIONS ---
   const onDocumentLoadSuccess = ({ numPages }) => { setNumPages(numPages); setCurrentPage(1); };
 
   const addEditorElement = (type) => {
     const newElement = {
-      id: Date.now(), type, page: currentPage, 
-      x: 50, y: 100, 
-      width: type === 'text' ? 200 : 150, 
-      height: type === 'text' ? 40 : 100, 
-      value: type === 'text' ? 'Type text here...' : '', 
-      color: toolColor, size: textSize
+      id: Date.now(), type, page: currentPage, x: 50, y: 100, 
+      width: type === 'text' ? 200 : 150, height: type === 'text' ? 40 : 100, 
+      value: type === 'text' ? 'Type text here...' : '', color: toolColor, size: textSize
     };
     if (type === 'highlight') newElement.color = '#FDE047'; 
     if (type === 'redact') newElement.color = '#000000'; 
@@ -239,15 +240,13 @@ export default function WordToPdf() {
     if (imgFile) {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const newElement = { id: Date.now(), type: 'image', page: currentPage, x: 50, y: 100, width: 150, height: 150, imgData: ev.target.result };
-        setElements([...elements, newElement]);
+        setElements([...elements, { id: Date.now(), type: 'image', page: currentPage, x: 50, y: 100, width: 150, height: 150, imgData: ev.target.result }]);
       };
       reader.readAsDataURL(imgFile);
     }
     e.target.value = '';
   };
 
-  // Drawing Logic
   const startDrawing = (e) => { const { offsetX, offsetY } = e.nativeEvent; const ctx = canvasRef.current.getContext('2d'); ctx.beginPath(); ctx.moveTo(offsetX, offsetY); setIsDrawing(true); };
   const draw = (e) => { if (!isDrawing) return; const { offsetX, offsetY } = e.nativeEvent; const ctx = canvasRef.current.getContext('2d'); ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = toolColor; ctx.lineTo(offsetX, offsetY); ctx.stroke(); };
   const stopDrawing = () => setIsDrawing(false);
@@ -255,8 +254,7 @@ export default function WordToPdf() {
   const saveDraw = () => {
     if (canvasRef.current) {
       const dataUrl = canvasRef.current.toDataURL('image/png');
-      const newElement = { id: Date.now(), type: 'draw', page: currentPage, x: 50, y: 100, width: 200, height: 100, imgData: dataUrl };
-      setElements([...elements, newElement]);
+      setElements([...elements, { id: Date.now(), type: 'draw', page: currentPage, x: 50, y: 100, width: 200, height: 100, imgData: dataUrl }]);
       setShowDrawModal(false);
     }
   };
@@ -269,7 +267,6 @@ export default function WordToPdf() {
     setIsExporting(true);
     try {
       let pdfDoc = await PDFDocument.load(originalPdfBuffer, { ignoreEncryption: true });
-      
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const hexToRgb = (hex) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -328,7 +325,7 @@ export default function WordToPdf() {
     }
   };
 
-  // --- HISTORY & MISC HANDLERS ---
+  // --- HISTORY & MISC ---
   useEffect(() => { const saved = localStorage.getItem('masterpdf_history'); if (saved) setHistory(JSON.parse(saved)); }, []);
   useEffect(() => { localStorage.setItem('masterpdf_history', JSON.stringify(history)); }, [history]);
   const clearHistory = () => { setHistory([]); localStorage.removeItem('masterpdf_history'); };
@@ -344,216 +341,296 @@ export default function WordToPdf() {
       </Head>
       <Navbar />
 
-      <main className="flex-grow flex flex-col pt-[72px] h-[calc(100vh-72px)] w-full relative">
-        
-        {/* VIEW 1: UPLOAD AND OPTIONS (Shows until conversion is done) */}
-        {!previewMode && (
-          <div className="flex flex-col p-4 sm:p-6 w-full max-w-[1600px] mx-auto overflow-y-auto custom-scrollbar h-full">
-            <div className="text-center mb-6 shrink-0">
-              <h1 className="text-3xl sm:text-4xl font-bold mb-2">{TOOL_TITLE}</h1>
-              <p className="text-base sm:text-lg opacity-80">{TOOL_DESC}</p>
-            </div>
+      {!previewMode ? (
+        /* =========================================================
+           VIEW 1: ORIGINAL UPLOAD LAYOUT (Exact Code - No CSS changes)
+           ========================================================= */
+        <main className="flex-grow flex flex-col p-4 sm:p-6 mt-16 mb-10">
+          <div className="text-center mb-6">
+            <h1 className="text-3xl sm:text-4xl font-bold mb-2">{TOOL_TITLE}</h1>
+            <p className="text-base sm:text-lg opacity-80">{TOOL_DESC}</p>
+          </div>
 
-            <div className="flex justify-end mb-4 gap-2 shrink-0">
-              <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full bg-white dark:bg-gray-800 shadow">
-                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-              </button>
-              <select value={lang} onChange={(e) => setLang(e.target.value)} className="p-2 rounded-lg border bg-white dark:bg-gray-800 outline-none">
-                <option value="en">English</option><option value="hi">हिन्दी</option>
-              </select>
-            </div>
+          <div className="flex justify-end mb-4 gap-2 w-full max-w-7xl mx-auto">
+            <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full bg-white dark:bg-gray-800 shadow" title={t.darkMode}>
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+            <select value={lang} onChange={(e) => setLang(e.target.value)} className="p-2 rounded-lg border bg-white dark:bg-gray-800">
+              <option value="en">English</option>
+              <option value="hi">हिन्दी</option>
+            </select>
+          </div>
 
-            <div className="flex flex-col lg:flex-row gap-6 flex-grow min-h-0">
+          <div className="flex flex-col md:flex-row gap-6 w-full max-w-7xl mx-auto">
+            {/* SIDEBAR - Options */}
+            <div className={`md:w-72 w-full p-4 rounded-2xl border shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <SlidersHorizontal size={18} /> {t.options}
+              </h3>
               
-              {/* LEFT SIDEBAR: Full Options */}
-              <div className={`lg:w-80 w-full p-4 rounded-2xl border shadow-sm flex flex-col overflow-y-auto custom-scrollbar ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 shrink-0"><SlidersHorizontal size={18} /> {t.options}</h3>
-                
-                <div className="space-y-4 shrink-0">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.pageSize}</label>
+                  <select value={options.pageSize} onChange={(e) => setOptions({ ...options, pageSize: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900">
+                    <option value="A4">A4</option><option value="A3">A3</option><option value="A5">A5</option>
+                    <option value="Letter">Letter</option><option value="Legal">Legal</option><option value="Tabloid">Tabloid</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.orientation}</label>
+                  <select value={options.orientation} onChange={(e) => setOptions({ ...options, orientation: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900">
+                    <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.margins}</label>
+                  <select value={options.margins} onChange={(e) => setOptions({ ...options, margins: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900">
+                    <option value="normal">Normal</option><option value="narrow">Narrow</option><option value="wide">Wide</option><option value="custom">Custom</option>
+                  </select>
+                </div>
+                {options.margins === 'custom' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="Top" value={options.customMargins.top} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, top: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
+                    <input type="number" placeholder="Bottom" value={options.customMargins.bottom} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, bottom: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
+                    <input type="number" placeholder="Left" value={options.customMargins.left} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, left: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
+                    <input type="number" placeholder="Right" value={options.customMargins.right} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, right: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.scaling}</label>
+                  <select value={options.scaling} onChange={(e) => setOptions({ ...options, scaling: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900">
+                    <option value="100">100%</option><option value="110">110%</option><option value="90">90%</option><option value="75">75%</option><option value="50">50%</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.quality}</label>
+                  <select value={options.quality} onChange={(e) => setOptions({ ...options, quality: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900">
+                    <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                  </select>
+                </div>
+              </div>
+
+              <button onClick={() => setShowAdvanced(!showAdvanced)} className="mt-4 w-full flex items-center justify-center gap-2 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                {showAdvanced ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                {showAdvanced ? t.basic : t.advanced}
+              </button>
+
+              {showAdvanced && (
+                <div className="mt-4 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">{t.pageSize}</label>
-                    <select value={options.pageSize} onChange={e => setOptions({ ...options, pageSize: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none">
-                      <option value="A4">A4</option><option value="A3">A3</option><option value="A5">A5</option><option value="Letter">Letter</option><option value="Legal">Legal</option><option value="Tabloid">Tabloid</option>
+                    <label className="block text-sm font-medium mb-1">{t.dpi}</label>
+                    <select value={options.dpi} onChange={(e) => setOptions({ ...options, dpi: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900">
+                      <option value="72">72 DPI</option><option value="150">150 DPI</option><option value="300">300 DPI</option><option value="600">600 DPI</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">{t.orientation}</label>
-                    <select value={options.orientation} onChange={e => setOptions({ ...options, orientation: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none">
-                      <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
+                    <label className="block text-sm font-medium mb-1">{t.compression}</label>
+                    <select value={options.compression} onChange={(e) => setOptions({ ...options, compression: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900">
+                      <option value="low">Low (Best quality)</option><option value="medium">Medium</option><option value="high">High (Smallest size)</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">{t.margins}</label>
-                    <select value={options.margins} onChange={e => setOptions({ ...options, margins: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none">
-                      <option value="normal">Normal</option><option value="narrow">Narrow</option><option value="wide">Wide</option><option value="custom">Custom</option>
+                    <label className="block text-sm font-medium mb-1">{t.colorMode}</label>
+                    <select value={options.colorMode} onChange={(e) => setOptions({ ...options, colorMode: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900">
+                      <option value="rgb">RGB</option><option value="cmyk">CMYK</option><option value="grayscale">Grayscale</option>
                     </select>
                   </div>
-                  {options.margins === 'custom' && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <input type="number" placeholder="Top" value={options.customMargins.top} onChange={e => setOptions({ ...options, customMargins: { ...options.customMargins, top: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900 outline-none" />
-                      <input type="number" placeholder="Bottom" value={options.customMargins.bottom} onChange={e => setOptions({ ...options, customMargins: { ...options.customMargins, bottom: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900 outline-none" />
-                      <input type="number" placeholder="Left" value={options.customMargins.left} onChange={e => setOptions({ ...options, customMargins: { ...options.customMargins, left: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900 outline-none" />
-                      <input type="number" placeholder="Right" value={options.customMargins.right} onChange={e => setOptions({ ...options, customMargins: { ...options.customMargins, right: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900 outline-none" />
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1 flex items-center gap-1"><Lock size={14} /> {t.password}</label>
+                    <input type="password" value={options.password} onChange={(e) => setOptions({ ...options, password: e.target.value })} placeholder="Enter password" className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t.passwordConfirm}</label>
+                    <input type="password" value={options.passwordConfirm} onChange={(e) => setOptions({ ...options, passwordConfirm: e.target.value })} placeholder="Confirm password" className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900" />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">{t.permissions}</label>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2"><input type="checkbox" checked={options.permissions.print} onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, print: e.target.checked } })} /> {t.allowPrint}</label>
+                      <label className="flex items-center gap-2"><input type="checkbox" checked={options.permissions.copy} onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, copy: e.target.checked } })} /> {t.allowCopy}</label>
+                      <label className="flex items-center gap-2"><input type="checkbox" checked={options.permissions.modify} onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, modify: e.target.checked } })} /> {t.allowModify}</label>
                     </div>
-                  )}
+                  </div>
+
                   <div>
-                    <label className="block text-sm font-medium mb-1">{t.scaling}</label>
-                    <select value={options.scaling} onChange={e => setOptions({ ...options, scaling: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none">
-                      <option value="100">100%</option><option value="110">110%</option><option value="90">90%</option><option value="75">75%</option><option value="50">50%</option>
-                    </select>
+                    <label className="block text-sm font-medium mb-1">{t.watermark}</label>
+                    <input type="text" value={options.watermark} onChange={(e) => setOptions({ ...options, watermark: e.target.value })} placeholder="Your watermark" className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">{t.quality}</label>
-                    <select value={options.quality} onChange={e => setOptions({ ...options, quality: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none">
-                      <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                    <label className="block text-sm font-medium mb-1 flex items-center gap-1"><Palette size={14} /> {t.watermarkColor}</label>
+                    <input type="color" value={options.watermarkColor} onChange={(e) => setOptions({ ...options, watermarkColor: e.target.value })} className="w-full p-1 border rounded-lg bg-white dark:bg-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 flex items-center gap-1"><Type size={14} /> {t.watermarkFontSize}</label>
+                    <input type="number" min="1" max="100" value={options.watermarkFontSize} onChange={(e) => setOptions({ ...options, watermarkFontSize: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t.watermarkOpacity}</label>
+                    <input type="number" min="0" max="100" value={options.watermarkOpacity} onChange={(e) => setOptions({ ...options, watermarkOpacity: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t.watermarkRotation}</label>
+                    <input type="number" value={options.watermarkRotation} onChange={(e) => setOptions({ ...options, watermarkRotation: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t.watermarkPosition}</label>
+                    <select value={options.watermarkPosition} onChange={(e) => setOptions({ ...options, watermarkPosition: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900">
+                      <option value="center">Center</option><option value="top">Top</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option><option value="diagonal">Diagonal</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={options.compress} onChange={(e) => setOptions({ ...options, compress: e.target.checked })} /> {t.compress}
+                    </label>
+                    {options.compress && (
+                      <div className="flex gap-2 mt-2">
+                        <input type="number" min="1" placeholder={t.compressSize} value={options.compressSize} onChange={(e) => setOptions({ ...options, compressSize: e.target.value })} className="p-2 border rounded bg-white dark:bg-gray-900 flex-1" />
+                        <select value={options.compressUnit} onChange={(e) => setOptions({ ...options, compressUnit: e.target.value })} className="p-2 border rounded bg-white dark:bg-gray-900">
+                          <option value="KB">KB</option><option value="MB">MB</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
+              )}
 
-                <button onClick={() => setShowAdvanced(!showAdvanced)} className="mt-4 w-full flex items-center justify-center gap-2 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-bold shrink-0">
-                  {showAdvanced ? <ChevronUp size={18} /> : <ChevronDown size={18} />} {showAdvanced ? t.basic : t.advanced}
-                </button>
+              <div className="mt-6 space-y-3">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={options.merge} onChange={(e) => setOptions({ ...options, merge: e.target.checked })} />
+                  <Combine size={16} /> {t.merge}
+                </label>
+                <div className="flex items-center gap-2">
+                  <Split size={16} />
+                  <input type="text" placeholder={t.split} value={options.splitRange} onChange={(e) => setOptions({ ...options, splitRange: e.target.value })} className="p-2 border rounded bg-white dark:bg-gray-900 text-sm w-full" />
+                </div>
+              </div>
+            </div>
 
-                {showAdvanced && (
-                  <div className="mt-4 space-y-4 shrink-0">
-                    <div><label className="block text-sm font-medium mb-1">{t.dpi}</label><select value={options.dpi} onChange={e => setOptions({ ...options, dpi: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none"><option value="72">72 DPI</option><option value="150">150 DPI</option><option value="300">300 DPI</option><option value="600">600 DPI</option></select></div>
-                    <div><label className="block text-sm font-medium mb-1">{t.compression}</label><select value={options.compression} onChange={e => setOptions({ ...options, compression: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none"><option value="low">Low (Best quality)</option><option value="medium">Medium</option><option value="high">High (Smallest size)</option></select></div>
-                    <div><label className="block text-sm font-medium mb-1 flex items-center gap-1"><Lock size={14} /> {t.password}</label><input type="password" value={options.password} onChange={e => setOptions({ ...options, password: e.target.value })} placeholder="Enter password" className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none" /></div>
-                    <div><label className="block text-sm font-medium mb-1">{t.passwordConfirm}</label><input type="password" value={options.passwordConfirm} onChange={e => setOptions({ ...options, passwordConfirm: e.target.value })} placeholder="Confirm password" className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none" /></div>
-                    
-                    {/* Permissions */}
-                    <div>
-                      <label className="block text-sm font-medium mb-2">{t.permissions}</label>
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={options.permissions.print} onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, print: e.target.checked } })} /> {t.allowPrint}</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={options.permissions.copy} onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, copy: e.target.checked } })} /> {t.allowCopy}</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={options.permissions.modify} onChange={(e) => setOptions({ ...options, permissions: { ...options.permissions, modify: e.target.checked } })} /> {t.allowModify}</label>
-                      </div>
+            {/* MAIN AREA - File list & Upload */}
+            <div className="flex-1">
+              <div className={`rounded-2xl shadow-sm border p-6 min-h-[450px] flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                
+                {/* Drag & Drop Area */}
+                <div
+                  onDragEnter={handleDragEnter}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`border-2 border-dashed rounded-xl p-10 text-center transition flex flex-col items-center justify-center gap-4 min-h-[300px] ${darkMode ? 'border-gray-600 hover:border-blue-400' : 'border-gray-300 hover:border-blue-500'} ${files.length ? 'hidden' : ''}`}
+                >
+                  <input type="file" id="file-upload" accept={ACCEPT_FORMAT} onChange={handleFileChange} multiple className="hidden" ref={fileInputRef} />
+                  <label htmlFor="file-upload" className="cursor-pointer inline-flex flex-col items-center gap-3 w-full h-full">
+                    <UploadCloud size={48} className="text-blue-500" />
+                    <span className="text-lg font-semibold">{t.drag}</span>
+                    <span className="text-sm opacity-70">{t.or}</span>
+                    <span className="bg-[#E5322D] text-white px-8 py-3 rounded-xl font-bold shadow hover:bg-red-700 transition">
+                      {t.browse}
+                    </span>
+                  </label>
+                  <p className="text-xs mt-3 opacity-60">No size limit</p>
+                </div>
+
+                {/* File List */}
+                {files.length > 0 && (
+                  <div className="w-full">
+                    <div className="flex justify-between items-center mb-4">
+                      <button onClick={() => fileInputRef.current.click()} className="flex items-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600">
+                        <Plus size={18} />
+                        <span>{files.length} {t.selectedCount}</span>
+                      </button>
+                      <button onClick={clearAll} className="text-red-500 hover:text-red-700 flex items-center gap-1">
+                        <Trash2 size={16} /> Clear All
+                      </button>
                     </div>
 
-                    {/* Watermark */}
-                    <div><label className="block text-sm font-medium mb-1">{t.watermark}</label><input type="text" value={options.watermark} onChange={e => setOptions({ ...options, watermark: e.target.value })} placeholder="Your watermark" className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none" /></div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div><label className="block text-sm font-medium mb-1 flex items-center gap-1"><Palette size={14} /> {t.watermarkColor}</label><input type="color" value={options.watermarkColor} onChange={e => setOptions({ ...options, watermarkColor: e.target.value })} className="w-full p-1 border rounded-lg bg-white dark:bg-gray-900 h-10" /></div>
-                      <div><label className="block text-sm font-medium mb-1 flex items-center gap-1"><Type size={14} /> {t.watermarkFontSize}</label><input type="number" min="1" max="100" value={options.watermarkFontSize} onChange={e => setOptions({ ...options, watermarkFontSize: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none" /></div>
-                      <div><label className="block text-sm font-medium mb-1">{t.watermarkOpacity}</label><input type="number" min="0" max="100" value={options.watermarkOpacity} onChange={e => setOptions({ ...options, watermarkOpacity: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none" /></div>
-                      <div><label className="block text-sm font-medium mb-1">{t.watermarkRotation}</label><input type="number" value={options.watermarkRotation} onChange={e => setOptions({ ...options, watermarkRotation: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none" /></div>
-                    </div>
-                    <div><label className="block text-sm font-medium mb-1">{t.watermarkPosition}</label><select value={options.watermarkPosition} onChange={e => setOptions({ ...options, watermarkPosition: e.target.value })} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-900 outline-none"><option value="center">Center</option><option value="top">Top</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option><option value="diagonal">Diagonal</option></select></div>
-
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={options.compress} onChange={e => setOptions({ ...options, compress: e.target.checked })} /> {t.compress}</label>
-                      {options.compress && (
-                        <div className="flex gap-2 mt-2">
-                          <input type="number" min="1" placeholder={t.compressSize} value={options.compressSize} onChange={e => setOptions({ ...options, compressSize: e.target.value })} className="p-2 border rounded bg-white dark:bg-gray-900 flex-1 outline-none" />
-                          <select value={options.compressUnit} onChange={e => setOptions({ ...options, compressUnit: e.target.value })} className="p-2 border rounded bg-white dark:bg-gray-900 outline-none"><option value="KB">KB</option><option value="MB">MB</option></select>
+                    <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                      {files.map((file, index) => (
+                        <div key={index} className={`flex items-center justify-between p-3 rounded-lg border ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'}`}>
+                          <div className="flex items-center gap-3 flex-1">
+                            <div className="flex flex-col">
+                              <button onClick={() => moveFile(index, index - 1)} disabled={index === 0} className="text-gray-500 disabled:opacity-30">
+                                <ChevronUp size={16} />
+                              </button>
+                              <button onClick={() => moveFile(index, index + 1)} disabled={index === files.length - 1} className="text-gray-500 disabled:opacity-30">
+                                <ChevronDown size={16} />
+                              </button>
+                            </div>
+                            <FileText size={24} className="text-[#E5322D]" />
+                            <div className="flex-1">
+                              <p className="font-semibold text-sm truncate max-w-[200px]">{file.name}</p>
+                              <p className="text-xs opacity-60">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                            </div>
+                          </div>
+                          <button onClick={() => removeFile(index)} className="text-gray-500 hover:text-red-500">
+                            <X size={18} />
+                          </button>
                         </div>
+                      ))}
+                    </div>
+
+                    {/* Convert Button */}
+                    <div className="mt-6 flex flex-col sm:flex-row gap-4">
+                      {!isConverting ? (
+                        <button onClick={processFiles} className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700">
+                          {t.convert} <ArrowRight size={24} />
+                        </button>
+                      ) : (
+                        <>
+                          <button onClick={cancelConversion} className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-bold text-lg bg-gray-300 hover:bg-gray-400 text-gray-800">
+                            {t.cancel}
+                          </button>
+                          <div className="flex-1 flex flex-col items-center justify-center">
+                            <div className="w-full bg-gray-200 rounded-full h-4">
+                              <div className="bg-blue-500 h-4 rounded-full transition-all" style={{ width: `${progress}%` }}></div>
+                            </div>
+                            <span className="text-sm mt-1 font-bold">{progress}%</span>
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
                 )}
-
-                <div className="mt-6 space-y-3 pb-6 border-b border-gray-200 dark:border-gray-700 shrink-0">
-                  <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={options.merge} onChange={e => setOptions({ ...options, merge: e.target.checked })} /> <Combine size={16} /> {t.merge}</label>
-                  <div className="flex items-center gap-2"><Split size={16} /><input type="text" placeholder={t.split} value={options.splitRange} onChange={e => setOptions({ ...options, splitRange: e.target.value })} className="p-2 border rounded bg-white dark:bg-gray-900 text-sm w-full outline-none" /></div>
-                </div>
               </div>
 
-              {/* CENTER: Upload Box & File List */}
-              <div className="flex-1 flex flex-col min-h-0">
-                <div className={`rounded-2xl shadow-sm border p-6 flex flex-col h-full overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  
-                  {files.length === 0 ? (
-                    <div onDragEnter={handleDragEnter} onDragOver={e => e.preventDefault()} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`flex-1 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-4 transition min-h-[300px] ${darkMode ? 'border-gray-600 hover:border-blue-400 bg-gray-900' : 'border-gray-300 hover:border-blue-500 bg-gray-50'}`}>
-                      <input type="file" id="file-upload" accept={ACCEPT_FORMAT} onChange={handleFileChange} multiple className="hidden" ref={fileInputRef} />
-                      <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
-                        <UploadCloud size={60} className="text-blue-500 mb-2" />
-                        <span className="text-xl font-bold">{t.drag}</span>
-                        <span className="text-sm opacity-60 mt-1 mb-4">{t.or}</span>
-                        <span className="bg-[#E5322D] text-white px-8 py-2 rounded-lg font-bold shadow hover:bg-red-700">Browse Word Files</span>
-                      </label>
-                    </div>
-                  ) : (
-                    <div className="w-full flex flex-col h-full">
-                      <div className="flex justify-between items-center mb-4 shrink-0">
-                        <h3 className="font-bold text-lg">{files.length} {t.selectedCount}</h3>
-                        <div className="flex gap-2">
-                          <button onClick={() => fileInputRef.current.click()} className="text-sm bg-blue-100 text-blue-600 px-3 py-1 rounded font-bold hover:bg-blue-200 flex items-center gap-1"><Plus size={14}/> Add More</button>
-                          <button onClick={clearAll} className="text-sm bg-red-100 text-red-600 px-3 py-1 rounded font-bold hover:bg-red-200 flex items-center gap-1"><Trash2 size={14}/> Clear All</button>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2 overflow-y-auto flex-grow custom-scrollbar pr-2 mb-4">
-                        {files.map((file, idx) => (
-                          <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shrink-0">
-                            <div className="flex items-center gap-3 overflow-hidden">
-                              <div className="flex flex-col gap-1 shrink-0">
-                                <button onClick={() => moveFile(idx, idx - 1)} disabled={idx === 0} className="text-gray-400 hover:text-blue-500 disabled:opacity-30"><ChevronUp size={14}/></button>
-                                <button onClick={() => moveFile(idx, idx + 1)} disabled={idx === files.length - 1} className="text-gray-400 hover:text-blue-500 disabled:opacity-30"><ChevronDown size={14}/></button>
-                              </div>
-                              <FileText size={24} className="text-blue-600 shrink-0"/>
-                              <div className="min-w-0">
-                                <p className="font-bold text-sm truncate">{file.name}</p>
-                                <p className="text-xs text-gray-500">{(file.size/1024/1024).toFixed(2)} MB</p>
-                              </div>
-                            </div>
-                            <button onClick={() => removeFile(idx)} className="text-gray-400 hover:text-red-500 p-2 shrink-0"><X size={18}/></button>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row gap-4 shrink-0 border-t border-gray-200 dark:border-gray-700 pt-4">
-                        {!isConverting ? (
-                          <button onClick={processFiles} className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700">
-                            {t.convert} <ArrowRight size={24} />
-                          </button>
-                        ) : (
-                          <>
-                            <button onClick={cancelConversion} className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-bold text-lg bg-gray-300 hover:bg-gray-400 text-gray-800">{t.cancel}</button>
-                            <div className="flex-1 flex flex-col items-center justify-center">
-                              <div className="w-full bg-gray-200 rounded-full h-4"><div className="bg-blue-500 h-4 rounded-full transition-all" style={{ width: `${progress}%` }}></div></div>
-                              <span className="text-sm mt-1 font-bold">{progress}%</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* History Section (Visible only when not in preview) */}
-                {history.length > 0 && (
-                  <div className="mt-6 border-t pt-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="font-bold flex items-center gap-2"><History size={18} /> {t.history}</h4>
-                      <button onClick={clearHistory} className="text-red-500 text-sm hover:underline">{t.clearHistory}</button>
-                    </div>
-                    <ul className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                      {history.map((item, idx) => (
-                        <li key={idx} className={`flex justify-between items-center text-sm p-3 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                          <div className="flex flex-col min-w-0 pr-4">
-                            <span className="font-bold truncate">{item.files.join(', ')}</span>
-                            <span className="opacity-50 text-[10px]">{item.time}</span>
-                          </div>
-                          <button onClick={() => downloadFromHistory(item.url)} className="text-blue-500 hover:underline flex items-center gap-1 font-bold shrink-0">
-                            <Download size={14} /> Download
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+              {/* History Section Below Upload */}
+              {history.length > 0 && (
+                <div className="mt-6 border-t pt-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold flex items-center gap-2">
+                      <History size={18} /> {t.history}
+                    </h4>
+                    <button onClick={clearHistory} className="text-red-500 text-sm hover:underline">
+                      {t.clearHistory}
+                    </button>
                   </div>
-                )}
-              </div>
+                  <ul className="space-y-2 max-h-40 overflow-y-auto">
+                    {history.map((item, idx) => (
+                      <li key={idx} className={`flex justify-between items-center text-sm p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                        <span>{item.files.join(', ')} <span className="opacity-50">({item.time})</span></span>
+                        <button onClick={() => downloadFromHistory(item.url)} className="text-blue-500 hover:underline flex items-center gap-1 font-bold">
+                          <Download size={14} /> Download
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        </main>
+      ) : (
 
-        {/* VIEW 2: FULL PDF EDITOR (Shows after conversion) */}
-        {previewMode && convertedPdfUrl && (
-          <div className="flex-grow flex flex-col bg-white overflow-hidden animate-in fade-in h-full z-50">
+        /* =========================================================
+           VIEW 2: FULL PDF EDITOR (Shows exactly like Edit PDF Workspace)
+           ========================================================= */
+        <main className="flex-grow flex flex-col pt-[72px] h-[calc(100vh-72px)] w-full bg-[#F5F5F7]">
+          <div className="w-full h-full flex flex-col bg-white shadow-lg overflow-hidden animate-in fade-in">
             
-            {/* Top Toolbar (Exact Editor UI) */}
-            <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 w-full shadow-sm overflow-x-auto custom-scrollbar">
+            {/* Top Toolbar */}
+            <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 w-full shadow-sm overflow-x-auto custom-scrollbar z-20">
                <div className="flex items-center gap-2 min-w-max">
                  <button onClick={() => addEditorElement('text')} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition"><Type size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Text</span></button>
                  <div className="relative">
@@ -570,31 +647,23 @@ export default function WordToPdf() {
                </div>
 
                <div className="flex items-center gap-3 shrink-0 ml-4">
-                 {/* Post-conversion actions directly in editor toolbar */}
-                 <div className="hidden lg:flex items-center gap-2 mr-2">
-                   <button onClick={handleShare} className="text-gray-600 hover:text-blue-600 p-1"><Share2 size={16}/></button>
-                   <button onClick={handleEmail} className="text-gray-600 hover:text-green-600 p-1"><Mail size={16}/></button>
-                   <button onClick={() => handleCloud('Google Drive')} className="text-gray-600 hover:text-yellow-600 p-1"><Cloud size={16}/></button>
-                 </div>
-
                  <div className="hidden md:flex items-center gap-1 bg-gray-100 rounded p-1">
                    <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} className="p-1 hover:bg-white rounded text-gray-600"><ZoomOut size={14}/></button>
                    <span className="text-[10px] font-bold text-gray-700 w-8 text-center">{Math.round(zoom * 100)}%</span>
                    <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} className="p-1 hover:bg-white rounded text-gray-600"><ZoomIn size={14}/></button>
                  </div>
-                 
                  <button onClick={exportEditedPdf} disabled={isExporting} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-1.5 px-4 rounded-lg shadow transition flex items-center gap-2 text-sm">
-                   {isExporting ? <Settings className="animate-spin" size={14}/> : <Save size={14}/>} <span className="hidden sm:block">Export PDF</span>
+                   {isExporting ? <Settings className="animate-spin" size={14}/> : <Save size={14}/>} <span className="hidden sm:block">Export</span>
                  </button>
-                 <button onClick={() => { setPreviewMode(false); setConvertedPdfUrl(null); clearAll(); }} className="text-gray-400 hover:text-red-500 ml-2" title="Close Editor"><X size={20}/></button>
+                 <button onClick={clearAll} className="text-gray-400 hover:text-red-500 ml-2" title="Close Preview"><X size={20}/></button>
                </div>
             </div>
 
-            <div className="flex-grow flex flex-row overflow-hidden bg-[#E4E4E4] relative">
+            <div className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4]">
               
               {/* Left Mini Pages */}
               <div className="w-40 lg:w-48 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto shrink-0 z-10 custom-scrollbar shadow-[2px_0_5px_rgba(0,0,0,0.05)] hidden lg:flex">
-                 <Document file={convertedPdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="text-xs text-gray-500 font-bold">Loading...</div>}>
+                 <Document file={convertedPdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="font-bold text-gray-500 text-sm">Loading...</div>}>
                    {Array.from({ length: numPages || 0 }, (_, i) => (
                      <div key={i} onClick={() => setCurrentPage(i + 1)} className="flex flex-col items-center mb-4 cursor-pointer group">
                        <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
@@ -606,9 +675,8 @@ export default function WordToPdf() {
                  </Document>
               </div>
 
-              {/* Center Bada Page Viewer */}
+              {/* Center Bada Page */}
               <div className="flex-grow flex flex-col relative min-w-0">
-                 {/* Floating Page Nav */}
                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-900/90 text-white px-4 py-2 rounded-full flex items-center gap-4 shadow-lg z-30">
                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="hover:text-[#E5322D]"><ChevronLeft size={20}/></button>
                    <span className="text-xs font-bold w-20 text-center">Page {currentPage}/{numPages}</span>
@@ -679,8 +747,8 @@ export default function WordToPdf() {
 
             </div>
           </div>
-        )}
-      </main>
+        </main>
+      )}
 
       {/* DRAW MODAL */}
       {showDrawModal && (
@@ -701,8 +769,12 @@ export default function WordToPdf() {
         </div>
       )}
 
-      <Footer />
-      {toast && <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-xl text-white font-bold z-[100] ${toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>{toast.message}</div>}
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-xl text-white font-bold z-[100] transition-opacity ${toast.type === 'error' ? 'bg-red-500' : toast.type === 'info' ? 'bg-blue-500' : 'bg-green-500'}`}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }
