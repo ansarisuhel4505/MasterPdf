@@ -813,7 +813,7 @@ if (!fileUrls || fileUrls.length === 0) {
       result = await convertapi.convert(format, { File: fileUrl }, 'pdf');
     }
     
-    else if (action === 'html-to-pdf') {
+ else if (action === 'html-to-pdf') {
   try {
     const { htmlContent, options } = req.body;
     const fileUrl = req.body.fileUrl || '';
@@ -837,8 +837,12 @@ if (!fileUrls || fileUrls.length === 0) {
       }
     }
 
-    // Scale
-    if (options.scale) convertOptions.Scale = options.scale;
+    // Scale (must be between 10 and 200) – frontend sends '1' or '100'?
+    if (options.scale) {
+      // If scale is '1' (meaning 100%), convert to 100, else use as is
+      const scaleValue = options.scale === '1' ? 100 : parseInt(options.scale);
+      convertOptions.Scale = scaleValue;
+    }
 
     // Background
     if (options.background === false) convertOptions.PrintBackground = 'false';
@@ -853,15 +857,13 @@ if (!fileUrls || fileUrls.length === 0) {
     if (options.waitForSelector) convertOptions.WaitForSelector = options.waitForSelector;
     if (options.waitForTimeout) convertOptions.WaitForTimeout = options.waitForTimeout;
 
-    // Watermark (using ConvertAPI watermark post-processing)
-    // Password (using ConvertAPI encrypt post-processing)
-
     let result;
     if (fileUrl) {
-      // URL to PDF
+      // URL to PDF – IMPORTANT: Set Url property
+      convertOptions.Url = fileUrl;
       result = await convertapi.convert('pdf', convertOptions, 'web');
     } else if (htmlContent) {
-      // Raw HTML to PDF - create a temp file and convert
+      // Raw HTML to PDF – create a temp file and pass File
       const tempBlob = await put(`source-code-${Date.now()}.html`, htmlContent, {
         access: 'public',
         contentType: 'text/html'
