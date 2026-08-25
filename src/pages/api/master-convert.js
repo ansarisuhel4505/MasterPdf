@@ -931,33 +931,7 @@ if (!fileUrls || fileUrls.length === 0) {
         return res.status(200).json({ success: true, textResult: `❌ AI Error: ${aiError.message}` });
       }
     }
-      else if (action === 'save-edited-file') {
-  try {
-    const { fileName, fileContent, fileType } = req.body;
-    if (!fileName || !fileContent) {
-      return res.status(400).json({ error: 'Missing fileName or fileContent' });
-    }
-
-    const buffer = globalThis.Buffer;
-    let outputBuffer;
-    if (fileContent.startsWith('data:')) {
-      const base64Data = fileContent.split(',')[1];
-      outputBuffer = buffer.from(base64Data, 'base64');
-    } else {
-      outputBuffer = buffer.from(fileContent, 'utf-8');
-    }
-
-    const blob = await put(`edited-${Date.now()}-${fileName}`, outputBuffer, {  // ✅ Correct variable
-      access: 'public',
-      contentType: fileType || 'application/octet-stream'
-    });
-
-    return res.status(200).json({ success: true, downloadUrl: blob.url });
-  } catch (err) {
-    console.error('Save-edited-file error:', err);
-    return res.status(500).json({ error: 'Failed to save edited file.' });
-  }
-}
+      
     else {
       return res.status(400).json({ error: "Unknown action request." });
     }
