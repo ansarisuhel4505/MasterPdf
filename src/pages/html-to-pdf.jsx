@@ -98,7 +98,7 @@ export default function HtmlToPdf() {
     orientation: 'portrait',
     margins: 'normal',
     customMargins: { top: 20, bottom: 20, left: 20, right: 20 },
-    scale: '1',
+    scale: '100',
     background: true,
     headerFooter: false,
     headerTemplate: '',
@@ -361,10 +361,10 @@ export default function HtmlToPdf() {
                   onChange={(e) => setOptions({ ...options, scale: e.target.value })}
                   className="w-full p-2 border rounded bg-white dark:bg-gray-900"
                 >
-                  <option value="1">100%</option>
-                  <option value="0.8">80%</option>
-                  <option value="0.5">50%</option>
-                  <option value="1.2">120%</option>
+                  <option value="100">100%</option>
+                  <option value="80">80%</option>
+                  <option value="50">50%</option>
+                  <option value="120">120%</option>
                 </select>
               </div>
 
