@@ -81,7 +81,7 @@ const translations = {
 };
 
 export default function HtmlToPdf() {
-  const [mode, setMode] = useState('url');
+  const [mode, setMode] = useState('url'); // 'url' or 'html'
   const [urlInput, setUrlInput] = useState('');
   const [htmlInput, setHtmlInput] = useState('');
   const [isConverting, setIsConverting] = useState(false);
@@ -92,12 +92,13 @@ export default function HtmlToPdf() {
   const [toast, setToast] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   
+  // Options state
   const [options, setOptions] = useState({
     pageSize: 'A4',
     orientation: 'portrait',
     margins: 'normal',
     customMargins: { top: 20, bottom: 20, left: 20, right: 20 },
-    scale: '100',
+    scale: '1',
     background: true,
     headerFooter: false,
     headerTemplate: '',
@@ -116,6 +117,7 @@ export default function HtmlToPdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // Load History
   useEffect(() => {
     const saved = localStorage.getItem('masterpdf_html_history');
     if (saved) setHistory(JSON.parse(saved));
@@ -125,6 +127,7 @@ export default function HtmlToPdf() {
     localStorage.setItem('masterpdf_html_history', JSON.stringify(history));
   }, [history]);
 
+  // Simulate progress (real progress from server is not available, but this is UX)
   useEffect(() => {
     if (isConverting) {
       const interval = setInterval(() => {
@@ -140,21 +143,7 @@ export default function HtmlToPdf() {
     }
   }, [isConverting]);
 
-  const cleanUrl = (rawUrl) => {
-    let clean = rawUrl.trim();
-    const markdownMatch = clean.match(/\[.*?\]\((.*?)\)/);
-    if (markdownMatch) clean = markdownMatch[1];
-    
-    // 🔥 FIX: http/https prefix add karo
-    if (!/^https?:\/\//i.test(clean)) {
-      clean = 'https://' + clean;
-    }
-    
-    clean = clean.replace(/\s/g, '%20');
-    return clean;
-  };
-
-  const handleConvert = async () => {
+const handleConvert = async () => {
     if (mode === 'url' && !urlInput) {
       showToast(t.error, 'error');
       return;
@@ -172,9 +161,10 @@ export default function HtmlToPdf() {
     setProgress(0);
 
     try {
+      // Prepare request body
       const body = {
         action: 'html-to-pdf',
-        fileUrl: mode === 'url' ? cleanUrl(urlInput) : '',
+        fileUrl: mode === 'url' ? urlInput : '',
         htmlContent: mode === 'html' ? htmlInput : '',
         options: {
           pageSize: options.pageSize,
@@ -202,20 +192,20 @@ export default function HtmlToPdf() {
       const data = await response.json();
 
       if (response.ok && data.downloadUrl) {
-        const resp = await fetch(data.downloadUrl);
-        const blob = await resp.blob();
-        const url = window.URL.createObjectURL(blob);
+        
+        // 🔥 FIX: Directly use the ConvertAPI URL to trigger download instead of fetching it via Blob
         const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `MasterPdf_Webpage.pdf`);
+        link.href = data.downloadUrl;
+        link.target = '_blank'; // Opens in new tab, triggering the download automatically
+        link.setAttribute('download', `MasterPdf_Webpage.pdf`); 
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
 
+        // Save to history
         const newEntry = {
           time: new Date().toLocaleString(),
-          source: mode === 'url' ? cleanUrl(urlInput) : 'Raw HTML',
+          source: mode === 'url' ? urlInput : 'Raw HTML',
           url: data.downloadUrl
         };
         setHistory(prev => [newEntry, ...prev].slice(0, 10));
@@ -269,6 +259,7 @@ export default function HtmlToPdf() {
           <p className="text-base sm:text-lg opacity-80">{TOOL_DESC}</p>
         </div>
 
+        {/* Toolbar */}
         <div className="flex justify-end mb-4 gap-2">
           <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full bg-white dark:bg-gray-800 shadow">
             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
@@ -280,14 +271,19 @@ export default function HtmlToPdf() {
         </div>
 
         <div className="flex flex-col md:flex-row gap-6 w-full max-w-7xl mx-auto">
-          {/* Sidebar */}
+          {/* SIDEBAR - Options */}
           <div className={`md:w-72 w-full p-4 rounded-2xl border shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><SlidersHorizontal size={18} /> {t.options}</h3>
 
+            {/* Basic Options */}
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">{t.pageSize}</label>
-                <select value={options.pageSize} onChange={(e) => setOptions({ ...options, pageSize: e.target.value })} className="w-full p-2 border rounded bg-white dark:bg-gray-900">
+                <select
+                  value={options.pageSize}
+                  onChange={(e) => setOptions({ ...options, pageSize: e.target.value })}
+                  className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                >
                   <option value="A4">A4</option>
                   <option value="A3">A3</option>
                   <option value="A5">A5</option>
@@ -299,7 +295,11 @@ export default function HtmlToPdf() {
 
               <div>
                 <label className="block text-sm font-medium mb-1">{t.orientation}</label>
-                <select value={options.orientation} onChange={(e) => setOptions({ ...options, orientation: e.target.value })} className="w-full p-2 border rounded bg-white dark:bg-gray-900">
+                <select
+                  value={options.orientation}
+                  onChange={(e) => setOptions({ ...options, orientation: e.target.value })}
+                  className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                >
                   <option value="portrait">Portrait</option>
                   <option value="landscape">Landscape</option>
                 </select>
@@ -307,7 +307,11 @@ export default function HtmlToPdf() {
 
               <div>
                 <label className="block text-sm font-medium mb-1">{t.margins}</label>
-                <select value={options.margins} onChange={(e) => setOptions({ ...options, margins: e.target.value })} className="w-full p-2 border rounded bg-white dark:bg-gray-900">
+                <select
+                  value={options.margins}
+                  onChange={(e) => setOptions({ ...options, margins: e.target.value })}
+                  className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                >
                   <option value="normal">Normal</option>
                   <option value="narrow">Narrow</option>
                   <option value="wide">Wide</option>
@@ -317,38 +321,79 @@ export default function HtmlToPdf() {
 
               {options.margins === 'custom' && (
                 <div className="grid grid-cols-2 gap-2">
-                  <input type="number" placeholder="Top (mm)" value={options.customMargins.top} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, top: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
-                  <input type="number" placeholder="Bottom (mm)" value={options.customMargins.bottom} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, bottom: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
-                  <input type="number" placeholder="Left (mm)" value={options.customMargins.left} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, left: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
-                  <input type="number" placeholder="Right (mm)" value={options.customMargins.right} onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, right: e.target.value } })} className="p-2 border rounded bg-white dark:bg-gray-900" />
+                  <input
+                    type="number"
+                    placeholder="Top (mm)"
+                    value={options.customMargins.top}
+                    onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, top: e.target.value } })}
+                    className="p-2 border rounded bg-white dark:bg-gray-900"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Bottom (mm)"
+                    value={options.customMargins.bottom}
+                    onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, bottom: e.target.value } })}
+                    className="p-2 border rounded bg-white dark:bg-gray-900"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Left (mm)"
+                    value={options.customMargins.left}
+                    onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, left: e.target.value } })}
+                    className="p-2 border rounded bg-white dark:bg-gray-900"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Right (mm)"
+                    value={options.customMargins.right}
+                    onChange={(e) => setOptions({ ...options, customMargins: { ...options.customMargins, right: e.target.value } })}
+                    className="p-2 border rounded bg-white dark:bg-gray-900"
+                  />
                 </div>
               )}
 
               <div>
                 <label className="block text-sm font-medium mb-1">{t.scale}</label>
-                <select value={options.scale} onChange={(e) => setOptions({ ...options, scale: e.target.value })} className="w-full p-2 border rounded bg-white dark:bg-gray-900">
-                  <option value="100">100%</option>
-                  <option value="80">80%</option>
-                  <option value="50">50%</option>
-                  <option value="120">120%</option>
+                <select
+                  value={options.scale}
+                  onChange={(e) => setOptions({ ...options, scale: e.target.value })}
+                  className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                >
+                  <option value="1">100%</option>
+                  <option value="0.8">80%</option>
+                  <option value="0.5">50%</option>
+                  <option value="1.2">120%</option>
                 </select>
               </div>
 
               <label className="flex items-center gap-2">
-                <input type="checkbox" checked={options.background} onChange={(e) => setOptions({ ...options, background: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={options.background}
+                  onChange={(e) => setOptions({ ...options, background: e.target.checked })}
+                />
                 {t.background}
               </label>
             </div>
 
-            <button onClick={() => setShowAdvanced(!showAdvanced)} className="mt-4 w-full flex items-center justify-center gap-2 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+            {/* Advanced Toggle */}
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="mt-4 w-full flex items-center justify-center gap-2 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            >
               {showAdvanced ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
               {showAdvanced ? t.basic : t.advanced}
             </button>
 
             {showAdvanced && (
               <div className="mt-4 space-y-4">
+                {/* Header/Footer */}
                 <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={options.headerFooter} onChange={(e) => setOptions({ ...options, headerFooter: e.target.checked })} />
+                  <input
+                    type="checkbox"
+                    checked={options.headerFooter}
+                    onChange={(e) => setOptions({ ...options, headerFooter: e.target.checked })}
+                  />
                   {t.headerFooter}
                 </label>
 
@@ -356,96 +401,173 @@ export default function HtmlToPdf() {
                   <>
                     <div>
                       <label className="block text-sm font-medium mb-1">{t.headerTemplate}</label>
-                      <input type="text" value={options.headerTemplate} onChange={(e) => setOptions({ ...options, headerTemplate: e.target.value })} placeholder="<div>Header</div>" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                      <input
+                        type="text"
+                        value={options.headerTemplate}
+                        onChange={(e) => setOptions({ ...options, headerTemplate: e.target.value })}
+                        placeholder="<div>Header</div>"
+                        className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">{t.footerTemplate}</label>
-                      <input type="text" value={options.footerTemplate} onChange={(e) => setOptions({ ...options, footerTemplate: e.target.value })} placeholder="<div>Page {{pageNumber}} of {{totalPages}}</div>" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                      <input
+                        type="text"
+                        value={options.footerTemplate}
+                        onChange={(e) => setOptions({ ...options, footerTemplate: e.target.value })}
+                        placeholder="<div>Page {{pageNumber}} of {{totalPages}}</div>"
+                        className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                      />
                     </div>
                   </>
                 )}
 
+                {/* Wait For Selector */}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t.waitForSelector}</label>
-                  <input type="text" value={options.waitForSelector} onChange={(e) => setOptions({ ...options, waitForSelector: e.target.value })} placeholder="#content" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                  <input
+                    type="text"
+                    value={options.waitForSelector}
+                    onChange={(e) => setOptions({ ...options, waitForSelector: e.target.value })}
+                    placeholder="#content"
+                    className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium mb-1">{t.waitForTimeout}</label>
-                  <input type="number" value={options.waitForTimeout} onChange={(e) => setOptions({ ...options, waitForTimeout: e.target.value })} className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                  <input
+                    type="number"
+                    value={options.waitForTimeout}
+                    onChange={(e) => setOptions({ ...options, waitForTimeout: e.target.value })}
+                    className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                  />
                 </div>
 
+                {/* Watermark */}
                 <div>
                   <label className="block text-sm font-medium mb-1 flex items-center gap-1">
                     <Type size={14} /> {t.watermark}
                   </label>
-                  <input type="text" value={options.watermark} onChange={(e) => setOptions({ ...options, watermark: e.target.value })} placeholder="Your watermark" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                  <input
+                    type="text"
+                    value={options.watermark}
+                    onChange={(e) => setOptions({ ...options, watermark: e.target.value })}
+                    placeholder="Your watermark"
+                    className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                  />
                 </div>
 
+                {/* Password */}
                 <div>
                   <label className="block text-sm font-medium mb-1 flex items-center gap-1">
                     <Lock size={14} /> {t.password}
                   </label>
-                  <input type="password" value={options.password} onChange={(e) => setOptions({ ...options, password: e.target.value })} placeholder="Enter password" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                  <input
+                    type="password"
+                    value={options.password}
+                    onChange={(e) => setOptions({ ...options, password: e.target.value })}
+                    placeholder="Enter password"
+                    className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t.confirmPassword}</label>
-                  <input type="password" value={options.confirmPassword} onChange={(e) => setOptions({ ...options, confirmPassword: e.target.value })} placeholder="Confirm password" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
+                  <input
+                    type="password"
+                    value={options.confirmPassword}
+                    onChange={(e) => setOptions({ ...options, confirmPassword: e.target.value })}
+                    placeholder="Confirm password"
+                    className="w-full p-2 border rounded bg-white dark:bg-gray-900"
+                  />
                 </div>
               </div>
             )}
           </div>
 
-          {/* Main Area */}
+          {/* MAIN AREA */}
           <div className="flex-1">
             <div className={`rounded-2xl shadow-sm border p-6 min-h-[450px] flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+              {/* Input Tabs */}
               <div className="flex gap-2 mb-6">
-                <button onClick={() => setMode('url')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold ${mode === 'url' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>
+                <button
+                  onClick={() => setMode('url')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold ${mode === 'url' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 dark:bg-gray-700'}`}
+                >
                   <LinkIcon size={18} /> {t.urlTab}
                 </button>
-                <button onClick={() => setMode('html')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold ${mode === 'html' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>
+                <button
+                  onClick={() => setMode('html')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold ${mode === 'html' ? 'bg-[#E5322D] text-white' : 'bg-gray-200 dark:bg-gray-700'}`}
+                >
                   <FileCode size={18} /> {t.htmlTab}
                 </button>
               </div>
 
+              {/* Input Field */}
               {mode === 'url' ? (
                 <div className="flex items-center bg-gray-50 dark:bg-gray-900 border border-gray-300 rounded-lg px-4 py-3">
                   <LinkIcon className="text-gray-400 mr-3" size={24} />
-                  <input type="url" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder={t.urlPlaceholder} className="w-full bg-transparent outline-none text-lg text-gray-700 dark:text-white" />
+                  <input
+                    type="url"
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    placeholder={t.urlPlaceholder}
+                    className="w-full bg-transparent outline-none text-lg text-gray-700 dark:text-white"
+                  />
                 </div>
               ) : (
-                <textarea value={htmlInput} onChange={(e) => setHtmlInput(e.target.value)} placeholder={t.htmlPlaceholder} className="w-full h-64 p-4 border rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-white font-mono text-sm" />
+                <textarea
+                  value={htmlInput}
+                  onChange={(e) => setHtmlInput(e.target.value)}
+                  placeholder={t.htmlPlaceholder}
+                  className="w-full h-64 p-4 border rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-white font-mono text-sm"
+                />
               )}
 
+              {/* Convert Button */}
               <div className="mt-6 flex flex-col sm:flex-row gap-4">
                 {!isConverting ? (
-                  <button onClick={handleConvert} className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700">
+                  <button
+                    onClick={handleConvert}
+                    className="flex-1 flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-lg transition shadow-md bg-[#E5322D] hover:bg-red-700"
+                  >
                     {t.convert} <ArrowRight size={24} />
                   </button>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center">
-                    <div className="w-full bg-gray-200 rounded-full h-4">
-                      <div className="bg-blue-500 h-4 rounded-full transition-all" style={{ width: `${progress}%` }}></div>
+                  <>
+                    <div className="flex-1 flex flex-col items-center justify-center">
+                      <div className="w-full bg-gray-200 rounded-full h-4">
+                        <div className="bg-blue-500 h-4 rounded-full transition-all" style={{ width: `${progress}%` }}></div>
+                      </div>
+                      <span className="text-sm mt-1">{t.processing} {progress}%</span>
                     </div>
-                    <span className="text-sm mt-1">{t.processing} {progress}%</span>
-                  </div>
+                  </>
                 )}
               </div>
             </div>
 
+            {/* History */}
             {history.length > 0 && (
               <div className="mt-6 border-t pt-4">
                 <div className="flex justify-between items-center mb-2">
                   <h4 className="font-bold flex items-center gap-2">
                     <History size={18} /> {t.history}
                   </h4>
-                  <button onClick={clearHistory} className="text-red-500 text-sm hover:underline">{t.clearHistory}</button>
+                  <button onClick={clearHistory} className="text-red-500 text-sm hover:underline">
+                    {t.clearHistory}
+                  </button>
                 </div>
                 <ul className="space-y-2 max-h-40 overflow-y-auto">
                   {history.map((item, idx) => (
                     <li key={idx} className="flex justify-between items-center text-sm bg-gray-50 dark:bg-gray-700 p-2 rounded">
-                      <span>{item.source} <span className="opacity-50">({item.time})</span></span>
-                      <button onClick={() => downloadFromHistory(item.url)} className="text-blue-500 hover:underline flex items-center gap-1">
+                      <span>
+                        {item.source} <span className="opacity-50">({item.time})</span>
+                      </span>
+                      <button
+                        onClick={() => downloadFromHistory(item.url)}
+                        className="text-blue-500 hover:underline flex items-center gap-1"
+                      >
                         <Download size={14} /> Download
                       </button>
                     </li>
@@ -459,6 +581,7 @@ export default function HtmlToPdf() {
 
       <Footer />
 
+      {/* Toast */}
       {toast && (
         <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg text-white ${toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
           {toast.message}
