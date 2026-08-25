@@ -21,4 +21,3 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-@import '@docx-editor.dev/react/styles.css';
