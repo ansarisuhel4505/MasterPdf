@@ -15,7 +15,8 @@ let fileUrls = req.body.fileUrls;
 if (!fileUrls && fileUrl) {
   fileUrls = [fileUrl];
 }
-if (!fileUrls || fileUrls.length === 0) {
+// 🔥 FIX 1: HTML-to-PDF ko bina fileUrl ke pass hone do
+if (action !== 'html-to-pdf' && (!fileUrls || fileUrls.length === 0)) {
   return res.status(400).json({ error: 'No file URLs provided' });
 }
 
@@ -825,11 +826,16 @@ else if (action === 'html-to-pdf') {
     if (markdownMatch) {
       fileUrl = markdownMatch[1];
     }
-    // Agar URL mein spaces hain, toh encode karo
+   // Agar URL mein spaces hain, toh encode karo
     fileUrl = fileUrl.replace(/\s/g, '%20');
     
-    // URL validation
-    const isValidUrl = /^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(fileUrl);
+    // 🔥 FIX 2: Agar user ne https:// nahi daala toh automatic laga do
+    if (fileUrl && !fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
+      fileUrl = 'https://' + fileUrl;
+    }
+    
+    // URL validation (Loose check)
+    const isValidUrl = /^https?:\/\/.+/i.test(fileUrl);
     
     const convertOptions = {};
 
