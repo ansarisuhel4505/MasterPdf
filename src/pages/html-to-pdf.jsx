@@ -144,6 +144,12 @@ export default function HtmlToPdf() {
     let clean = rawUrl.trim();
     const markdownMatch = clean.match(/\[.*?\]\((.*?)\)/);
     if (markdownMatch) clean = markdownMatch[1];
+    
+    // 🔥 FIX: http/https prefix add karo
+    if (!/^https?:\/\//i.test(clean)) {
+      clean = 'https://' + clean;
+    }
+    
     clean = clean.replace(/\s/g, '%20');
     return clean;
   };
