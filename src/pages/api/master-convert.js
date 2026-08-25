@@ -933,23 +933,21 @@ if (!fileUrls || fileUrls.length === 0) {
     }
       else if (action === 'save-edited-file') {
   try {
-    const { fileName, fileContent, fileType } = req.body; // fileContent base64 or string
+    const { fileName, fileContent, fileType } = req.body;
     if (!fileName || !fileContent) {
       return res.status(400).json({ error: 'Missing fileName or fileContent' });
     }
 
-    // Convert base64 to buffer (if base64)
-   const buffer = globalThis.Buffer; // For better compatibility
-let outputBuffer;
-if (fileContent.startsWith('data:')) {
-  const base64Data = fileContent.split(',')[1];
-  outputBuffer = buffer.from(base64Data, 'base64');
-} else {
-  outputBuffer = buffer.from(fileContent, 'utf-8');
-}
+    const buffer = globalThis.Buffer;
+    let outputBuffer;
+    if (fileContent.startsWith('data:')) {
+      const base64Data = fileContent.split(',')[1];
+      outputBuffer = buffer.from(base64Data, 'base64');
+    } else {
+      outputBuffer = buffer.from(fileContent, 'utf-8');
+    }
 
-    // Upload to Vercel Blob
-    const blob = await put(`edited-${Date.now()}-${fileName}`, buffer, {
+    const blob = await put(`edited-${Date.now()}-${fileName}`, outputBuffer, {  // ✅ Correct variable
       access: 'public',
       contentType: fileType || 'application/octet-stream'
     });
@@ -960,7 +958,6 @@ if (fileContent.startsWith('data:')) {
     return res.status(500).json({ error: 'Failed to save edited file.' });
   }
 }
-
     else {
       return res.status(400).json({ error: "Unknown action request." });
     }
