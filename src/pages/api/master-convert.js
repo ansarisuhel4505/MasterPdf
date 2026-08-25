@@ -931,6 +931,34 @@ if (!fileUrls || fileUrls.length === 0) {
         return res.status(200).json({ success: true, textResult: `❌ AI Error: ${aiError.message}` });
       }
     }
+      else if (action === 'save-edited-file') {
+  try {
+    const { fileName, fileContent, fileType } = req.body; // fileContent base64 or string
+    if (!fileName || !fileContent) {
+      return res.status(400).json({ error: 'Missing fileName or fileContent' });
+    }
+
+    // Convert base64 to buffer (if base64)
+    let buffer;
+    if (fileContent.startsWith('data:')) {
+      const base64Data = fileContent.split(',')[1];
+      buffer = Buffer.from(base64Data, 'base64');
+    } else {
+      buffer = Buffer.from(fileContent, 'utf-8');
+    }
+
+    // Upload to Vercel Blob
+    const blob = await put(`edited-${Date.now()}-${fileName}`, buffer, {
+      access: 'public',
+      contentType: fileType || 'application/octet-stream'
+    });
+
+    return res.status(200).json({ success: true, downloadUrl: blob.url });
+  } catch (err) {
+    console.error('Save-edited-file error:', err);
+    return res.status(500).json({ error: 'Failed to save edited file.' });
+  }
+}
 
     else {
       return res.status(400).json({ error: "Unknown action request." });
