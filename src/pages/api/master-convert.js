@@ -816,7 +816,20 @@ if (!fileUrls || fileUrls.length === 0) {
 else if (action === 'html-to-pdf') {
   try {
     const { htmlContent, options } = req.body;
-    const fileUrl = req.body.fileUrl || '';
+    let fileUrl = req.body.fileUrl || '';
+    
+    // 🔥 URL CLEANUP: Markdown syntax ya extra spaces hatao
+    fileUrl = fileUrl.trim();
+    // Agar koi Markdown link syntax hai (e.g., [text](url)), toh sirf url nikaalo
+    const markdownMatch = fileUrl.match(/\[.*?\]\((.*?)\)/);
+    if (markdownMatch) {
+      fileUrl = markdownMatch[1];
+    }
+    // Agar URL mein spaces hain, toh encode karo
+    fileUrl = fileUrl.replace(/\s/g, '%20');
+    
+    // URL validation
+    const isValidUrl = /^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(fileUrl);
     
     const convertOptions = {};
 
@@ -858,23 +871,22 @@ else if (action === 'html-to-pdf') {
     let result;
     
     // URL se PDF convert
-    if (fileUrl) {
-      convertOptions.Url = fileUrl;
+    if (fileUrl && isValidUrl) {
+      convertOptions.Url = fileUrl;  // 🔥 Proper URL bhejo
       result = await convertapi.convert('pdf', convertOptions, 'web');
     } 
     // Raw HTML se PDF convert
     else if (htmlContent) {
-      // Pehle HTML ko temp file mein upload karo
+      // HTML content ko temp file mein upload karo
       const tempBlob = await put(`source-code-${Date.now()}.html`, htmlContent, {
         access: 'public',
         contentType: 'text/html'
       });
-      
       convertOptions.File = tempBlob.url;
       result = await convertapi.convert('pdf', convertOptions, 'html');
     } 
     else {
-      return res.status(400).json({ error: 'No URL or HTML content provided' });
+      return res.status(400).json({ error: 'No valid URL or HTML content provided' });
     }
 
     let finalUrl = result.response.Files[0].Url;
@@ -909,7 +921,6 @@ else if (action === 'html-to-pdf') {
     return res.status(500).json({ error: "HTML to PDF conversion failed." });
   }
 }
-
     else if (action === 'protect-pdf') {
       result = await convertapi.convert('encrypt', { File: fileUrl, UserPassword: password, OwnerPassword: password }, 'pdf');
     }
