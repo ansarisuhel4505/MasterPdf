@@ -939,13 +939,14 @@ if (!fileUrls || fileUrls.length === 0) {
     }
 
     // Convert base64 to buffer (if base64)
-    let buffer;
-    if (fileContent.startsWith('data:')) {
-      const base64Data = fileContent.split(',')[1];
-      buffer = Buffer.from(base64Data, 'base64');
-    } else {
-      buffer = Buffer.from(fileContent, 'utf-8');
-    }
+   const buffer = globalThis.Buffer; // For better compatibility
+let outputBuffer;
+if (fileContent.startsWith('data:')) {
+  const base64Data = fileContent.split(',')[1];
+  outputBuffer = buffer.from(base64Data, 'base64');
+} else {
+  outputBuffer = buffer.from(fileContent, 'utf-8');
+}
 
     // Upload to Vercel Blob
     const blob = await put(`edited-${Date.now()}-${fileName}`, buffer, {
