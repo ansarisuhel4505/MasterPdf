@@ -814,16 +814,96 @@ if (!fileUrls || fileUrls.length === 0) {
     }
     
     else if (action === 'html-to-pdf') {
-      if (fileUrl.startsWith('http')) {
-        result = await convertapi.convert('pdf', { Url: fileUrl }, 'web');
+  try {
+    const { htmlContent, options } = req.body;
+    const fileUrl = req.body.fileUrl || '';
+    
+    // Prepare ConvertAPI options
+    const convertOptions = {};
+
+    // Page Settings
+    if (options.pageSize) convertOptions.PageSize = options.pageSize;
+    if (options.orientation) convertOptions.PageOrientation = options.orientation;
+
+    // Margins
+    if (options.margins) {
+      if (options.margins === 'custom' && options.customMargins) {
+        if (options.customMargins.top) convertOptions.MarginTop = options.customMargins.top + 'mm';
+        if (options.customMargins.bottom) convertOptions.MarginBottom = options.customMargins.bottom + 'mm';
+        if (options.customMargins.left) convertOptions.MarginLeft = options.customMargins.left + 'mm';
+        if (options.customMargins.right) convertOptions.MarginRight = options.customMargins.right + 'mm';
       } else {
-        const tempBlob = await put(`source-code-${Date.now()}.txt`, fileUrl, {
-          access: 'public',
-          contentType: 'text/plain'
-        });
-        result = await convertapi.convert('pdf', { File: tempBlob.url }, 'txt');
+        convertOptions.PageMargins = options.margins;
       }
     }
+
+    // Scale
+    if (options.scale) convertOptions.Scale = options.scale;
+
+    // Background
+    if (options.background === false) convertOptions.PrintBackground = 'false';
+
+    // Header/Footer
+    if (options.headerFooter) {
+      if (options.headerTemplate) convertOptions.HeaderTemplate = options.headerTemplate;
+      if (options.footerTemplate) convertOptions.FooterTemplate = options.footerTemplate;
+    }
+
+    // Wait For Selector / Timeout
+    if (options.waitForSelector) convertOptions.WaitForSelector = options.waitForSelector;
+    if (options.waitForTimeout) convertOptions.WaitForTimeout = options.waitForTimeout;
+
+    // Watermark (using ConvertAPI watermark post-processing)
+    // Password (using ConvertAPI encrypt post-processing)
+
+    let result;
+    if (fileUrl) {
+      // URL to PDF
+      result = await convertapi.convert('pdf', convertOptions, 'web');
+    } else if (htmlContent) {
+      // Raw HTML to PDF - create a temp file and convert
+      const tempBlob = await put(`source-code-${Date.now()}.html`, htmlContent, {
+        access: 'public',
+        contentType: 'text/html'
+      });
+      convertOptions.File = tempBlob.url;
+      result = await convertapi.convert('pdf', convertOptions, 'html');
+    } else {
+      return res.status(400).json({ error: 'No URL or HTML content provided' });
+    }
+
+    let finalUrl = result.response.Files[0].Url;
+
+    // Watermark (if provided)
+    if (options.watermark) {
+      const watermarkResult = await convertapi.convert('watermark', {
+        File: finalUrl,
+        Text: options.watermark,
+        FontSize: '24',
+        Opacity: '30',
+        Rotation: '45',
+        HorizontalAlignment: 'center',
+        VerticalAlignment: 'center'
+      }, 'pdf');
+      finalUrl = watermarkResult.response.Files[0].Url;
+    }
+
+    // Password (if provided)
+    if (options.password) {
+      const encryptResult = await convertapi.convert('encrypt', {
+        File: finalUrl,
+        UserPassword: options.password,
+        OwnerPassword: options.password
+      }, 'pdf');
+      finalUrl = encryptResult.response.Files[0].Url;
+    }
+
+    return res.status(200).json({ success: true, downloadUrl: finalUrl });
+  } catch (htmlError) {
+    console.error("HTML-to-PDF error:", htmlError);
+    return res.status(500).json({ error: "HTML to PDF conversion failed." });
+  }
+}
 
     else if (action === 'protect-pdf') {
       result = await convertapi.convert('encrypt', { File: fileUrl, UserPassword: password, OwnerPassword: password }, 'pdf');
