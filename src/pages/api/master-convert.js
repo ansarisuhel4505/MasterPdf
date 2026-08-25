@@ -813,12 +813,11 @@ if (!fileUrls || fileUrls.length === 0) {
       result = await convertapi.convert(format, { File: fileUrl }, 'pdf');
     }
     
- else if (action === 'html-to-pdf') {
+else if (action === 'html-to-pdf') {
   try {
     const { htmlContent, options } = req.body;
     const fileUrl = req.body.fileUrl || '';
     
-    // Prepare ConvertAPI options
     const convertOptions = {};
 
     // Page Settings
@@ -837,9 +836,8 @@ if (!fileUrls || fileUrls.length === 0) {
       }
     }
 
-    // Scale (must be between 10 and 200) – frontend sends '1' or '100'?
+    // Scale (10-200 range)
     if (options.scale) {
-      // If scale is '1' (meaning 100%), convert to 100, else use as is
       const scaleValue = options.scale === '1' ? 100 : parseInt(options.scale);
       convertOptions.Scale = scaleValue;
     }
@@ -858,25 +856,30 @@ if (!fileUrls || fileUrls.length === 0) {
     if (options.waitForTimeout) convertOptions.WaitForTimeout = options.waitForTimeout;
 
     let result;
+    
+    // URL se PDF convert
     if (fileUrl) {
-      // URL to PDF – IMPORTANT: Set Url property
       convertOptions.Url = fileUrl;
       result = await convertapi.convert('pdf', convertOptions, 'web');
-    } else if (htmlContent) {
-      // Raw HTML to PDF – create a temp file and pass File
+    } 
+    // Raw HTML se PDF convert
+    else if (htmlContent) {
+      // Pehle HTML ko temp file mein upload karo
       const tempBlob = await put(`source-code-${Date.now()}.html`, htmlContent, {
         access: 'public',
         contentType: 'text/html'
       });
+      
       convertOptions.File = tempBlob.url;
       result = await convertapi.convert('pdf', convertOptions, 'html');
-    } else {
+    } 
+    else {
       return res.status(400).json({ error: 'No URL or HTML content provided' });
     }
 
     let finalUrl = result.response.Files[0].Url;
 
-    // Watermark (if provided)
+    // Watermark (optional)
     if (options.watermark) {
       const watermarkResult = await convertapi.convert('watermark', {
         File: finalUrl,
@@ -890,7 +893,7 @@ if (!fileUrls || fileUrls.length === 0) {
       finalUrl = watermarkResult.response.Files[0].Url;
     }
 
-    // Password (if provided)
+    // Password (optional)
     if (options.password) {
       const encryptResult = await convertapi.convert('encrypt', {
         File: finalUrl,
