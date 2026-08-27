@@ -53,14 +53,20 @@ export default function EditPdf() {
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
-  const [zoom, setZoom] = useState(1.5); 
+  const [zoom, setZoom] = useState(1.0); 
   const [mobileView, setMobileView] = useState('pdf'); 
 
+  // Elements State
   const [elements, setElements] = useState([]);
-  const [toolColor, setToolColor] = useState('#E5322D');
+  const [activeElementId, setActiveElementId] = useState(null);
+
+  // Global Tool Properties
+  const [toolColor, setToolColor] = useState('#000000');
+  const [boxBgColor, setBoxBgColor] = useState('#FFFFFF'); // Box Background
   const [highlightColor, setHighlightColor] = useState('#FDE047');
   const [textSize, setTextSize] = useState(16);
-  const [isBold, setIsBold] = useState(false); // New Bold state
+  const [isBold, setIsBold] = useState(false); 
+  
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState(1);
 
@@ -115,11 +121,25 @@ export default function EditPdf() {
     setNumPages(numPages); setCurrentPage(1);
   };
 
+  // Centralized Property Handler for Active Element updates
+  const handlePropChange = (prop, value) => {
+    if (prop === 'color') setToolColor(value);
+    if (prop === 'size') setTextSize(value);
+    if (prop === 'isBold') setIsBold(value);
+    if (prop === 'bgColor') setBoxBgColor(value);
+    if (prop === 'highlightColor') setHighlightColor(value);
+
+    if (activeElementId) {
+      updateElement(activeElementId, { [prop]: value });
+    }
+  };
+
   const addElement = (type) => {
     let value = ''; let fontStyle = 'Arial, sans-serif';
     let isImage = false; let imgData = null; let isDigital = false;
     let finalColor = toolColor;
-    let finalBold = false;
+    let finalBold = isBold;
+    let finalBgColor = boxBgColor;
 
     if (type === 'signature') {
       if (sigMode === 'simple') {
@@ -140,23 +160,26 @@ export default function EditPdf() {
       if (uploadedStamp) { isImage = true; imgData = uploadedStamp; }
       else { setShowSignatureModal(true); setHTab('Stamp'); return; }
     }
-    else if (type === 'name') { value = fullName; fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
-    else if (type === 'date') { value = new Date().toLocaleDateString(); fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
-    else if (type === 'text') { value = 'Type text here...'; fontStyle = 'Helvetica, sans-serif'; finalBold = isBold; }
-    else if (type === 'replaceText') { value = 'New Word'; fontStyle = 'Helvetica, sans-serif'; finalColor = toolColor; finalBold = isBold; }
+    else if (type === 'text') { value = 'Type text here...'; fontStyle = 'Helvetica, sans-serif'; }
+    else if (type === 'replaceText') { value = 'New Word'; fontStyle = 'Helvetica, sans-serif'; }
+
+    // 🔥 FIX: Zoom-Independent Coordinates
+    const baseW = isDigital ? 260 : (isImage ? 200 : (type === 'text' || type === 'replaceText' ? 200 : 150));
+    const baseH = isDigital ? 90 : (isImage ? 100 : (type === 'text' ? 40 : (type === 'replaceText' ? 30 : 100)));
 
     const newElement = {
       id: Date.now(), type, fileIndex: activeFileIndex, page: currentPage, 
-      x: 50, y: 100, 
-      width: isDigital ? 260 : (isImage ? 200 : (type === 'text' || type === 'replaceText' ? 200 : 150)), 
-      height: isDigital ? 90 : (isImage ? 100 : (type === 'text' ? 40 : (type === 'replaceText' ? 30 : 100))), 
-      value, fontStyle, isImage, imgData, isDigital, color: finalColor, size: textSize, isBold: finalBold
+      x: 50 / zoom, y: 100 / zoom, 
+      width: baseW / zoom, height: baseH / zoom, 
+      value, fontStyle, isImage, imgData, isDigital, 
+      color: finalColor, size: textSize, isBold: finalBold, bgColor: finalBgColor
     };
     
     if (type === 'highlight') newElement.color = highlightColor; 
     if (type === 'redact') newElement.color = '#000000'; 
     
     setElements([...elements, newElement]);
+    setActiveElementId(newElement.id);
     setMobileView('pdf');
   };
 
@@ -173,7 +196,7 @@ export default function EditPdf() {
         if (type === 'sig') setUploadedSig(ev.target.result);
         else if (type === 'stamp') setUploadedStamp(ev.target.result);
         else {
-          const newElement = { id: Date.now(), type: 'image', fileIndex: activeFileIndex, page: currentPage, x: 50, y: 100, width: 150, height: 150, imgData: ev.target.result };
+          const newElement = { id: Date.now(), type: 'image', fileIndex: activeFileIndex, page: currentPage, x: 50/zoom, y: 100/zoom, width: 150/zoom, height: 150/zoom, imgData: ev.target.result };
           setElements([...elements, newElement]);
           setMobileView('pdf');
         }
@@ -224,14 +247,19 @@ export default function EditPdf() {
   const saveDraw = () => {
     if (canvasRef.current) {
       const dataUrl = canvasRef.current.toDataURL('image/png');
-      const newElement = { id: Date.now(), type: 'draw', fileIndex: activeFileIndex, page: currentPage, x: 50, y: 100, width: 200, height: 100, imgData: dataUrl };
+      const newElement = { id: Date.now(), type: 'draw', fileIndex: activeFileIndex, page: currentPage, x: 50/zoom, y: 100/zoom, width: 200/zoom, height: 100/zoom, imgData: dataUrl };
       setElements([...elements, newElement]);
       setShowDrawModal(false);
     }
   };
 
   const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
-  const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
+  
+  const deleteElement = (e, id) => {
+    e.stopPropagation();
+    setElements(elements.filter(el => el.id !== id));
+    if (activeElementId === id) setActiveElementId(null);
+  };
 
   const textToImageDataUrl = (text, fontStyle, width, height, color, isDigital = false) => {
     const canvas = document.createElement('canvas');
@@ -283,22 +311,23 @@ export default function EditPdf() {
         const page = pdfDoc.getPages()[el.page - 1];
         const { height: pdfHeight } = page.getSize();
         
-        const scaleX = pdfDimensions.width ? page.getSize().width / (pdfDimensions.width / zoom) : 1;
-        const scaleY = pdfDimensions.height ? pdfHeight / (pdfDimensions.height / zoom) : 1;
-        
-        const actualX = el.x * scaleX;
-        const actualW = el.width * scaleX;
-        const actualH = el.height * scaleY;
-        const actualY = pdfHeight - (el.y * scaleY) - actualH;
+        // 🔥 PERFECT COORDINATE MATH (Zoom Independent)
+        const actualX = el.x;
+        const actualW = el.width;
+        const actualH = el.height;
+        const actualY = pdfHeight - el.y - actualH;
 
-        if (el.type === 'text' || el.type === 'name' || el.type === 'date') {
+        if (el.type === 'text') {
           const font = el.isBold ? helveticaBoldFont : helveticaFont;
-          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size * scaleX)/2, size: el.size * scaleX, font: font, color: hexToRgb(el.color) });
+          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size)/2, size: el.size, font: font, color: hexToRgb(el.color) });
         } 
         else if (el.type === 'replaceText') {
-          page.drawRectangle({ x: actualX, y: actualY, width: actualW, height: actualH, color: rgb(1, 1, 1), opacity: 1 });
+          // Draw Background color selected by user
+          const bgRgb = hexToRgb(el.bgColor || '#FFFFFF');
+          page.drawRectangle({ x: actualX, y: actualY, width: actualW, height: actualH, color: bgRgb, opacity: 1 });
+          
           const font = el.isBold ? helveticaBoldFont : helveticaFont;
-          page.drawText(el.value, { x: actualX + 2, y: actualY + (actualH/2) - (el.size * scaleX)/2, size: el.size * scaleX, font: font, color: hexToRgb(el.color) });
+          page.drawText(el.value, { x: actualX + 4, y: actualY + (actualH/2) - (el.size)/3, size: el.size, font: font, color: hexToRgb(el.color) });
         }
         else if (el.type === 'signature' || el.type === 'initials') {
           const dataUrl = textToImageDataUrl(el.value, el.fontStyle, el.width, el.height, el.color, el.isDigital);
@@ -308,7 +337,7 @@ export default function EditPdf() {
         }
         else if (el.type === 'image' || el.type === 'draw' || el.type === 'stamp') {
           const imgBytes = await fetch(el.imgData).then(res => res.arrayBuffer());
-          const pdfImage = await pdfDoc.embedPng(imgBytes); // You might want to handle JPEG too if uploaded image is jpeg
+          const pdfImage = await pdfDoc.embedPng(imgBytes); 
           page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
         }
         else if (el.type === 'highlight') {
@@ -361,7 +390,7 @@ export default function EditPdf() {
   if (!isMounted) return null;
 
   return (
-    <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7] overflow-hidden">
+    <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7] overflow-hidden" onClick={() => setActiveElementId(null)}>
       <Head><title>Pro Edit PDF | MasterPdf</title></Head>
       <Navbar />
 
@@ -375,7 +404,7 @@ export default function EditPdf() {
               </div>
               <h1 className="text-3xl lg:text-5xl font-bold text-gray-900 mb-4 tracking-tight">Edit PDF Document</h1>
               <p className="text-base lg:text-lg text-gray-600 mb-10 max-w-2xl mx-auto">
-                Add text, replace existing text, add images, highlights, redactions, shapes, and freehand annotations directly in your browser.
+                Add text, replace existing text seamlessly, add images, highlights, redactions, shapes, and freehand annotations directly in your browser.
               </p>
               
               <div className="flex justify-center">
@@ -394,35 +423,35 @@ export default function EditPdf() {
             {/* Top Toolbar */}
             <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-2 sm:px-4 shrink-0 w-full z-20 shadow-sm overflow-x-auto custom-scrollbar">
                <div className="flex items-center gap-1 sm:gap-2 min-w-max">
-                 <button onClick={() => addElement('text')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Add Text"><Type size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Text</span></button>
-                 <button onClick={() => addElement('replaceText')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Magic Replace Text"><Edit3 size={18} className="text-blue-500"/> <span className="text-xs font-bold hidden sm:block">Edit Text</span></button>
+                 <button onClick={(e) => { e.stopPropagation(); addElement('text'); }} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Add Text"><Type size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Text</span></button>
+                 <button onClick={(e) => { e.stopPropagation(); addElement('replaceText'); }} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Magic Replace Text"><Edit3 size={18} className="text-blue-500"/> <span className="text-xs font-bold hidden sm:block">Edit Text</span></button>
                  
                  <div className="w-px h-6 bg-gray-300 mx-1"></div>
                  
                  <div className="relative">
                    <input type="file" id="img-upload-tool" accept="image/*" onChange={(e) => handleImageUpload(e, 'general')} className="hidden" />
-                   <button onClick={() => document.getElementById('img-upload-tool').click()} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition cursor-pointer" title="Add Image"><ImageIcon size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Image</span></button>
+                   <button onClick={(e) => { e.stopPropagation(); document.getElementById('img-upload-tool').click(); }} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition cursor-pointer" title="Add Image"><ImageIcon size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Image</span></button>
                  </div>
-                 <button onClick={() => setShowDrawModal(true)} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Draw"><PenTool size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Draw</span></button>
+                 <button onClick={(e) => { e.stopPropagation(); setShowDrawModal(true); }} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Draw"><PenTool size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Draw</span></button>
                  
                  <div className="w-px h-6 bg-gray-300 mx-1"></div>
                  
-                 <button onClick={() => addElement('highlight')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Highlight Box"><Highlighter size={18} style={{color: highlightColor}}/> <span className="text-xs font-bold hidden xl:block">Highlight</span></button>
-                 <button onClick={() => addElement('redact')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Redact (Blackout)"><Square size={18} className="text-black fill-black"/> <span className="text-xs font-bold hidden xl:block">Redact</span></button>
+                 <button onClick={(e) => { e.stopPropagation(); addElement('highlight'); }} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Highlight Box"><Highlighter size={18} style={{color: highlightColor}}/> <span className="text-xs font-bold hidden xl:block">Highlight</span></button>
+                 <button onClick={(e) => { e.stopPropagation(); addElement('redact'); }} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Redact (Blackout)"><Square size={18} className="text-black fill-black"/> <span className="text-xs font-bold hidden xl:block">Redact</span></button>
                  
                  <div className="w-px h-6 bg-gray-300 mx-1"></div>
                  
-                 <button onClick={() => addElement('rect')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Rectangle"><Square size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden xl:block">Shape</span></button>
-                 <button onClick={() => addElement('circle')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Circle"><Circle size={18} className="text-[#E5322D]"/></button>
+                 <button onClick={(e) => { e.stopPropagation(); addElement('rect'); }} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Rectangle"><Square size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden xl:block">Shape</span></button>
+                 <button onClick={(e) => { e.stopPropagation(); addElement('circle'); }} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Circle"><Circle size={18} className="text-[#E5322D]"/></button>
                </div>
 
                <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-2 sm:ml-4">
                  <div className="hidden lg:flex items-center gap-1 bg-gray-100 rounded p-1">
-                   <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} className="p-1 hover:bg-white rounded text-gray-600"><ZoomOut size={14}/></button>
+                   <button onClick={(e) => { e.stopPropagation(); setZoom(z => Math.max(0.5, z - 0.2)); }} className="p-1 hover:bg-white rounded text-gray-600"><ZoomOut size={14}/></button>
                    <span className="text-[10px] font-bold text-gray-700 w-8 text-center">{Math.round(zoom * 100)}%</span>
-                   <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} className="p-1 hover:bg-white rounded text-gray-600"><ZoomIn size={14}/></button>
+                   <button onClick={(e) => { e.stopPropagation(); setZoom(z => Math.min(3, z + 0.2)); }} className="p-1 hover:bg-white rounded text-gray-600"><ZoomIn size={14}/></button>
                  </div>
-                 <button onClick={saveAndDownload} disabled={isProcessing} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-1.5 px-3 sm:px-4 rounded-lg shadow transition disabled:opacity-50 flex items-center gap-2 text-xs sm:text-sm">
+                 <button onClick={(e) => { e.stopPropagation(); saveAndDownload(); }} disabled={isProcessing} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-1.5 px-3 sm:px-4 rounded-lg shadow transition disabled:opacity-50 flex items-center gap-2 text-xs sm:text-sm">
                    {isProcessing ? <Settings className="animate-spin" size={14}/> : <Save size={14}/>} <span className="hidden sm:block">Export</span>
                  </button>
                  <button onClick={removeFile} className="text-gray-400 hover:text-red-500"><X size={20}/></button>
@@ -441,7 +470,7 @@ export default function EditPdf() {
                  )}
                  <Document file={activeFile.url} onLoadSuccess={onDocumentLoadSuccess}>
                    {Array.from({ length: numPages || 0 }, (_, i) => (
-                     <div key={i} onClick={() => { setCurrentPage(i + 1); if(mobileView === 'pages') setMobileView('pdf'); }} className="flex flex-col items-center mb-4 cursor-pointer group">
+                     <div key={i} onClick={(e) => { e.stopPropagation(); setCurrentPage(i + 1); if(mobileView === 'pages') setMobileView('pdf'); }} className="flex flex-col items-center mb-4 cursor-pointer group">
                        <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
                          <Page pageNumber={i + 1} width={80} renderTextLayer={false} renderAnnotationLayer={false} />
                        </div>
@@ -456,9 +485,9 @@ export default function EditPdf() {
                  
                  {/* Page Controls Overlay */}
                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-900/80 backdrop-blur-sm text-white px-3 sm:px-4 py-2 rounded-full flex items-center gap-3 sm:gap-4 z-30 shadow-lg">
-                   <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="hover:text-[#E5322D]"><ChevronLeft size={16} sm={20}/></button>
+                   <button onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.max(1, p - 1)); }} className="hover:text-[#E5322D]"><ChevronLeft size={16} sm={20}/></button>
                    <span className="text-[10px] sm:text-xs font-bold w-12 sm:w-16 text-center">Pg {currentPage}/{numPages}</span>
-                   <button onClick={() => setCurrentPage(p => Math.min(numPages || 1, p + 1))} className="hover:text-[#E5322D]"><ChevronRight size={16} sm={20}/></button>
+                   <button onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.min(numPages || 1, p + 1)); }} className="hover:text-[#E5322D]"><ChevronRight size={16} sm={20}/></button>
                  </div>
 
                  <div className="flex-grow overflow-y-auto p-2 sm:p-4 lg:p-8 flex flex-col items-center custom-scrollbar pb-24 lg:pb-8">
@@ -480,26 +509,30 @@ export default function EditPdf() {
                        />
                      </Document>
 
-                     {/* RND Elements Mapping */}
+                     {/* RND Elements Mapping (Zoom Independent UI) */}
                      {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
                        <Rnd
-                         key={el.id} bounds="parent" position={{ x: el.x, y: el.y }} size={{ width: el.width, height: el.height }}
-                         onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
-                         onResizeStop={(e, dir, ref, delta, position) => { updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...position }); }}
+                         key={el.id} 
+                         bounds="parent" 
+                         position={{ x: el.x * zoom, y: el.y * zoom }} 
+                         size={{ width: el.width * zoom, height: el.height * zoom }}
+                         onDragStop={(e, d) => updateElement(el.id, { x: d.x / zoom, y: d.y / zoom })}
+                         onResizeStop={(e, dir, ref, delta, position) => { updateElement(el.id, { width: ref.offsetWidth / zoom, height: ref.offsetHeight / zoom, x: position.x / zoom, y: position.y / zoom }); }}
+                         onMouseDown={(e) => { e.stopPropagation(); setActiveElementId(el.id); }}
                          className={`group absolute z-20 touch-none ${
                            el.type === 'highlight' ? 'bg-opacity-50' :
                            el.type === 'redact' ? 'bg-black' :
-                           el.type === 'replaceText' ? 'bg-white border border-dashed shadow-sm' :
+                           el.type === 'replaceText' ? 'shadow-sm' :
                            el.type === 'rect' ? 'border-2' :
                            el.type === 'circle' ? 'border-2 rounded-full' :
-                           'border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed bg-white/10'
-                         }`}
+                           'hover:border-gray-400 focus-within:border-[#E5322D]'
+                         } ${activeElementId === el.id ? 'ring-2 ring-blue-500 border-dashed border-gray-400' : 'border-2 border-transparent'}`}
                          style={{ 
-                           borderColor: (el.type === 'rect' || el.type === 'circle' || el.type === 'replaceText') ? el.color : undefined,
-                           backgroundColor: el.type === 'highlight' ? el.color : undefined
+                           borderColor: (el.type === 'rect' || el.type === 'circle') ? el.color : undefined,
+                           backgroundColor: el.type === 'highlight' ? el.color : (el.type === 'replaceText' ? el.bgColor : undefined)
                          }}
                        >
-                         <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 text-gray-500 rounded-full p-1 text-xs hover:text-[#E5322D] opacity-0 group-hover:opacity-100 shadow-sm z-30"><X size={12} /></button>
+                         <button onClick={(e) => deleteElement(e, el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 text-gray-500 rounded-full p-1 text-xs hover:text-[#E5322D] opacity-0 group-hover:opacity-100 shadow-sm z-30"><X size={12} /></button>
                          
                          {el.type === 'image' || el.type === 'draw' || el.type === 'signature' || el.type === 'stamp' || el.type === 'initials' ? (
                            <img src={el.imgData} alt="Element" className="w-full h-full object-fill pointer-events-none" />
@@ -509,7 +542,7 @@ export default function EditPdf() {
                              onChange={(e) => updateElement(el.id, { value: e.target.value })}
                              className="w-full h-full bg-transparent outline-none resize-none overflow-hidden"
                              style={{ 
-                               fontSize: `${el.size * (zoom/1.5)}px`, 
+                               fontSize: `${el.size * zoom}px`, 
                                color: el.color,
                                fontWeight: el.isBold ? 'bold' : 'normal',
                                lineHeight: '1.2'
@@ -523,7 +556,7 @@ export default function EditPdf() {
               </div>
 
               {/* Right Sidebar: Tools Properties */}
-              <div className={`w-full lg:w-[280px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20 ${mobileView === 'tools' ? 'absolute inset-0' : 'hidden lg:flex'}`}>
+              <div className={`w-full lg:w-[280px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20 ${mobileView === 'tools' ? 'absolute inset-0' : 'hidden lg:flex'}`} onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
                   <h3 className="text-base sm:text-lg font-bold text-gray-800">Properties</h3>
                   <button onClick={() => { if(mobileView === 'tools') setMobileView('pdf'); else removeFile(); }} className="text-gray-400 hover:text-[#E5322D]"><X size={18}/></button>
@@ -544,26 +577,6 @@ export default function EditPdf() {
                     </div>
                   )}
 
-                  {/* Text Color */}
-                  <div className="mb-6">
-                    <h4 className="text-xs sm:text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Palette size={14} className="text-[#E5322D]"/> Text / Shape Color</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {TEXT_COLORS.map(c => (
-                        <button key={c} onClick={() => setToolColor(c)} style={{backgroundColor: c}} className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full transition-transform border border-gray-200 ${toolColor === c ? 'scale-110 ring-2 ring-offset-2 ring-gray-400 shadow-md' : 'hover:scale-105 shadow-sm'}`} />
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Highlight Color */}
-                  <div className="mb-6">
-                    <h4 className="text-xs sm:text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Highlighter size={14} className="text-[#E5322D]"/> Highlight Color</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {HIGHLIGHT_COLORS.map(c => (
-                        <button key={c.name} onClick={() => setHighlightColor(c.hex)} style={{backgroundColor: c.hex}} title={c.name} className={`w-6 h-6 sm:w-8 sm:h-8 rounded-sm transition-transform border border-gray-200 ${highlightColor === c.hex ? 'scale-110 ring-2 ring-offset-2 ring-gray-400 shadow-md' : 'hover:scale-105 shadow-sm'}`} />
-                      ))}
-                    </div>
-                  </div>
-
                   {/* Text Formatting */}
                   <div className="mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200">
                     <h4 className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase mb-3">Text Formatting</h4>
@@ -571,7 +584,7 @@ export default function EditPdf() {
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-xs sm:text-sm font-bold text-gray-700">Bold Text</span>
                       <button 
-                        onClick={() => setIsBold(!isBold)} 
+                        onClick={() => handlePropChange('isBold', !isBold)} 
                         className={`p-2 rounded transition-colors ${isBold ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
                       >
                         <Bold size={16} />
@@ -583,7 +596,36 @@ export default function EditPdf() {
                         <span className="text-xs sm:text-sm font-bold text-gray-700"><Type size={14} className="inline mr-1 text-[#E5322D]"/> Size</span>
                         <span className="text-[10px] sm:text-xs font-bold text-gray-500">{textSize}px</span>
                       </div>
-                      <input type="range" min="10" max="72" value={textSize} onChange={(e) => setTextSize(Number(e.target.value))} className="w-full accent-[#E5322D]" />
+                      <input type="range" min="10" max="72" value={textSize} onChange={(e) => handlePropChange('size', Number(e.target.value))} className="w-full accent-[#E5322D]" />
+                    </div>
+                  </div>
+
+                  {/* Text Color */}
+                  <div className="mb-6">
+                    <h4 className="text-xs sm:text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Palette size={14} className="text-[#E5322D]"/> Text / Shape Color</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {TEXT_COLORS.map(c => (
+                        <button key={c} onClick={() => handlePropChange('color', c)} style={{backgroundColor: c}} className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full transition-transform border border-gray-200 ${toolColor === c ? 'scale-110 ring-2 ring-offset-2 ring-gray-400 shadow-md' : 'hover:scale-105 shadow-sm'}`} />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Magic Box Background Color */}
+                  <div className="mb-6">
+                    <h4 className="text-xs sm:text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Square size={14} className="text-[#E5322D]"/> Box Background Color</h4>
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={boxBgColor} onChange={(e) => handlePropChange('bgColor', e.target.value)} className="w-10 h-10 p-0 border border-gray-300 rounded cursor-pointer" />
+                      <span className="text-xs font-medium text-gray-500">Pick matching paper color</span>
+                    </div>
+                  </div>
+
+                  {/* Highlight Color */}
+                  <div className="mb-6">
+                    <h4 className="text-xs sm:text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Highlighter size={14} className="text-[#E5322D]"/> Highlight Color</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {HIGHLIGHT_COLORS.map(c => (
+                        <button key={c.name} onClick={() => handlePropChange('highlightColor', c.hex)} style={{backgroundColor: c.hex}} title={c.name} className={`w-6 h-6 sm:w-8 sm:h-8 rounded-sm transition-transform border border-gray-200 ${highlightColor === c.hex ? 'scale-110 ring-2 ring-offset-2 ring-gray-400 shadow-md' : 'hover:scale-105 shadow-sm'}`} />
+                      ))}
                     </div>
                   </div>
 
@@ -598,7 +640,7 @@ export default function EditPdf() {
             </div>
 
             {/* Mobile Bottom Navigation */}
-            <div className="lg:hidden flex border-t border-gray-200 bg-white h-14 shrink-0 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-30">
+            <div className="lg:hidden flex border-t border-gray-200 bg-white h-14 shrink-0 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-30" onClick={(e) => e.stopPropagation()}>
                <button onClick={() => setMobileView('pages')} className={`flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] ${mobileView === 'pages' ? 'text-[#E5322D] bg-red-50' : 'text-gray-500'}`}>
                  <FileText size={16} /> Pages
                </button>
@@ -631,7 +673,7 @@ export default function EditPdf() {
 
       {/* DRAW MODAL */}
       {showDrawModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
               <h3 className="font-bold text-gray-800 text-sm sm:text-base">Freehand Draw</h3>
@@ -656,7 +698,7 @@ export default function EditPdf() {
 
       {/* SIGNATURE MODAL */}
       {showSignatureModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center bg-gray-50 border-b border-gray-200 p-3 sm:p-4 shrink-0">
               <h3 className="text-lg sm:text-xl font-bold text-gray-800 tracking-tight">Set your details</h3>
