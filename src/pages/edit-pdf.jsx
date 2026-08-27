@@ -506,8 +506,9 @@ export default function EditPdf() {
                    <button onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.min(numPages || 1, p + 1)); }} className="hover:text-[#E5322D]"><ChevronRight size={16} sm={20}/></button>
                  </div>
 
-                 <div className="flex-grow overflow-y-auto p-2 sm:p-4 lg:p-8 flex flex-col items-center custom-scrollbar pb-24 lg:pb-8" onMouseDown={() => setActiveElementId(null)}>
-                   <div className="relative shadow-2xl bg-white select-none max-w-full overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
+                {/* 🔥 FIX: overflow-auto aur inline-block lagaya taaki zoom karne par Horizontal/Vertical scroll dono kaam karein */}
+                 <div className="flex-grow overflow-auto p-2 sm:p-4 lg:p-8 text-center custom-scrollbar pb-24 lg:pb-8" onMouseDown={() => setActiveElementId(null)}>
+                   <div className="relative shadow-2xl bg-white select-none overflow-hidden inline-block text-left" onMouseDown={(e) => e.stopPropagation()}>
                      <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium text-sm">Loading Document...</div>}>
                        <Page 
                          pageNumber={currentPage} 
