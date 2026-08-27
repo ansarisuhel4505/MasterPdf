@@ -5,7 +5,7 @@ import Footer from '../components/Footer';
 import {
   ArrowRight, Settings, Link as LinkIcon, FileCode, Trash2,
   Plus, Sun, Moon, History, Download, Lock, Type, Image as ImageIcon,
-  ChevronDown, ChevronUp, SlidersHorizontal
+  ChevronDown, ChevronUp, SlidersHorizontal 
 } from 'lucide-react';
 
 const TOOL_TITLE = "HTML to PDF Converter";
