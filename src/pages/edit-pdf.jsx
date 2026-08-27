@@ -121,7 +121,12 @@ export default function EditPdf() {
     setNumPages(numPages); setCurrentPage(1);
   };
 
-  // Centralized Property Handler for Active Element updates
+  // 🔥 FIX 1: Jab element update ho toh previous state pakde taaki real-time chal sake
+  const updateElement = (id, newProps) => {
+    setElements(prev => prev.map(el => el.id === id ? { ...el, ...newProps } : el));
+  };
+
+  // 🔥 FIX 2: Centralized Property Handler for REAL-TIME updates
   const handlePropChange = (prop, value) => {
     if (prop === 'color') setToolColor(value);
     if (prop === 'size') setTextSize(value);
@@ -129,9 +134,23 @@ export default function EditPdf() {
     if (prop === 'bgColor') setBoxBgColor(value);
     if (prop === 'highlightColor') setHighlightColor(value);
 
+    // Agar koi box screen par selected hai, toh turant usme ye property daal do
     if (activeElementId) {
       updateElement(activeElementId, { [prop]: value });
     }
+  };
+
+  // 🔥 FIX 3: Element Select karne par Toolbars Auto-Sync ho jayein
+  const handleSelectElement = (e, el) => {
+    e.stopPropagation(); // Background click ko block karo
+    setActiveElementId(el.id);
+    
+    // Tools update karo selected box ke hisaab se
+    if (el.color) setToolColor(el.color);
+    if (el.size) setTextSize(el.size);
+    if (el.isBold !== undefined) setIsBold(el.isBold);
+    if (el.bgColor) setBoxBgColor(el.bgColor);
+    if (el.type === 'highlight' && el.color) setHighlightColor(el.color);
   };
 
   const addElement = (type) => {
@@ -163,7 +182,6 @@ export default function EditPdf() {
     else if (type === 'text') { value = 'Type text here...'; fontStyle = 'Helvetica, sans-serif'; }
     else if (type === 'replaceText') { value = 'New Word'; fontStyle = 'Helvetica, sans-serif'; }
 
-    // 🔥 FIX: Zoom-Independent Coordinates
     const baseW = isDigital ? 260 : (isImage ? 200 : (type === 'text' || type === 'replaceText' ? 200 : 150));
     const baseH = isDigital ? 90 : (isImage ? 100 : (type === 'text' ? 40 : (type === 'replaceText' ? 30 : 100)));
 
@@ -178,7 +196,7 @@ export default function EditPdf() {
     if (type === 'highlight') newElement.color = highlightColor; 
     if (type === 'redact') newElement.color = '#000000'; 
     
-    setElements([...elements, newElement]);
+    setElements(prev => [...prev, newElement]);
     setActiveElementId(newElement.id);
     setMobileView('pdf');
   };
@@ -197,7 +215,7 @@ export default function EditPdf() {
         else if (type === 'stamp') setUploadedStamp(ev.target.result);
         else {
           const newElement = { id: Date.now(), type: 'image', fileIndex: activeFileIndex, page: currentPage, x: 50/zoom, y: 100/zoom, width: 150/zoom, height: 150/zoom, imgData: ev.target.result };
-          setElements([...elements, newElement]);
+          setElements(prev => [...prev, newElement]);
           setMobileView('pdf');
         }
       };
@@ -248,16 +266,14 @@ export default function EditPdf() {
     if (canvasRef.current) {
       const dataUrl = canvasRef.current.toDataURL('image/png');
       const newElement = { id: Date.now(), type: 'draw', fileIndex: activeFileIndex, page: currentPage, x: 50/zoom, y: 100/zoom, width: 200/zoom, height: 100/zoom, imgData: dataUrl };
-      setElements([...elements, newElement]);
+      setElements(prev => [...prev, newElement]);
       setShowDrawModal(false);
     }
   };
 
-  const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
-  
   const deleteElement = (e, id) => {
     e.stopPropagation();
-    setElements(elements.filter(el => el.id !== id));
+    setElements(prev => prev.filter(el => el.id !== id));
     if (activeElementId === id) setActiveElementId(null);
   };
 
@@ -284,6 +300,7 @@ export default function EditPdf() {
     if (!activeFile) return;
     setIsProcessing(true);
     let isSuccess = false;
+    setActiveElementId(null); // Save hone se pehle selection hata do
     
     try {
       const arrayBuffer = await activeFile.file.arrayBuffer();
@@ -311,7 +328,6 @@ export default function EditPdf() {
         const page = pdfDoc.getPages()[el.page - 1];
         const { height: pdfHeight } = page.getSize();
         
-        // 🔥 PERFECT COORDINATE MATH (Zoom Independent)
         const actualX = el.x;
         const actualW = el.width;
         const actualH = el.height;
@@ -322,7 +338,6 @@ export default function EditPdf() {
           page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size)/2, size: el.size, font: font, color: hexToRgb(el.color) });
         } 
         else if (el.type === 'replaceText') {
-          // Draw Background color selected by user
           const bgRgb = hexToRgb(el.bgColor || '#FFFFFF');
           page.drawRectangle({ x: actualX, y: actualY, width: actualW, height: actualH, color: bgRgb, opacity: 1 });
           
@@ -390,7 +405,7 @@ export default function EditPdf() {
   if (!isMounted) return null;
 
   return (
-    <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7] overflow-hidden" onClick={() => setActiveElementId(null)}>
+    <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7] overflow-hidden">
       <Head><title>Pro Edit PDF | MasterPdf</title></Head>
       <Navbar />
 
@@ -481,6 +496,7 @@ export default function EditPdf() {
               </div>
 
               {/* Center Document Area */}
+              {/* 🔥 FIX 4: Document Wrapper par onMouseDown se deselection hoga */}
               <div className={`flex-grow flex flex-col relative min-w-0 ${mobileView === 'pdf' ? 'flex' : 'hidden lg:flex'}`}>
                  
                  {/* Page Controls Overlay */}
@@ -490,8 +506,8 @@ export default function EditPdf() {
                    <button onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.min(numPages || 1, p + 1)); }} className="hover:text-[#E5322D]"><ChevronRight size={16} sm={20}/></button>
                  </div>
 
-                 <div className="flex-grow overflow-y-auto p-2 sm:p-4 lg:p-8 flex flex-col items-center custom-scrollbar pb-24 lg:pb-8">
-                   <div className="relative shadow-2xl bg-white select-none max-w-full overflow-hidden">
+                 <div className="flex-grow overflow-y-auto p-2 sm:p-4 lg:p-8 flex flex-col items-center custom-scrollbar pb-24 lg:pb-8" onMouseDown={() => setActiveElementId(null)}>
+                   <div className="relative shadow-2xl bg-white select-none max-w-full overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
                      <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium text-sm">Loading Document...</div>}>
                        <Page 
                          pageNumber={currentPage} 
@@ -509,7 +525,7 @@ export default function EditPdf() {
                        />
                      </Document>
 
-                     {/* RND Elements Mapping (Zoom Independent UI) */}
+                     {/* RND Elements Mapping (Zoom Independent UI & Realtime Sync) */}
                      {elements.filter(el => el.page === currentPage && el.fileIndex === activeFileIndex).map((el) => (
                        <Rnd
                          key={el.id} 
@@ -518,7 +534,7 @@ export default function EditPdf() {
                          size={{ width: el.width * zoom, height: el.height * zoom }}
                          onDragStop={(e, d) => updateElement(el.id, { x: d.x / zoom, y: d.y / zoom })}
                          onResizeStop={(e, dir, ref, delta, position) => { updateElement(el.id, { width: ref.offsetWidth / zoom, height: ref.offsetHeight / zoom, x: position.x / zoom, y: position.y / zoom }); }}
-                         onMouseDown={(e) => { e.stopPropagation(); setActiveElementId(el.id); }}
+                         onMouseDown={(e) => handleSelectElement(e, el)} // 🔥 FIX 3: Click to auto-sync properties!
                          className={`group absolute z-20 touch-none ${
                            el.type === 'highlight' ? 'bg-opacity-50' :
                            el.type === 'redact' ? 'bg-black' :
@@ -526,10 +542,10 @@ export default function EditPdf() {
                            el.type === 'rect' ? 'border-2' :
                            el.type === 'circle' ? 'border-2 rounded-full' :
                            'hover:border-gray-400 focus-within:border-[#E5322D]'
-                         } ${activeElementId === el.id ? 'ring-2 ring-blue-500 border-dashed border-gray-400' : 'border-2 border-transparent'}`}
+                         } ${activeElementId === el.id ? 'ring-2 ring-blue-500 border border-dashed border-gray-500' : (el.type === 'replaceText' ? '' : 'border-2 border-transparent')}`}
                          style={{ 
                            borderColor: (el.type === 'rect' || el.type === 'circle') ? el.color : undefined,
-                           backgroundColor: el.type === 'highlight' ? el.color : (el.type === 'replaceText' ? el.bgColor : undefined)
+                           backgroundColor: el.type === 'highlight' ? el.color : (el.type === 'replaceText' ? el.bgColor : undefined) // 🔥 REAL-TIME BACKGROUND
                          }}
                        >
                          <button onClick={(e) => deleteElement(e, el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 text-gray-500 rounded-full p-1 text-xs hover:text-[#E5322D] opacity-0 group-hover:opacity-100 shadow-sm z-30"><X size={12} /></button>
@@ -542,9 +558,9 @@ export default function EditPdf() {
                              onChange={(e) => updateElement(el.id, { value: e.target.value })}
                              className="w-full h-full bg-transparent outline-none resize-none overflow-hidden"
                              style={{ 
-                               fontSize: `${el.size * zoom}px`, 
-                               color: el.color,
-                               fontWeight: el.isBold ? 'bold' : 'normal',
+                               fontSize: `${el.size * zoom}px`, // 🔥 REAL-TIME SIZE
+                               color: el.color,                 // 🔥 REAL-TIME TEXT COLOR
+                               fontWeight: el.isBold ? 'bold' : 'normal', // 🔥 REAL-TIME BOLD
                                lineHeight: '1.2'
                              }}
                            />
@@ -556,7 +572,7 @@ export default function EditPdf() {
               </div>
 
               {/* Right Sidebar: Tools Properties */}
-              <div className={`w-full lg:w-[280px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20 ${mobileView === 'tools' ? 'absolute inset-0' : 'hidden lg:flex'}`} onClick={(e) => e.stopPropagation()}>
+              <div className={`w-full lg:w-[280px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20 ${mobileView === 'tools' ? 'absolute inset-0' : 'hidden lg:flex'}`}>
                 <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
                   <h3 className="text-base sm:text-lg font-bold text-gray-800">Properties</h3>
                   <button onClick={() => { if(mobileView === 'tools') setMobileView('pdf'); else removeFile(); }} className="text-gray-400 hover:text-[#E5322D]"><X size={18}/></button>
@@ -596,6 +612,7 @@ export default function EditPdf() {
                         <span className="text-xs sm:text-sm font-bold text-gray-700"><Type size={14} className="inline mr-1 text-[#E5322D]"/> Size</span>
                         <span className="text-[10px] sm:text-xs font-bold text-gray-500">{textSize}px</span>
                       </div>
+                      {/* 🔥 Slider calling handlePropChange */}
                       <input type="range" min="10" max="72" value={textSize} onChange={(e) => handlePropChange('size', Number(e.target.value))} className="w-full accent-[#E5322D]" />
                     </div>
                   </div>
@@ -640,7 +657,7 @@ export default function EditPdf() {
             </div>
 
             {/* Mobile Bottom Navigation */}
-            <div className="lg:hidden flex border-t border-gray-200 bg-white h-14 shrink-0 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-30" onClick={(e) => e.stopPropagation()}>
+            <div className="lg:hidden flex border-t border-gray-200 bg-white h-14 shrink-0 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-30" >
                <button onClick={() => setMobileView('pages')} className={`flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] ${mobileView === 'pages' ? 'text-[#E5322D] bg-red-50' : 'text-gray-500'}`}>
                  <FileText size={16} /> Pages
                </button>
@@ -673,7 +690,7 @@ export default function EditPdf() {
 
       {/* DRAW MODAL */}
       {showDrawModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" >
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
               <h3 className="font-bold text-gray-800 text-sm sm:text-base">Freehand Draw</h3>
@@ -698,7 +715,7 @@ export default function EditPdf() {
 
       {/* SIGNATURE MODAL */}
       {showSignatureModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center bg-gray-50 border-b border-gray-200 p-3 sm:p-4 shrink-0">
               <h3 className="text-lg sm:text-xl font-bold text-gray-800 tracking-tight">Set your details</h3>
