@@ -12,13 +12,17 @@ export default async function handler(req, res) {
   const { action, fileUrl, password, boxes, pageIndices } = req.body;
   // Handle multiple files: if fileUrls array is present, use it; else convert single fileUrl to array
 let fileUrls = req.body.fileUrls;
-if (!fileUrls && fileUrl) {
-  fileUrls = [fileUrl];
-}
-// 🔥 FIX 1: HTML-to-PDF ko bina fileUrl ke pass hone do
-if (action !== 'html-to-pdf' && (!fileUrls || fileUrls.length === 0)) {
-  return res.status(400).json({ error: 'No file URLs provided' });
-}
+  if (!fileUrls && fileUrl) {
+    fileUrls = [fileUrl];
+  }
+  
+  // 🔥 FINAL FIX 1: Sirf un actions ko roko jinhe sach me FileUrl chahiye. 
+  // 'html-to-pdf' ko humesha aage jaane do chahe URL ho ya raw HTML.
+  if (action !== 'html-to-pdf') {
+    if (!fileUrls || fileUrls.length === 0) {
+      return res.status(400).json({ error: 'No file URLs provided' });
+    }
+  }
 
 
   try {
@@ -819,19 +823,17 @@ else if (action === 'html-to-pdf') {
     const { htmlContent, options } = req.body;
     let fileUrl = req.body.fileUrl || '';
     
-    // 🔥 URL CLEANUP: Markdown syntax ya extra spaces hatao
-    fileUrl = fileUrl.trim();
-    // Agar koi Markdown link syntax hai (e.g., [text](url)), toh sirf url nikaalo
-    const markdownMatch = fileUrl.match(/\[.*?\]\((.*?)\)/);
-    if (markdownMatch) {
-      fileUrl = markdownMatch[1];
-    }
-   // Agar URL mein spaces hain, toh encode karo
-    fileUrl = fileUrl.replace(/\s/g, '%20');
-    
-    // 🔥 FIX 2: Agar user ne https:// nahi daala toh automatic laga do
-    if (fileUrl && !fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
-      fileUrl = 'https://' + fileUrl;
+   // 🔥 FINAL FIX 2: Solid URL Cleanup
+    if (fileUrl) {
+      fileUrl = fileUrl.trim();
+      const markdownMatch = fileUrl.match(/\[.*?\]\((.*?)\)/);
+      if (markdownMatch) fileUrl = markdownMatch[1];
+      
+      // Agar direct URL input hai aur http se start nahi hota, toh prefix lagao
+      if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
+        fileUrl = 'https://' + fileUrl;
+      }
+      fileUrl = encodeURI(fileUrl); // Pura URL properly encode hoga
     }
     
     // URL validation (Loose check)
