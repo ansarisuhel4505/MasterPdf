@@ -62,9 +62,9 @@ export default function EditPdf() {
 
   // Global Tool Properties
   const [toolColor, setToolColor] = useState('#000000');
-  const [boxBgColor, setBoxBgColor] = useState('#FFFFFF'); // Box Background
+  const [boxBgColor, setBoxBgColor] = useState('#FFFFFF'); 
   const [highlightColor, setHighlightColor] = useState('#FDE047');
-  const [textSize, setTextSize] = useState(12); // Default to 12px for better matching
+  const [textSize, setTextSize] = useState(12); // Default to 12px
   const [isBold, setIsBold] = useState(false); 
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -125,6 +125,7 @@ export default function EditPdf() {
     setElements(prev => prev.map(el => el.id === id ? { ...el, ...newProps } : el));
   };
 
+  // 🔥 CRITICAL FIX: Real-time update handler
   const handlePropChange = (prop, value) => {
     if (prop === 'color') setToolColor(value);
     if (prop === 'size') setTextSize(value);
@@ -132,6 +133,7 @@ export default function EditPdf() {
     if (prop === 'bgColor') setBoxBgColor(value);
     if (prop === 'highlightColor') setHighlightColor(value);
 
+    // Apply immediately to the selected box
     if (activeElementId) {
       updateElement(activeElementId, { [prop]: value });
     }
@@ -141,6 +143,7 @@ export default function EditPdf() {
     e.stopPropagation(); 
     setActiveElementId(el.id);
     
+    // Auto-sync sidebar values with the clicked box
     if (el.color) setToolColor(el.color);
     if (el.size) setTextSize(el.size);
     if (el.isBold !== undefined) setIsBold(el.isBold);
@@ -192,7 +195,7 @@ export default function EditPdf() {
     if (type === 'redact') newElement.color = '#000000'; 
     
     setElements(prev => [...prev, newElement]);
-    setActiveElementId(newElement.id);
+    setActiveElementId(newElement.id); // Select the newly created element
     setMobileView('pdf');
   };
 
@@ -330,15 +333,13 @@ export default function EditPdf() {
 
         if (el.type === 'text') {
           const font = el.isBold ? helveticaBoldFont : helveticaFont;
-          // Exact text placement inside the box to match view
-          page.drawText(el.value, { x: actualX + 4, y: actualY + (actualH/2) - (el.size)/2.5, size: el.size, font: font, color: hexToRgb(el.color) });
+          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size)/2.5, size: el.size, font: font, color: hexToRgb(el.color) });
         } 
         else if (el.type === 'replaceText') {
           const bgRgb = hexToRgb(el.bgColor || '#FFFFFF');
           page.drawRectangle({ x: actualX, y: actualY, width: actualW, height: actualH, color: bgRgb, opacity: 1 });
           
           const font = el.isBold ? helveticaBoldFont : helveticaFont;
-          // Exact text placement to match view
           page.drawText(el.value, { x: actualX + 4, y: actualY + (actualH/2) - (el.size)/2.5, size: el.size, font: font, color: hexToRgb(el.color) });
         }
         else if (el.type === 'signature' || el.type === 'initials') {
@@ -502,7 +503,6 @@ export default function EditPdf() {
                    <button onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.min(numPages || 1, p + 1)); }} className="hover:text-[#E5322D]"><ChevronRight size={16} sm={20}/></button>
                  </div>
 
-                 {/* 🔥 SCROLL BUG FIXED: overflow-auto inline-block */}
                  <div className="flex-grow overflow-auto p-2 sm:p-4 lg:p-8 text-center custom-scrollbar pb-24 lg:pb-8" onMouseDown={() => setActiveElementId(null)}>
                    <div className="relative shadow-2xl bg-white select-none overflow-hidden inline-block text-left" onMouseDown={(e) => e.stopPropagation()}>
                      <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium text-sm">Loading Document...</div>}>
@@ -542,7 +542,8 @@ export default function EditPdf() {
                          } ${activeElementId === el.id ? 'ring-2 ring-blue-500 border border-dashed border-gray-500' : (el.type === 'replaceText' ? '' : 'border-2 border-transparent')}`}
                          style={{ 
                            borderColor: (el.type === 'rect' || el.type === 'circle') ? el.color : undefined,
-                           backgroundColor: el.type === 'highlight' ? el.color : (el.type === 'replaceText' ? el.bgColor : undefined) 
+                           backgroundColor: el.type === 'highlight' ? el.color : (el.type === 'replaceText' ? el.bgColor : undefined),
+                           overflow: 'hidden' // 🔥 FIX for text popping out
                          }}
                        >
                          <button onClick={(e) => deleteElement(e, el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 text-gray-500 rounded-full p-1 text-xs hover:text-[#E5322D] opacity-0 group-hover:opacity-100 shadow-sm z-30"><X size={12} /></button>
@@ -553,13 +554,16 @@ export default function EditPdf() {
                            <textarea 
                              value={el.value} 
                              onChange={(e) => updateElement(el.id, { value: e.target.value })}
-                             // 🔥 FIX: Added padding zero to stop text from jumping out
-                             className="w-full h-full bg-transparent outline-none resize-none overflow-hidden p-0 m-0"
+                             // 🔥 FIX: Added word-wrap and strict sizing bounds
+                             className="w-full h-full bg-transparent outline-none resize-none p-1 m-0 block"
                              style={{ 
                                fontSize: `${el.size * zoom}px`, 
                                color: el.color,
                                fontWeight: el.isBold ? 'bold' : 'normal',
-                               lineHeight: '1.2'
+                               lineHeight: '1.2',
+                               overflow: 'hidden',
+                               wordWrap: 'break-word',
+                               whiteSpace: 'pre-wrap'
                              }}
                            />
                          ) : null}
@@ -569,8 +573,12 @@ export default function EditPdf() {
                  </div>
               </div>
 
-              {/* Right Sidebar: Tools Properties */}
-              <div className={`w-full lg:w-[280px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20 ${mobileView === 'tools' ? 'absolute inset-0' : 'hidden lg:flex'}`} onClick={(e) => e.stopPropagation()}>
+              {/* 🔥 CRITICAL FIX: Added onMouseDown/onClick preventers to Right Sidebar so it doesn't deselect */}
+              <div 
+                className={`w-full lg:w-[280px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20 ${mobileView === 'tools' ? 'absolute inset-0' : 'hidden lg:flex'}`} 
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
                   <h3 className="text-base sm:text-lg font-bold text-gray-800">Properties</h3>
                   <button onClick={() => { if(mobileView === 'tools') setMobileView('pdf'); else removeFile(); }} className="text-gray-400 hover:text-[#E5322D]"><X size={18}/></button>
@@ -610,7 +618,7 @@ export default function EditPdf() {
                         <span className="text-xs sm:text-sm font-bold text-gray-700"><Type size={14} className="inline mr-1 text-[#E5322D]"/> Size</span>
                         <span className="text-[10px] sm:text-xs font-bold text-gray-500">{textSize}px</span>
                       </div>
-                      {/* 🔥 FIX: Minimum size ab 1px kar diya hai */}
+                      {/* 🔥 FIX: min 1px for super small text */}
                       <input type="range" min="1" max="72" value={textSize} onChange={(e) => handlePropChange('size', Number(e.target.value))} className="w-full accent-[#E5322D]" />
                     </div>
                   </div>
