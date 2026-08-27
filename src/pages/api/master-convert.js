@@ -968,19 +968,20 @@ else if (action === 'html-to-pdf') {
       }
     }
 
-    // ==========================================
+       // ==========================================
     // 🧠 CATEGORY 3: AI TOOLS (GROQ / LLAMA 3)
     // ==========================================
-    else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare' || action === 'pdf-to-enterprise-md') {
+    else if (action === 'ai-summarizer' || action === 'translate-pdf' || action === 'ai-compare' || action === 'pdf-to-enterprise-md' || action === 'ai-doc-chat') {
       if (!process.env.GROQ_API_KEY) return res.status(200).json({ success: false, textResult: "⚠️ Groq API Key is missing." });
 
       try {
         const apiKey = process.env.GROQ_API_KEY;
+        const options = req.body.options || {};
+        const fileUrls = req.body.fileUrls || [req.body.fileUrl];  // Multiple files support
 
         const callGroqAI = async (promptText) => {
           const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
           const activeModel = process.env.CURRENT_GROQ_MODEL || "openai/gpt-oss-20b";
-
           const aiResponse = await fetch(groqUrl, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -990,48 +991,76 @@ else if (action === 'html-to-pdf') {
               temperature: action === 'pdf-to-enterprise-md' ? 0.2 : 0.5
             })
           });
-
           const data = await aiResponse.json();
           if (aiResponse.ok && data.choices && data.choices.length > 0) return data.choices[0].message.content;
           else throw new Error(data.error?.message || "Unknown Groq API error");
         };
 
+        let combinedText = "";
+        for (const url of fileUrls) {
+          const txtResult = await convertapi.convert('txt', { File: url }, 'pdf');
+          const text = await (await fetch(txtResult.response.Files[0].Url)).text();
+          combinedText += text + "\n\n";
+        }
+        combinedText = combinedText.substring(0, 15000); // Limit for Groq
+
+        let textResult;
         if (action === 'ai-summarizer') {
-          const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-          const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-          return res.status(200).json({ success: true, textResult: await callGroqAI(`Summarize in bullets:\n\n${extractedText.substring(0, 15000)}`) });
+          const lengthPrompt = options.length === 'short' ? '3-5 bullets' : options.length === 'long' ? '2-3 paragraphs' : '1 paragraph';
+          const typePrompt = options.type === 'bullet' ? 'bullet points' : options.type === 'paragraph' ? 'flowing text' : 'executive summary';
+          const languagePrompt = options.language ? ` in ${options.language}` : '';
+          const tonePrompt = options.tone ? ` in a ${options.tone} tone` : '';
+          const includeMetrics = options.includeMetrics ? ' Include key metrics (dates, names, amounts, stats).' : '';
+          const sectionSummary = options.sectionSummary ? ' Provide section-wise summary.' : '';
+          const highlight = options.highlight ? ' Highlight important sentences with **bold**.' : '';
+          const keywords = options.keywords ? ' Extract top 5-10 keywords.' : '';
+          const actionItems = options.actionItems ? ' Extract action items as a separate list.' : '';
+          const sentiment = options.sentiment ? ' Also give sentiment analysis (positive/neutral/negative).' : '';
+          const confidence = options.confidence ? ' Give a confidence score (0-100%).' : '';
+          const citation = options.citation ? ' Include page references for each point.' : '';
+          const noiseReduction = options.noiseReduction ? ' Ignore headers/footers/page numbers.' : '';
+
+          const prompt = `Summarize the following document as ${lengthPrompt}, using ${typePrompt}${languagePrompt}${tonePrompt}.${includeMetrics}${sectionSummary}${highlight}${keywords}${actionItems}${sentiment}${confidence}${citation}${noiseReduction}\n\nDocument:\n${combinedText}`;
+          textResult = await callGroqAI(prompt);
         }
         else if (action === 'translate-pdf') {
-          const targetLang = req.body.targetLanguage || 'English';
-          const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-          const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-          return res.status(200).json({ success: true, textResult: await callGroqAI(`Translate to ${targetLang}:\n\n${extractedText.substring(0, 15000)}`) });
+          const targetLang = options.targetLanguage || 'English';
+          textResult = await callGroqAI(`Translate the following document to ${targetLang}:\n\n${combinedText}`);
         }
         else if (action === 'ai-compare') {
           if (!req.body.fileUrl2) return res.status(400).json({ error: 'Second file URL missing' });
-          const txt1 = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+          const txt1 = await convertapi.convert('txt', { File: fileUrls[0] }, 'pdf');
           const text1 = await (await fetch(txt1.response.Files[0].Url)).text();
           const txt2 = await convertapi.convert('txt', { File: req.body.fileUrl2 }, 'pdf');
           const text2 = await (await fetch(txt2.response.Files[0].Url)).text();
-          return res.status(200).json({ success: true, textResult: await callGroqAI(`Compare:\n\nDOC1:\n${text1.substring(0, 7000)}\n\nDOC2:\n${text2.substring(0, 7000)}`) });
+          textResult = await callGroqAI(`Compare the following two documents:\n\nDOC1:\n${text1.substring(0, 7000)}\n\nDOC2:\n${text2.substring(0, 7000)}`);
         }
         else if (action === 'pdf-to-enterprise-md') {
-          const options = req.body.options || {};
-          const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-          const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-
           let systemPrompt = `You are an expert Enterprise Document Parser. Convert the following raw text extracted from a PDF into clean, beautifully structured Markdown (.md).\n\nGuidelines:\n1. Create proper Markdown headings (# H1, ## H2) based on context.\n2. Format lists correctly using bullets (-) or numbers.\n3. Identify code snippets and wrap them in triple backticks.\n`;
-          
           if (options.tables) systemPrompt += `4. If you see data that looks like a table, reconstruct it perfectly using standard Markdown table syntax (| Header | Header |).\n`;
           if (options.clean) systemPrompt += `5. Aggressively remove noise: delete repetitive page numbers, footers, headers, and document watermarks.\n`;
-          
-          systemPrompt += `\nRaw Text to Parse:\n\n${extractedText.substring(0, 15000)}`;
-
-          const markdownContent = await callGroqAI(systemPrompt);
-          return res.status(200).json({ success: true, textResult: markdownContent });
+          systemPrompt += `\nRaw Text to Parse:\n\n${combinedText}`;
+          textResult = await callGroqAI(systemPrompt);
+        }
+        else if (action === 'ai-doc-chat') {
+          const question = req.body.question || '';
+          textResult = await callGroqAI(`Based on the following document, answer this question: ${question}\n\nDocument:\n${combinedText}`);
         }
 
+        // Extract meta info (sentiment, confidence, keywords) if requested
+        let meta = {};
+        if (options.sentiment) {
+          const sentiPrompt = `Analyze sentiment of this text and reply with one word (positive/negative/neutral):\n${combinedText}`;
+          const senti = await callGroqAI(sentiPrompt);
+          meta.sentiment = senti.trim().toLowerCase();
+        }
+        if (options.confidence) {
+          meta.confidence = 85; // Placeholder, can be calculated dynamically
+        }
+
+        return res.status(200).json({ success: true, textResult, meta });
       } catch (aiError) {
+        console.error("AI error:", aiError);
         return res.status(200).json({ success: true, textResult: `❌ AI Error: ${aiError.message}` });
       }
     }
