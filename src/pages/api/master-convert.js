@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });  
   }
 
-  const { action, fileUrl, password, boxes, pageIndices } = req.body;
+  const { action, fileUrl, password, boxes, pageIndices } = req.body; 
   // Handle multiple files: if fileUrls array is present, use it; else convert single fileUrl to array
 let fileUrls = req.body.fileUrls;
   if (!fileUrls && fileUrl) {
