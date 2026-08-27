@@ -8,14 +8,13 @@ import { Rnd } from 'react-rnd';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// 🔥 YAHAN THI MERI GALTI: Saare naye icons add kar diye hain taaki crash na ho!
 import { 
   UploadCloud, X, Edit3, Type, Image as ImageIcon, PenTool, 
   Download, Settings, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, 
   Trash2, Palette, FileText, Monitor, ZoomIn, ZoomOut, Save, 
   Square, Circle, Highlighter, ShieldCheck, Upload, QrCode, 
   User, Calendar, Stamp, Lock, Layers, ArrowLeft, ArrowRightCircle, 
-  HardDrive, Link2, Plus, Menu
+  HardDrive, Link2, Plus, Menu, Bold
 } from 'lucide-react';
 import { useUser } from '@clerk/nextjs';
 
@@ -32,7 +31,16 @@ const signatureFonts = [
   "Neucha", "Rock Salt", "Reenie Beanie", "Nothing You Could Do", "Schoolbell", "Nanum Pen Script", "Comic Sans MS"
 ];
 
-const RENDER_SCALE = 1.5; 
+const HIGHLIGHT_COLORS = [
+  { hex: '#FDE047', name: 'Yellow' },
+  { hex: '#86EFAC', name: 'Green' },
+  { hex: '#93C5FD', name: 'Blue' },
+  { hex: '#FCA5A5', name: 'Red' },
+  { hex: '#F9A8D4', name: 'Pink' },
+  { hex: '#D8B4FE', name: 'Purple' }
+];
+
+const TEXT_COLORS = ['#E5322D', '#000000', '#1F2937', '#1E3A8A', '#065F46', '#D97706', '#FFFFFF'];
 
 export default function EditPdf() {
   const { isLoaded, isSignedIn, user } = useUser();
@@ -40,7 +48,6 @@ export default function EditPdf() {
   
   const [files, setFiles] = useState([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
-  const [showFileDropdown, setShowFileDropdown] = useState(false);
   const activeFile = files[activeFileIndex] || null;
   
   const [numPages, setNumPages] = useState(null);
@@ -51,7 +58,9 @@ export default function EditPdf() {
 
   const [elements, setElements] = useState([]);
   const [toolColor, setToolColor] = useState('#E5322D');
+  const [highlightColor, setHighlightColor] = useState('#FDE047');
   const [textSize, setTextSize] = useState(16);
+  const [isBold, setIsBold] = useState(false); // New Bold state
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState(1);
 
@@ -82,7 +91,6 @@ export default function EditPdf() {
     }
   }, [showSignatureModal, vTab, sigColor]);
 
-  // --- 1. INSTANT UPLOAD (CRASH FREE) ---
   const handleFileChange = (e) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles || selectedFiles.length === 0) return;
@@ -107,11 +115,11 @@ export default function EditPdf() {
     setNumPages(numPages); setCurrentPage(1);
   };
 
-  // --- 2. ADDING ELEMENTS (Text, Image, Draw, Highlight, Redact, Shapes) ---
   const addElement = (type) => {
     let value = ''; let fontStyle = 'Arial, sans-serif';
     let isImage = false; let imgData = null; let isDigital = false;
     let finalColor = toolColor;
+    let finalBold = false;
 
     if (type === 'signature') {
       if (sigMode === 'simple') {
@@ -134,17 +142,18 @@ export default function EditPdf() {
     }
     else if (type === 'name') { value = fullName; fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
     else if (type === 'date') { value = new Date().toLocaleDateString(); fontStyle = 'Helvetica, sans-serif'; finalColor = '#333'; }
-    else if (type === 'text') { value = 'Type text here...'; fontStyle = 'Helvetica, sans-serif'; }
+    else if (type === 'text') { value = 'Type text here...'; fontStyle = 'Helvetica, sans-serif'; finalBold = isBold; }
+    else if (type === 'replaceText') { value = 'New Word'; fontStyle = 'Helvetica, sans-serif'; finalColor = toolColor; finalBold = isBold; }
 
     const newElement = {
       id: Date.now(), type, fileIndex: activeFileIndex, page: currentPage, 
       x: 50, y: 100, 
-      width: isDigital ? 260 : (isImage ? 200 : (type === 'text' ? 200 : 150)), 
-      height: isDigital ? 90 : (isImage ? 100 : (type === 'text' ? 40 : 100)), 
-      value, fontStyle, isImage, imgData, isDigital, color: finalColor, size: textSize
+      width: isDigital ? 260 : (isImage ? 200 : (type === 'text' || type === 'replaceText' ? 200 : 150)), 
+      height: isDigital ? 90 : (isImage ? 100 : (type === 'text' ? 40 : (type === 'replaceText' ? 30 : 100))), 
+      value, fontStyle, isImage, imgData, isDigital, color: finalColor, size: textSize, isBold: finalBold
     };
     
-    if (type === 'highlight') newElement.color = '#FDE047'; 
+    if (type === 'highlight') newElement.color = highlightColor; 
     if (type === 'redact') newElement.color = '#000000'; 
     
     setElements([...elements, newElement]);
@@ -174,19 +183,38 @@ export default function EditPdf() {
     e.target.value = '';
   };
 
-  // Drawing Logic
   const startDrawing = (e) => {
-    const { offsetX, offsetY } = e.nativeEvent;
+    let clientX, clientY;
+    if (e.touches) {
+      const touch = e.touches[0];
+      const rect = canvasRef.current.getBoundingClientRect();
+      clientX = touch.clientX - rect.left;
+      clientY = touch.clientY - rect.top;
+    } else {
+      clientX = e.nativeEvent.offsetX;
+      clientY = e.nativeEvent.offsetY;
+    }
     const ctx = canvasRef.current.getContext('2d');
-    ctx.beginPath(); ctx.moveTo(offsetX, offsetY); setIsDrawing(true);
+    ctx.beginPath(); ctx.moveTo(clientX, clientY); setIsDrawing(true);
   };
+
   const draw = (e) => {
     if (!isDrawing) return;
-    const { offsetX, offsetY } = e.nativeEvent;
+    let clientX, clientY;
+    if (e.touches) {
+      const touch = e.touches[0];
+      const rect = canvasRef.current.getBoundingClientRect();
+      clientX = touch.clientX - rect.left;
+      clientY = touch.clientY - rect.top;
+    } else {
+      clientX = e.nativeEvent.offsetX;
+      clientY = e.nativeEvent.offsetY;
+    }
     const ctx = canvasRef.current.getContext('2d');
     ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = showDrawModal ? toolColor : sigColor;
-    ctx.lineTo(offsetX, offsetY); ctx.stroke();
+    ctx.lineTo(clientX, clientY); ctx.stroke();
   };
+
   const stopDrawing = () => setIsDrawing(false);
   const clearCanvas = () => {
     if(!canvasRef.current) return;
@@ -205,7 +233,6 @@ export default function EditPdf() {
   const updateElement = (id, newProps) => setElements(elements.map(el => el.id === id ? { ...el, ...newProps } : el));
   const deleteElement = (id) => setElements(elements.filter(el => el.id !== id));
 
-  // Converts Digital Sign to Image
   const textToImageDataUrl = (text, fontStyle, width, height, color, isDigital = false) => {
     const canvas = document.createElement('canvas');
     canvas.width = width * 2; canvas.height = height * 2;
@@ -225,7 +252,6 @@ export default function EditPdf() {
     return canvas.toDataURL('image/png');
   };
 
-  // --- 3. EXPORT TO PDF (100% BYPASS) ---
   const saveAndDownload = async () => {
     if (!activeFile) return;
     setIsProcessing(true);
@@ -235,7 +261,6 @@ export default function EditPdf() {
       const arrayBuffer = await activeFile.file.arrayBuffer();
       let pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
       
-      // Force decrypt bypass
       if (pdfDoc.isEncrypted) {
         const newDoc = await PDFDocument.create();
         const copiedPages = await newDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
@@ -244,6 +269,7 @@ export default function EditPdf() {
       }
 
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
       const hexToRgb = (hex) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -257,7 +283,6 @@ export default function EditPdf() {
         const page = pdfDoc.getPages()[el.page - 1];
         const { height: pdfHeight } = page.getSize();
         
-        // Exact Mathematical Mapping to prevent coordinate crashes
         const scaleX = pdfDimensions.width ? page.getSize().width / (pdfDimensions.width / zoom) : 1;
         const scaleY = pdfDimensions.height ? pdfHeight / (pdfDimensions.height / zoom) : 1;
         
@@ -267,8 +292,14 @@ export default function EditPdf() {
         const actualY = pdfHeight - (el.y * scaleY) - actualH;
 
         if (el.type === 'text' || el.type === 'name' || el.type === 'date') {
-          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size * scaleX)/2, size: el.size * scaleX, font: helveticaFont, color: hexToRgb(el.color) });
+          const font = el.isBold ? helveticaBoldFont : helveticaFont;
+          page.drawText(el.value, { x: actualX + 5, y: actualY + (actualH/2) - (el.size * scaleX)/2, size: el.size * scaleX, font: font, color: hexToRgb(el.color) });
         } 
+        else if (el.type === 'replaceText') {
+          page.drawRectangle({ x: actualX, y: actualY, width: actualW, height: actualH, color: rgb(1, 1, 1), opacity: 1 });
+          const font = el.isBold ? helveticaBoldFont : helveticaFont;
+          page.drawText(el.value, { x: actualX + 2, y: actualY + (actualH/2) - (el.size * scaleX)/2, size: el.size * scaleX, font: font, color: hexToRgb(el.color) });
+        }
         else if (el.type === 'signature' || el.type === 'initials') {
           const dataUrl = textToImageDataUrl(el.value, el.fontStyle, el.width, el.height, el.color, el.isDigital);
           const imgBytes = await fetch(dataUrl).then(res => res.arrayBuffer());
@@ -277,11 +308,12 @@ export default function EditPdf() {
         }
         else if (el.type === 'image' || el.type === 'draw' || el.type === 'stamp') {
           const imgBytes = await fetch(el.imgData).then(res => res.arrayBuffer());
-          const pdfImage = await pdfDoc.embedPng(imgBytes);
+          const pdfImage = await pdfDoc.embedPng(imgBytes); // You might want to handle JPEG too if uploaded image is jpeg
           page.drawImage(pdfImage, { x: actualX, y: actualY, width: actualW, height: actualH });
         }
         else if (el.type === 'highlight') {
-          page.drawRectangle({ x: actualX, y: actualY, width: actualW, height: actualH, color: rgb(1, 0.9, 0.2), opacity: 0.5 });
+          const highlightRgb = hexToRgb(el.color);
+          page.drawRectangle({ x: actualX, y: actualY, width: actualW, height: actualH, color: highlightRgb, opacity: 0.5 });
         }
         else if (el.type === 'redact') {
           page.drawRectangle({ x: actualX, y: actualY, width: actualW, height: actualH, color: rgb(0, 0, 0), opacity: 1 });
@@ -326,11 +358,6 @@ export default function EditPdf() {
     }
   };
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
-    alert('Document link copied to clipboard!');
-  };
-
   if (!isMounted) return null;
 
   return (
@@ -340,7 +367,6 @@ export default function EditPdf() {
 
       <main className="flex-grow flex flex-col pt-[72px] h-[calc(100vh-72px)] w-full relative">
         
-        {/* STEP 1: BULLETPROOF UPLOAD */}
         {step === 1 && (
           <div className="flex-grow flex items-center justify-center p-4">
             <div className="w-full max-w-4xl bg-white lg:rounded-2xl shadow-sm lg:border border-gray-200 p-8 lg:p-16 text-center animate-in fade-in">
@@ -349,7 +375,7 @@ export default function EditPdf() {
               </div>
               <h1 className="text-3xl lg:text-5xl font-bold text-gray-900 mb-4 tracking-tight">Edit PDF Document</h1>
               <p className="text-base lg:text-lg text-gray-600 mb-10 max-w-2xl mx-auto">
-                Add text, images, highlights, redactions, shapes, and freehand annotations directly in your browser.
+                Add text, replace existing text, add images, highlights, redactions, shapes, and freehand annotations directly in your browser.
               </p>
               
               <div className="flex justify-center">
@@ -362,34 +388,41 @@ export default function EditPdf() {
           </div>
         )}
 
-        {/* STEP 2: EDITOR */}
         {step === 2 && activeFile && (
           <div className="w-full h-full flex flex-col bg-white shadow-lg overflow-hidden animate-in fade-in">
             
             {/* Top Toolbar */}
-            <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 w-full z-20 shadow-sm overflow-x-auto custom-scrollbar">
-               <div className="flex items-center gap-2 min-w-max">
-                 <button onClick={() => addElement('text')} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Add Text"><Type size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Text</span></button>
+            <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-2 sm:px-4 shrink-0 w-full z-20 shadow-sm overflow-x-auto custom-scrollbar">
+               <div className="flex items-center gap-1 sm:gap-2 min-w-max">
+                 <button onClick={() => addElement('text')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Add Text"><Type size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Text</span></button>
+                 <button onClick={() => addElement('replaceText')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Magic Replace Text"><Edit3 size={18} className="text-blue-500"/> <span className="text-xs font-bold hidden sm:block">Edit Text</span></button>
+                 
+                 <div className="w-px h-6 bg-gray-300 mx-1"></div>
+                 
                  <div className="relative">
                    <input type="file" id="img-upload-tool" accept="image/*" onChange={(e) => handleImageUpload(e, 'general')} className="hidden" />
-                   <button onClick={() => document.getElementById('img-upload-tool').click()} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition cursor-pointer" title="Add Image"><ImageIcon size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Image</span></button>
+                   <button onClick={() => document.getElementById('img-upload-tool').click()} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition cursor-pointer" title="Add Image"><ImageIcon size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Image</span></button>
                  </div>
-                 <button onClick={() => setShowDrawModal(true)} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Draw"><PenTool size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Draw</span></button>
+                 <button onClick={() => setShowDrawModal(true)} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Draw"><PenTool size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden sm:block">Draw</span></button>
+                 
                  <div className="w-px h-6 bg-gray-300 mx-1"></div>
-                 <button onClick={() => addElement('highlight')} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Highlight Box"><Highlighter size={18} className="text-yellow-500"/> <span className="text-xs font-bold hidden xl:block">Highlight</span></button>
-                 <button onClick={() => addElement('redact')} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Redact (Blackout)"><Square size={18} className="text-black fill-black"/> <span className="text-xs font-bold hidden xl:block">Redact</span></button>
+                 
+                 <button onClick={() => addElement('highlight')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Highlight Box"><Highlighter size={18} style={{color: highlightColor}}/> <span className="text-xs font-bold hidden xl:block">Highlight</span></button>
+                 <button onClick={() => addElement('redact')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Redact (Blackout)"><Square size={18} className="text-black fill-black"/> <span className="text-xs font-bold hidden xl:block">Redact</span></button>
+                 
                  <div className="w-px h-6 bg-gray-300 mx-1"></div>
-                 <button onClick={() => addElement('rect')} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Rectangle"><Square size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden xl:block">Shape</span></button>
-                 <button onClick={() => addElement('circle')} className="flex items-center gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Circle"><Circle size={18} className="text-[#E5322D]"/></button>
+                 
+                 <button onClick={() => addElement('rect')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Rectangle"><Square size={18} className="text-[#E5322D]"/> <span className="text-xs font-bold hidden xl:block">Shape</span></button>
+                 <button onClick={() => addElement('circle')} className="flex items-center gap-1 sm:gap-1.5 hover:bg-gray-100 p-2 rounded-lg text-gray-700 transition" title="Circle"><Circle size={18} className="text-[#E5322D]"/></button>
                </div>
 
-               <div className="flex items-center gap-3 shrink-0 ml-4">
-                 <div className="hidden md:flex items-center gap-1 bg-gray-100 rounded p-1">
+               <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-2 sm:ml-4">
+                 <div className="hidden lg:flex items-center gap-1 bg-gray-100 rounded p-1">
                    <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} className="p-1 hover:bg-white rounded text-gray-600"><ZoomOut size={14}/></button>
                    <span className="text-[10px] font-bold text-gray-700 w-8 text-center">{Math.round(zoom * 100)}%</span>
                    <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} className="p-1 hover:bg-white rounded text-gray-600"><ZoomIn size={14}/></button>
                  </div>
-                 <button onClick={saveAndDownload} disabled={isProcessing} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-1.5 px-4 rounded-lg shadow transition disabled:opacity-50 flex items-center gap-2 text-sm">
+                 <button onClick={saveAndDownload} disabled={isProcessing} className="bg-[#E5322D] hover:bg-red-700 text-white font-bold py-1.5 px-3 sm:px-4 rounded-lg shadow transition disabled:opacity-50 flex items-center gap-2 text-xs sm:text-sm">
                    {isProcessing ? <Settings className="animate-spin" size={14}/> : <Save size={14}/>} <span className="hidden sm:block">Export</span>
                  </button>
                  <button onClick={removeFile} className="text-gray-400 hover:text-red-500"><X size={20}/></button>
@@ -399,7 +432,7 @@ export default function EditPdf() {
             <div className="flex-grow flex flex-row overflow-hidden relative bg-[#E4E4E4]">
               
               {/* Left Mini Pages */}
-              <div className={`w-40 lg:w-48 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto shrink-0 z-10 custom-scrollbar shadow-[2px_0_5px_rgba(0,0,0,0.05)] ${mobileView === 'pages' ? 'flex absolute inset-0 w-full z-40' : 'hidden lg:flex'}`}>
+              <div className={`w-32 sm:w-40 lg:w-48 bg-gray-100 border-r border-gray-300 p-4 flex flex-col items-center gap-4 overflow-y-auto shrink-0 z-10 custom-scrollbar shadow-[2px_0_5px_rgba(0,0,0,0.05)] ${mobileView === 'pages' ? 'flex absolute inset-0 w-full z-40' : 'hidden lg:flex'}`}>
                  {mobileView === 'pages' && (
                    <div className="w-full flex justify-between items-center mb-4 lg:hidden">
                      <h3 className="font-bold text-gray-800">Pages</h3>
@@ -410,7 +443,7 @@ export default function EditPdf() {
                    {Array.from({ length: numPages || 0 }, (_, i) => (
                      <div key={i} onClick={() => { setCurrentPage(i + 1); if(mobileView === 'pages') setMobileView('pdf'); }} className="flex flex-col items-center mb-4 cursor-pointer group">
                        <div className={`border-2 p-1 bg-white shadow-sm transition-all ${currentPage === i + 1 ? 'border-[#E5322D] scale-105 shadow-md' : 'border-transparent group-hover:border-gray-300'}`}>
-                         <Page pageNumber={i + 1} width={100} renderTextLayer={false} renderAnnotationLayer={false} />
+                         <Page pageNumber={i + 1} width={80} renderTextLayer={false} renderAnnotationLayer={false} />
                        </div>
                        <span className={`text-xs font-bold mt-2 ${currentPage === i + 1 ? 'text-[#E5322D]' : 'text-gray-500'}`}>{i + 1}</span>
                      </div>
@@ -422,15 +455,15 @@ export default function EditPdf() {
               <div className={`flex-grow flex flex-col relative min-w-0 ${mobileView === 'pdf' ? 'flex' : 'hidden lg:flex'}`}>
                  
                  {/* Page Controls Overlay */}
-                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-900/80 backdrop-blur-sm text-white px-4 py-2 rounded-full flex items-center gap-4 z-30 shadow-lg">
-                   <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="hover:text-[#E5322D]"><ChevronLeft size={20}/></button>
-                   <span className="text-xs font-bold w-16 text-center">Page {currentPage}/{numPages}</span>
-                   <button onClick={() => setCurrentPage(p => Math.min(numPages || 1, p + 1))} className="hover:text-[#E5322D]"><ChevronRight size={20}/></button>
+                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-900/80 backdrop-blur-sm text-white px-3 sm:px-4 py-2 rounded-full flex items-center gap-3 sm:gap-4 z-30 shadow-lg">
+                   <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="hover:text-[#E5322D]"><ChevronLeft size={16} sm={20}/></button>
+                   <span className="text-[10px] sm:text-xs font-bold w-12 sm:w-16 text-center">Pg {currentPage}/{numPages}</span>
+                   <button onClick={() => setCurrentPage(p => Math.min(numPages || 1, p + 1))} className="hover:text-[#E5322D]"><ChevronRight size={16} sm={20}/></button>
                  </div>
 
-                 <div className="flex-grow overflow-y-auto p-4 lg:p-8 flex flex-col items-center custom-scrollbar pb-24 lg:pb-8">
-                   <div className="relative shadow-2xl bg-white select-none">
-                     <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}>
+                 <div className="flex-grow overflow-y-auto p-2 sm:p-4 lg:p-8 flex flex-col items-center custom-scrollbar pb-24 lg:pb-8">
+                   <div className="relative shadow-2xl bg-white select-none max-w-full overflow-hidden">
+                     <Document file={activeFile.url} loading={<div className="p-10 text-gray-500 font-medium text-sm">Loading Document...</div>}>
                        <Page 
                          pageNumber={currentPage} 
                          scale={zoom} 
@@ -454,24 +487,33 @@ export default function EditPdf() {
                          onDragStop={(e, d) => updateElement(el.id, { x: d.x, y: d.y })}
                          onResizeStop={(e, dir, ref, delta, position) => { updateElement(el.id, { width: ref.offsetWidth, height: ref.offsetHeight, ...position }); }}
                          className={`group absolute z-20 touch-none ${
-                           el.type === 'highlight' ? 'bg-yellow-300/50' :
+                           el.type === 'highlight' ? 'bg-opacity-50' :
                            el.type === 'redact' ? 'bg-black' :
+                           el.type === 'replaceText' ? 'bg-white border border-dashed shadow-sm' :
                            el.type === 'rect' ? 'border-2' :
                            el.type === 'circle' ? 'border-2 rounded-full' :
                            'border-2 border-transparent hover:border-gray-400 focus-within:border-[#E5322D] border-dashed bg-white/10'
                          }`}
-                         style={{ borderColor: (el.type === 'rect' || el.type === 'circle') ? el.color : undefined }}
+                         style={{ 
+                           borderColor: (el.type === 'rect' || el.type === 'circle' || el.type === 'replaceText') ? el.color : undefined,
+                           backgroundColor: el.type === 'highlight' ? el.color : undefined
+                         }}
                        >
-                         <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 text-gray-500 rounded-full p-1 text-xs hover:text-[#E5322D] opacity-0 group-hover:opacity-100 shadow-sm z-30"><X size={14} /></button>
+                         <button onClick={() => deleteElement(el.id)} className="absolute -top-3 -right-3 bg-white border border-gray-300 text-gray-500 rounded-full p-1 text-xs hover:text-[#E5322D] opacity-0 group-hover:opacity-100 shadow-sm z-30"><X size={12} /></button>
                          
                          {el.type === 'image' || el.type === 'draw' || el.type === 'signature' || el.type === 'stamp' || el.type === 'initials' ? (
                            <img src={el.imgData} alt="Element" className="w-full h-full object-fill pointer-events-none" />
-                         ) : el.type === 'text' || el.type === 'name' || el.type === 'date' ? (
+                         ) : el.type === 'text' || el.type === 'replaceText' || el.type === 'name' || el.type === 'date' ? (
                            <textarea 
                              value={el.value} 
                              onChange={(e) => updateElement(el.id, { value: e.target.value })}
-                             className="w-full h-full bg-transparent outline-none font-bold resize-none"
-                             style={{ fontSize: `${el.size * (zoom/1.5)}px`, color: el.color }}
+                             className="w-full h-full bg-transparent outline-none resize-none overflow-hidden"
+                             style={{ 
+                               fontSize: `${el.size * (zoom/1.5)}px`, 
+                               color: el.color,
+                               fontWeight: el.isBold ? 'bold' : 'normal',
+                               lineHeight: '1.2'
+                             }}
                            />
                          ) : null}
                        </Rnd>
@@ -483,46 +525,73 @@ export default function EditPdf() {
               {/* Right Sidebar: Tools Properties */}
               <div className={`w-full lg:w-[280px] bg-white flex flex-col h-full shrink-0 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] z-20 ${mobileView === 'tools' ? 'absolute inset-0' : 'hidden lg:flex'}`}>
                 <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
-                  <h3 className="text-lg font-bold text-gray-800">Properties</h3>
+                  <h3 className="text-base sm:text-lg font-bold text-gray-800">Properties</h3>
                   <button onClick={() => { if(mobileView === 'tools') setMobileView('pdf'); else removeFile(); }} className="text-gray-400 hover:text-[#E5322D]"><X size={18}/></button>
                 </div>
 
                 <div className="p-4 overflow-y-auto flex-grow custom-scrollbar">
                   
-                  {/* File Switcher Dropdown */}
                   {files.length > 1 && (
                     <div className="mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                      <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Switch File</h4>
+                      <h4 className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase mb-2">Switch File</h4>
                       <select 
                         value={activeFileIndex} 
                         onChange={(e) => { setActiveFileIndex(Number(e.target.value)); setCurrentPage(1); }}
-                        className="w-full border border-gray-300 rounded p-2 text-sm font-bold text-gray-800 outline-none"
+                        className="w-full border border-gray-300 rounded p-2 text-xs sm:text-sm font-bold text-gray-800 outline-none"
                       >
                         {files.map((f, i) => <option key={i} value={i}>{f.name}</option>)}
                       </select>
                     </div>
                   )}
 
+                  {/* Text Color */}
                   <div className="mb-6">
-                    <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Palette size={16} className="text-[#E5322D]"/> Tool Color</h4>
+                    <h4 className="text-xs sm:text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Palette size={14} className="text-[#E5322D]"/> Text / Shape Color</h4>
                     <div className="flex flex-wrap gap-2">
-                      {['#E5322D', '#000000', '#1F2937', '#1E3A8A', '#065F46', '#D97706'].map(c => (
-                        <button key={c} onClick={() => setToolColor(c)} style={{backgroundColor: c}} className={`w-8 h-8 rounded-full transition-transform ${toolColor === c ? 'scale-110 ring-2 ring-offset-2 ring-gray-400 shadow-md' : 'hover:scale-105 shadow-sm'}`} />
+                      {TEXT_COLORS.map(c => (
+                        <button key={c} onClick={() => setToolColor(c)} style={{backgroundColor: c}} className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full transition-transform border border-gray-200 ${toolColor === c ? 'scale-110 ring-2 ring-offset-2 ring-gray-400 shadow-md' : 'hover:scale-105 shadow-sm'}`} />
                       ))}
                     </div>
                   </div>
 
+                  {/* Highlight Color */}
                   <div className="mb-6">
-                    <h4 className="text-sm font-bold text-gray-800 mb-2 flex items-center gap-2"><Type size={16} className="text-[#E5322D]"/> Text Size</h4>
-                    <input type="range" min="10" max="72" value={textSize} onChange={(e) => setTextSize(Number(e.target.value))} className="w-full accent-[#E5322D]" />
-                    <div className="text-right text-xs font-bold text-gray-500 mt-1">{textSize}px</div>
+                    <h4 className="text-xs sm:text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><Highlighter size={14} className="text-[#E5322D]"/> Highlight Color</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {HIGHLIGHT_COLORS.map(c => (
+                        <button key={c.name} onClick={() => setHighlightColor(c.hex)} style={{backgroundColor: c.hex}} title={c.name} className={`w-6 h-6 sm:w-8 sm:h-8 rounded-sm transition-transform border border-gray-200 ${highlightColor === c.hex ? 'scale-110 ring-2 ring-offset-2 ring-gray-400 shadow-md' : 'hover:scale-105 shadow-sm'}`} />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Text Formatting */}
+                  <div className="mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase mb-3">Text Formatting</h4>
+                    
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-xs sm:text-sm font-bold text-gray-700">Bold Text</span>
+                      <button 
+                        onClick={() => setIsBold(!isBold)} 
+                        className={`p-2 rounded transition-colors ${isBold ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                      >
+                        <Bold size={16} />
+                      </button>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs sm:text-sm font-bold text-gray-700"><Type size={14} className="inline mr-1 text-[#E5322D]"/> Size</span>
+                        <span className="text-[10px] sm:text-xs font-bold text-gray-500">{textSize}px</span>
+                      </div>
+                      <input type="range" min="10" max="72" value={textSize} onChange={(e) => setTextSize(Number(e.target.value))} className="w-full accent-[#E5322D]" />
+                    </div>
                   </div>
 
                   {/* Sign & Stamp Integration */}
                   <div className="mb-6 border-t border-gray-200 pt-6">
-                    <h4 className="text-sm font-bold text-gray-800 mb-3">Signatures & Fields</h4>
-                    <button onClick={() => addElement('signature')} className="w-full bg-white border border-gray-300 text-gray-800 py-2 rounded-lg text-sm font-bold hover:bg-gray-50 mb-2 flex items-center justify-center gap-2 transition"><PenTool size={16}/> Add Signature</button>
-                    <button onClick={() => addElement('stamp')} className="w-full bg-white border border-gray-300 text-gray-800 py-2 rounded-lg text-sm font-bold hover:bg-gray-50 flex items-center justify-center gap-2 transition"><Stamp size={16}/> Add Stamp</button>
+                    <h4 className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase mb-3">Signatures & Fields</h4>
+                    <button onClick={() => addElement('signature')} className="w-full bg-white border border-gray-300 text-gray-800 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-gray-50 mb-2 flex items-center justify-center gap-2 transition"><PenTool size={14} sm={16}/> Add Signature</button>
+                    <button onClick={() => addElement('stamp')} className="w-full bg-white border border-gray-300 text-gray-800 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-gray-50 flex items-center justify-center gap-2 transition"><Stamp size={14} sm={16}/> Add Stamp</button>
                   </div>
                 </div>
               </div>
@@ -531,16 +600,16 @@ export default function EditPdf() {
             {/* Mobile Bottom Navigation */}
             <div className="lg:hidden flex border-t border-gray-200 bg-white h-14 shrink-0 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-30">
                <button onClick={() => setMobileView('pages')} className={`flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] ${mobileView === 'pages' ? 'text-[#E5322D] bg-red-50' : 'text-gray-500'}`}>
-                 <FileText size={18} /> Pages
+                 <FileText size={16} /> Pages
                </button>
                <button onClick={() => setMobileView('pdf')} className={`flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] ${mobileView === 'pdf' ? 'text-[#E5322D] bg-red-50' : 'text-gray-500'}`}>
-                 <Monitor size={18} /> Editor
+                 <Monitor size={16} /> Editor
                </button>
                <button onClick={() => setMobileView('tools')} className={`flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] ${mobileView === 'tools' ? 'text-[#E5322D] bg-red-50' : 'text-gray-500'}`}>
-                 <Settings size={18} /> Format
+                 <Settings size={16} /> Tools
                </button>
                <button onClick={saveAndDownload} className="flex-1 flex flex-col items-center justify-center gap-1 font-bold text-[10px] text-white bg-[#E5322D]">
-                 <Save size={18} /> Export
+                 <Save size={16} /> Export
                </button>
             </div>
           </div>
@@ -550,9 +619,9 @@ export default function EditPdf() {
         {step === 4 && (
           <div className="w-full max-w-4xl flex flex-col items-center justify-center animate-in fade-in text-center mt-10 p-4">
             <div className="bg-green-100 p-4 rounded-full mb-6"><Download size={40} className="text-green-600" /></div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-4 tracking-tight">Your PDF is Ready!</h1>
-            <p className="text-gray-600 mb-8 max-w-md">Your edits, annotations, and redactions have been permanently embedded into the document.</p>
-            <button onClick={() => setStep(1)} className="bg-gray-800 hover:bg-black text-white font-bold py-3 px-8 rounded-xl transition shadow-sm">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 tracking-tight">Your PDF is Ready!</h1>
+            <p className="text-sm sm:text-base text-gray-600 mb-8 max-w-md">Your edits, annotations, and redactions have been permanently embedded into the document.</p>
+            <button onClick={() => setStep(1)} className="bg-gray-800 hover:bg-black text-white font-bold py-3 px-8 rounded-xl transition shadow-sm text-sm sm:text-base">
               Edit Another File
             </button>
           </div>
@@ -565,22 +634,20 @@ export default function EditPdf() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
-              <h3 className="font-bold text-gray-800">Freehand Draw</h3>
+              <h3 className="font-bold text-gray-800 text-sm sm:text-base">Freehand Draw</h3>
               <button onClick={() => setShowDrawModal(false)} className="text-gray-400 hover:text-red-500"><X size={18}/></button>
             </div>
             <div className="p-4 flex flex-col items-center">
               <canvas 
                 ref={canvasRef}
                 onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                onTouchStart={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
-                onTouchMove={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }}
-                onTouchEnd={stopDrawing}
-                className="w-full h-48 bg-white border border-gray-300 rounded-lg cursor-crosshair shadow-inner touch-none"
+                onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
+                className="w-full h-40 sm:h-48 bg-white border border-gray-300 rounded-lg cursor-crosshair shadow-inner touch-none"
                 width={400} height={200}
               />
               <div className="flex justify-between w-full mt-3">
-                <button onClick={clearCanvas} className="text-sm font-bold text-gray-500 hover:text-[#E5322D]">Clear</button>
-                <button onClick={saveDraw} className="bg-[#E5322D] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-700">Add to PDF</button>
+                <button onClick={clearCanvas} className="text-xs sm:text-sm font-bold text-gray-500 hover:text-[#E5322D]">Clear</button>
+                <button onClick={saveDraw} className="bg-[#E5322D] text-white px-4 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-red-700">Add to PDF</button>
               </div>
             </div>
           </div>
@@ -589,70 +656,75 @@ export default function EditPdf() {
 
       {/* SIGNATURE MODAL */}
       {showSignatureModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-[800px] max-h-[95vh] flex flex-col rounded-xl shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center bg-gray-50 border-b border-gray-200 p-4 shrink-0">
-              <h3 className="text-xl font-bold text-gray-800 tracking-tight">Set your signature details</h3>
-              <button onClick={() => setShowSignatureModal(false)} className="text-gray-400 hover:text-[#E5322D] border border-gray-200 px-3 py-1 rounded-md text-sm font-bold bg-white shadow-sm">Cancel</button>
+            <div className="flex justify-between items-center bg-gray-50 border-b border-gray-200 p-3 sm:p-4 shrink-0">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-800 tracking-tight">Set your details</h3>
+              <button onClick={() => setShowSignatureModal(false)} className="text-gray-400 hover:text-[#E5322D] border border-gray-200 px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm font-bold bg-white shadow-sm">Cancel</button>
             </div>
-            <div className="p-4 overflow-y-auto flex-grow custom-scrollbar">
+            <div className="p-3 sm:p-4 overflow-y-auto flex-grow custom-scrollbar">
               <div className="flex flex-col md:flex-row gap-4 mb-4">
                 <div className="flex-grow">
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Full name:</label>
-                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-[#E5322D] outline-none font-medium text-gray-800 transition" />
+                  <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-2">Full name:</label>
+                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2 sm:p-3 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-[#E5322D] outline-none font-medium text-gray-800 transition text-sm sm:text-base" />
                 </div>
               </div>
               <div className="flex border-b border-gray-200 overflow-x-auto custom-scrollbar">
-                <button onClick={() => setHTab('Signature')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 whitespace-nowrap ${hTab === 'Signature' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}><PenTool size={16}/> Signature</button>
-                <button onClick={() => setHTab('Stamp')} className={`px-6 py-3 font-bold text-sm flex items-center gap-2 border-b-2 whitespace-nowrap ${hTab === 'Stamp' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}><Stamp size={16}/> Company Stamp</button>
+                <button onClick={() => setHTab('Signature')} className={`px-4 sm:px-6 py-2 sm:py-3 font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 whitespace-nowrap ${hTab === 'Signature' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}><PenTool size={14}/> Signature</button>
+                <button onClick={() => setHTab('Stamp')} className={`px-4 sm:px-6 py-2 sm:py-3 font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 whitespace-nowrap ${hTab === 'Stamp' ? 'text-[#E5322D] border-[#E5322D]' : 'text-gray-500 border-transparent hover:text-gray-800'}`}><Stamp size={14}/> Company Stamp</button>
               </div>
-              <div className="bg-gray-100 rounded-b-xl flex flex-col md:flex-row min-h-[300px] border border-gray-200 border-t-0 relative">
-                <div className="w-full md:w-16 bg-gray-200 border-r border-gray-300 flex flex-row md:flex-col rounded-bl-xl overflow-hidden shrink-0">
-                  <button onClick={() => setVTab('Type')} className={`py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Type' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Type size={20}/></button>
-                  <button onClick={() => setVTab('Draw')} className={`py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Draw' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><PenTool size={20}/></button>
-                  <button onClick={() => setVTab('Upload')} className={`py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Upload' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Upload size={20}/></button>
+              <div className="bg-gray-100 rounded-b-xl flex flex-col md:flex-row min-h-[250px] sm:min-h-[300px] border border-gray-200 border-t-0 relative">
+                <div className="w-full md:w-16 bg-gray-200 border-r border-gray-300 flex flex-row md:flex-col rounded-bl-none md:rounded-bl-xl overflow-hidden shrink-0">
+                  <button onClick={() => setVTab('Type')} className={`py-3 sm:py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Type' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Type size={18}/></button>
+                  <button onClick={() => setVTab('Draw')} className={`py-3 sm:py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Draw' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><PenTool size={18}/></button>
+                  <button onClick={() => setVTab('Upload')} className={`py-3 sm:py-4 flex-1 md:flex-none flex justify-center border-b-4 md:border-b-0 md:border-l-4 transition-colors ${vTab === 'Upload' ? 'bg-gray-100 border-[#E5322D] text-[#E5322D]' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><Upload size={18}/></button>
                 </div>
-                <div className="flex-grow p-4 relative flex flex-col overflow-hidden">
+                <div className="flex-grow p-2 sm:p-4 relative flex flex-col overflow-hidden">
                   {(hTab === 'Signature') && vTab === 'Type' && (
-                    <div className="flex flex-col gap-2 bg-gray-100 h-[240px] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="flex flex-col gap-2 bg-gray-100 h-[200px] sm:h-[240px] overflow-y-auto pr-2 custom-scrollbar">
                       {signatureFonts.map((font, index) => (
-                        <label key={index} className={`flex items-center gap-4 px-4 py-3 rounded-md cursor-pointer transition border-b border-gray-200 ${selectedStyle === index ? 'bg-white shadow-sm border-[#E5322D]' : 'hover:bg-gray-50 border-transparent'}`}>
-                          <input type="radio" checked={selectedStyle === index} onChange={() => setSelectedStyle(index)} className="w-5 h-5 accent-[#E5322D] shrink-0" />
-                          <span className="text-3xl truncate" style={{ fontFamily: font, color: '#000' }}>{fullName}</span>
+                        <label key={index} className={`flex items-center gap-2 sm:gap-4 px-2 sm:px-4 py-2 sm:py-3 rounded-md cursor-pointer transition border-b border-gray-200 ${selectedStyle === index ? 'bg-white shadow-sm border-[#E5322D]' : 'hover:bg-gray-50 border-transparent'}`}>
+                          <input type="radio" checked={selectedStyle === index} onChange={() => setSelectedStyle(index)} className="w-4 h-4 sm:w-5 sm:h-5 accent-[#E5322D] shrink-0" />
+                          <span className="text-xl sm:text-3xl truncate" style={{ fontFamily: font, color: '#000' }}>{fullName}</span>
                         </label>
                       ))}
                     </div>
                   )}
                   {(hTab === 'Signature') && vTab === 'Draw' && (
                     <div className="h-full flex flex-col items-center justify-center w-full gap-2">
-                      <canvas ref={canvasRef} onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} onTouchStart={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); startDrawing({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }} onTouchMove={(e) => { const touch = e.touches[0]; const rect = canvasRef.current.getBoundingClientRect(); draw({ nativeEvent: { offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top } }); }} onTouchEnd={stopDrawing} className="w-full h-[200px] bg-white border border-gray-300 rounded cursor-crosshair shadow-inner touch-none" width={500} height={200} />
-                      <div className="flex justify-between w-full text-xs text-gray-500 px-2 font-medium"><span>Draw inside the box</span><button onClick={clearCanvas} className="hover:text-[#E5322D] underline">Clear</button></div>
+                      <canvas 
+                        ref={canvasRef} 
+                        onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} 
+                        onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} 
+                        className="w-full h-[150px] sm:h-[200px] bg-white border border-gray-300 rounded cursor-crosshair shadow-inner touch-none" 
+                        width={500} height={200} 
+                      />
+                      <div className="flex justify-between w-full text-[10px] sm:text-xs text-gray-500 px-2 font-medium"><span>Draw inside the box</span><button onClick={clearCanvas} className="hover:text-[#E5322D] underline">Clear</button></div>
                     </div>
                   )}
                   {vTab === 'Upload' && (
-                    <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-300 bg-white rounded-lg m-2 p-4">
+                    <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-300 bg-white rounded-lg m-1 sm:m-2 p-2 sm:p-4">
                       <div className="text-center w-full flex flex-col items-center">
                         {hTab === 'Stamp' && uploadedStamp ? (
-                           <><img src={uploadedStamp} alt="Stamp" className="max-h-[140px] object-contain mb-4" /><button onClick={() => setUploadedStamp(null)} className="text-xs hover:text-[#E5322D]">Remove</button></>
+                           <><img src={uploadedStamp} alt="Stamp" className="max-h-[100px] sm:max-h-[140px] object-contain mb-2 sm:mb-4" /><button onClick={() => setUploadedStamp(null)} className="text-xs hover:text-[#E5322D]">Remove</button></>
                         ) : hTab === 'Signature' && uploadedSig ? (
-                           <><img src={uploadedSig} alt="Sig" className="max-h-[140px] object-contain mb-4" /><button onClick={() => setUploadedSig(null)} className="text-xs hover:text-[#E5322D]">Remove</button></>
+                           <><img src={uploadedSig} alt="Sig" className="max-h-[100px] sm:max-h-[140px] object-contain mb-2 sm:mb-4" /><button onClick={() => setUploadedSig(null)} className="text-xs hover:text-[#E5322D]">Remove</button></>
                         ) : (
-                           <><input type="file" id="modal-upload" accept="image/*" onChange={(e) => handleImageUpload(e, hTab === 'Stamp' ? 'stamp' : 'sig')} className="hidden" /><label htmlFor="modal-upload" className="border border-[#E5322D] text-[#E5322D] font-bold px-6 py-2 rounded-lg hover:bg-red-50 cursor-pointer">Upload Image</label></>
+                           <><input type="file" id="modal-upload" accept="image/*" onChange={(e) => handleImageUpload(e, hTab === 'Stamp' ? 'stamp' : 'sig')} className="hidden" /><label htmlFor="modal-upload" className="border border-[#E5322D] text-[#E5322D] font-bold px-4 sm:px-6 py-2 rounded-lg hover:bg-red-50 cursor-pointer text-xs sm:text-sm">Upload Image</label></>
                         )}
                       </div>
                     </div>
                   )}
                 </div>
               </div>
-              <div className="mt-6 flex justify-end">
-                <button onClick={applyModalSettings} className="bg-[#E5322D] text-white font-bold py-3 px-10 rounded-xl">Apply</button>
+              <div className="mt-4 sm:mt-6 flex justify-end">
+                <button onClick={applyModalSettings} className="bg-[#E5322D] text-white font-bold py-2 sm:py-3 px-6 sm:px-10 rounded-xl text-sm sm:text-base">Apply</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      <Footer />
     </div>
   );
 }
