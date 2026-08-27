@@ -385,10 +385,11 @@ export default function AiSummarizer() {
     URL.revokeObjectURL(url);
   };
 
-  // Export to PDF using pdf-lib
+ // Export to PDF using pdf-lib
   const exportToPdf = async () => {
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([600, 800]);
+    // 🔥 FIX: 'const' ki jagah 'let' lagaya hai yahan
+    let page = pdfDoc.addPage([600, 800]);
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const lines = summary.split('\n');
     let y = 750;
