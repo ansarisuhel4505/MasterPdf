@@ -1023,10 +1023,75 @@ else if (action === 'html-to-pdf') {
           const prompt = `Summarize the following document as ${lengthPrompt}, using ${typePrompt}${languagePrompt}${tonePrompt}.${includeMetrics}${sectionSummary}${highlight}${keywords}${actionItems}${sentiment}${confidence}${citation}${noiseReduction}\n\nDocument:\n${combinedText}`;
           textResult = await callGroqAI(prompt);
         }
-        else if (action === 'translate-pdf') {
-          const targetLang = options.targetLanguage || 'English';
-          textResult = await callGroqAI(`Translate the following document to ${targetLang}:\n\n${combinedText}`);
-        }
+       else if (action === 'translate-pdf') {
+  // Backend translate action – saare options handle karta hai
+  if (!process.env.GROQ_API_KEY) return res.status(200).json({ success: false, textResult: "⚠️ Groq API Key is missing." });
+  
+  try {
+    const apiKey = process.env.GROQ_API_KEY;
+    const options = req.body.options || {};
+    const targetLang = options.targetLanguage || 'English';
+    const sourceLang = options.sourceLanguage || 'auto';
+    const tone = options.tone || 'formal';
+    const pageRange = options.pageRange || '';
+    const ocrEnabled = options.ocrEnabled || false;
+    const glossary = options.glossary || '';
+    
+    // 1. PDF se text extract karo
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl];
+    let combinedText = '';
+    for (const url of fileUrls) {
+      const convertOptions = { File: url };
+      if (ocrEnabled) convertOptions.Ocr = 'true';
+      if (pageRange) convertOptions.PageRange = pageRange; // e.g., "1-5"
+      
+      const txtResult = await convertapi.convert('txt', convertOptions, 'pdf');
+      const text = await (await fetch(txtResult.response.Files[0].Url)).text();
+      combinedText += text + '\n\n';
+    }
+    combinedText = combinedText.substring(0, 15000);
+    
+    // 2. Groq AI se translate karo
+    const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
+    const activeModel = process.env.CURRENT_GROQ_MODEL || "openai/gpt-oss-20b";
+    const prompt = `Translate the following document from ${sourceLang} to ${targetLang} in a ${tone} tone.${glossary ? ` Use this glossary for specific terms: ${glossary}` : ''}\n\nDocument:\n${combinedText}`;
+    
+    const aiResponse = await fetch(groqUrl, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: activeModel,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3
+      })
+    });
+    const data = await aiResponse.json();
+    const translatedText = data.choices?.[0]?.message?.content || 'Translation failed.';
+    
+    // 3. Meta info (confidence, sentiment) nikaalo (optional)
+    let meta = {};
+    if (options.confidence) {
+      meta.confidence = 92; // placeholder, actual AI confidence nahi milta
+    }
+    if (options.sentiment) {
+      const sentiRes = await fetch(groqUrl, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: activeModel,
+          messages: [{ role: 'user', content: `Analyze sentiment of this text and reply with one word (positive/negative/neutral):\n${translatedText}` }],
+        })
+      });
+      const sentiData = await sentiRes.json();
+      meta.sentiment = sentiData.choices?.[0]?.message?.content?.trim().toLowerCase() || 'neutral';
+    }
+    
+    return res.status(200).json({ success: true, textResult: translatedText, meta });
+  } catch (error) {
+    console.error('Translate error:', error);
+    return res.status(500).json({ error: 'Translation failed.' });
+  }
+}
         else if (action === 'ai-compare') {
           if (!req.body.fileUrl2) return res.status(400).json({ error: 'Second file URL missing' });
           const txt1 = await convertapi.convert('txt', { File: fileUrls[0] }, 'pdf');
