@@ -1092,14 +1092,69 @@ else if (action === 'html-to-pdf') {
     return res.status(500).json({ error: 'Translation failed.' });
   }
 }
-        else if (action === 'ai-compare') {
-          if (!req.body.fileUrl2) return res.status(400).json({ error: 'Second file URL missing' });
-          const txt1 = await convertapi.convert('txt', { File: fileUrls[0] }, 'pdf');
-          const text1 = await (await fetch(txt1.response.Files[0].Url)).text();
-          const txt2 = await convertapi.convert('txt', { File: req.body.fileUrl2 }, 'pdf');
-          const text2 = await (await fetch(txt2.response.Files[0].Url)).text();
-          textResult = await callGroqAI(`Compare the following two documents:\n\nDOC1:\n${text1.substring(0, 7000)}\n\nDOC2:\n${text2.substring(0, 7000)}`);
-        }
+       else if (action === 'ai-compare') {
+  if (!process.env.GROQ_API_KEY) return res.status(200).json({ success: false, textResult: "⚠️ Groq API Key is missing." });
+  try {
+    const apiKey = process.env.GROQ_API_KEY;
+    const options = req.body.options || {};
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl]; // Multiple files (file1, file2)
+    const fileUrl2 = req.body.fileUrl2 || fileUrls[1];
+    
+    // 1. Extract text from both PDFs
+    let text1 = '', text2 = '';
+    try {
+      const res1 = await convertapi.convert('txt', { File: fileUrls[0] }, 'pdf');
+      text1 = await (await fetch(res1.response.Files[0].Url)).text();
+    } catch (e) { text1 = "Unable to extract text from file 1"; }
+    try {
+      const res2 = await convertapi.convert('txt', { File: fileUrl2 }, 'pdf');
+      text2 = await (await fetch(res2.response.Files[0].Url)).text();
+    } catch (e) { text2 = "Unable to extract text from file 2"; }
+    
+    text1 = text1.substring(0, 10000);
+    text2 = text2.substring(0, 10000);
+    
+    // 2. Prepare AI prompt based on options
+    let prompt = `Compare the following two documents and generate a detailed report. `;
+    if (options.comparisonType === 'semantic') prompt += "Focus on semantic differences (meaning, not just text). ";
+    else if (options.comparisonType === 'visual') prompt += "Focus on visual/layout differences. ";
+    else prompt += "Do a text-based comparison. ";
+    
+    if (options.pageRange) prompt += `Only analyze pages: ${options.pageRange}. `;
+    if (options.ignoreFormatting) prompt += "Ignore formatting differences. ";
+    if (options.ignoreAnnotations) prompt += "Ignore annotations. ";
+    if (options.ignoreImages) prompt += "Ignore images. ";
+    
+    prompt += `\n\nDocument 1 (Original):\n${text1}\n\nDocument 2 (Modified):\n${text2}`;
+    
+    // 3. Call Groq API
+    const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
+    const activeModel = process.env.CURRENT_GROQ_MODEL || "openai/gpt-oss-20b";
+    const aiResponse = await fetch(groqUrl, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: activeModel,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2
+      })
+    });
+    const data = await aiResponse.json();
+    const report = data.choices?.[0]?.message?.content || "AI could not generate comparison.";
+    
+    // 4. Return report + extracted texts (for side-by-side)
+    return res.status(200).json({ 
+      success: true, 
+      textResult: report, 
+      text1: text1, 
+      text2: text2,
+      meta: { totalChanges: 0 } // can calculate later
+    });
+  } catch (error) {
+    console.error("ai-compare error:", error);
+    return res.status(500).json({ error: "Comparison failed." });
+  }
+}
         else if (action === 'pdf-to-enterprise-md') {
           let systemPrompt = `You are an expert Enterprise Document Parser. Convert the following raw text extracted from a PDF into clean, beautifully structured Markdown (.md).\n\nGuidelines:\n1. Create proper Markdown headings (# H1, ## H2) based on context.\n2. Format lists correctly using bullets (-) or numbers.\n3. Identify code snippets and wrap them in triple backticks.\n`;
           if (options.tables) systemPrompt += `4. If you see data that looks like a table, reconstruct it perfectly using standard Markdown table syntax (| Header | Header |).\n`;
