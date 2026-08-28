@@ -580,10 +580,14 @@ export default function AiSummarizer() {
             </div>
           </div>
 
-          {/* Main Area */}
+         {/* Main Area */}
           <div className="flex-1">
             <div className={`rounded-2xl shadow-sm border p-6 min-h-[500px] flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-              {/* File Upload Area */}
+              
+              {/* 🔥 FIX: Input ko condition se bahar nikala aur ID add ki taaki label kaam kare */}
+              <input id="ai-file-upload" type="file" accept={ACCEPTED_FORMATS} onChange={handleFileChange} multiple className="hidden" ref={fileInputRef} />
+
+              {/* File upload */}
               {files.length === 0 ? (
                 <div
                   onDragEnter={handleDragEnter}
@@ -592,9 +596,8 @@ export default function AiSummarizer() {
                   onDrop={handleDrop}
                   className={`border-2 border-dashed rounded-xl p-10 text-center transition ${darkMode ? 'border-gray-600 hover:border-blue-400' : 'border-gray-300 hover:border-blue-500'}`}
                 >
-                 {/* 🔥 FIX: 'id' add kiya aur label mein sahi htmlFor daala */}
-                  <input id="translate-file-upload" type="file" accept={ACCEPTED_FORMATS} onChange={handleFileChange} multiple className="hidden" ref={fileInputRef} />
-                  <label htmlFor="translate-file-upload" className="cursor-pointer w-full h-full block">
+                  {/* 🔥 FIX: label ka htmlFor theek kiya */}
+                  <label htmlFor="ai-file-upload" className="cursor-pointer w-full h-full block">
                     <UploadCloud size={48} className="text-blue-500 mx-auto mb-3" />
                     <span className="text-lg font-semibold block">{t.upload}</span>
                     <span className="bg-[#E5322D] text-white px-8 py-3 rounded-xl font-bold shadow hover:bg-red-700 transition inline-block mt-4">
