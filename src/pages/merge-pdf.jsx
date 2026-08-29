@@ -11,7 +11,7 @@ import {
   UploadCloud, FileText, X, ArrowRight, Settings, 
   Image as ImageIcon, Layers, ArrowUp, ArrowDown, 
   Lock, Unlock, Download, FileOutput, RotateCw, Copy, Trash2,
-  Plus, ChevronDown, ChevronUp, Sun, Moon, History, Undo, Redo,
+  Plus, ChevronDown, ChevronUp, Sun, Moon, History, Undo, Redo, 
   Type, Palette, ZoomIn, ZoomOut, FileCode, FileSpreadsheet,
   Presentation, File as FileIcon, Sparkles, AlertTriangle
 } from 'lucide-react';
