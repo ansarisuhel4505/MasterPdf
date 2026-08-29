@@ -756,6 +756,23 @@ let fileUrls = req.body.fileUrls;
     return res.status(500).json({ error: "PDF to Image conversion failed." });
   }
 }
+    else if (action === 'any-to-pdf') {
+  try {
+    const { fileUrl, format } = req.body;
+    // Convert any document to PDF
+    let fromFormat = format;
+    if (['docx', 'doc'].includes(fromFormat)) fromFormat = 'docx';
+    else if (['xlsx', 'xls'].includes(fromFormat)) fromFormat = 'xlsx';
+    else if (['pptx', 'ppt'].includes(fromFormat)) fromFormat = 'pptx';
+    else return res.status(400).json({ error: 'Unsupported format' });
+
+    const result = await convertapi.convert('pdf', { File: fileUrl }, fromFormat);
+    return res.status(200).json({ success: true, downloadUrl: result.response.Files[0].Url });
+  } catch (err) {
+    console.error('any-to-pdf error:', err);
+    return res.status(500).json({ error: 'Conversion failed' });
+  }
+}
     
     else if (action === 'jpg-to-pdf') {
       const ext = fileUrl.split('.').pop().split('?')[0].toLowerCase();
