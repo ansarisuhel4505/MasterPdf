@@ -696,31 +696,38 @@ export default function MergePdf() {
     }
   };
 
-  // ========== UI Components ==========
+// ========== UI Components ==========
   // Sortable page item for DnD
   const SortablePage = ({ page }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
+    
     const style = {
-      transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+      transform: CSS.Transform.toString(transform), 
       transition,
-      opacity: isDragging ? 0.5 : 1
+      opacity: isDragging ? 0.5 : 1,
+      touchAction: 'none', 
+      zIndex: isDragging ? 50 : 1
     };
+
     return (
-      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 m-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
-       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
-          {/* 🔥 FIX: file={page.file} use karo, URL.createObjectURL nahi */}
-        {/* 🔥 FIX 2: Wapas thumbnailUrl kar diya hai */}
+      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
+        
+        <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
+          
+          {/* 🔥 EXACT FIX: page.file use kiya taaki security block (CORS) na lage aur hamesha load ho */}
           <Document 
-            file={page.thumbnailUrl} 
+            file={page.file} 
             loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
             error={<div className="flex items-center justify-center h-full text-xs text-red-500 font-bold">Failed</div>}
           >
             <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
           </Document>
+          
           {page.backgroundColor !== '#ffffff' && (
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, opacity: 0.3 }} />
           )}
         </div>
+        
         <div className="flex justify-between items-center mt-2">
           <button onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}>
             <RotateCw size={14} />
@@ -736,7 +743,7 @@ export default function MergePdf() {
             <Palette size={14} />
           </label>
         </div>
-        <span className="absolute top-1 left-1 text-[10px] bg-gray-100 px-1 rounded">{page.pageNumber}</span>
+        <span className="absolute top-1 left-1 text-[10px] bg-gray-100 px-1 rounded shadow">{page.pageNumber}</span>
       </div>
     );
   };
