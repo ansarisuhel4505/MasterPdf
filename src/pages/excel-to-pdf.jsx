@@ -30,8 +30,7 @@ const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), 
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
 // 🔥 STABLE WORKER CONFIGURATION
-// This ensures that the worker exactly matches the version of react-pdf installed.
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const translations = {
   en: {
@@ -104,6 +103,49 @@ const translations = {
   }
 };
 
+// 🔥 FIX: SortablePage ko main component ke BAHAR define kiya gaya hai
+// Taaki React isko baar baar destroy karke "Loading..." loop mein na fasaye.
+const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePage, setPageBg, t }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
+  
+  const style = {
+    transform: CSS.Transform.toString(transform), 
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none', 
+    zIndex: isDragging ? 50 : 1
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-indigo-400' : ''}`}>
+      <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
+        <Document 
+          file={page.file} 
+          loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
+          error={<div className="flex items-center justify-center h-full text-xs text-red-500 font-bold p-1 text-center">Failed</div>}
+        >
+          <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
+        </Document>
+        
+        {page.backgroundColor !== '#ffffff' && (
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, opacity: 0.3 }} />
+        )}
+      </div>
+      
+      <div className="flex justify-between items-center mt-2">
+        <button onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}><RotateCw size={14} /></button>
+        <button onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}><Copy size={14} /></button>
+        <button onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}><Trash2 size={14} /></button>
+        <label className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
+          <input type="color" value={page.backgroundColor} onChange={(e) => setPageBg(page.id, e.target.value)} className="sr-only" />
+          <Palette size={14} />
+        </label>
+      </div>
+      <span className="absolute top-1 left-1 text-[10px] bg-gray-100 px-1 rounded shadow">{page.pageNumber}</span>
+    </div>
+  );
+};
+
 export default function MergePdf() {
   const [items, setItems] = useState([]); 
   const [pages, setPages] = useState([]); 
@@ -163,19 +205,15 @@ export default function MergePdf() {
     const totalPages = pdf.getPageCount();
     const newPages = [];
     
-    // 🔥 PREVENT MEMORY LEAK: Create ObjectURL just once per file
-    const safeObjectUrl = URL.createObjectURL(file);
-
     for (let i = 0; i < totalPages; i++) {
       newPages.push({
         id: `page-${sourceId}-${i}`,
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        thumbnailUrl: safeObjectUrl, // We feed the Safe Object URL to react-pdf
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: file // Store raw file for backend processing
+        file: file // Direct Native File object passed
       });
     }
     return newPages;
@@ -222,7 +260,6 @@ export default function MergePdf() {
       page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
       const pdfBytes = await tempPdf.save();
       const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const safeObjectUrl = URL.createObjectURL(pdfBlob);
 
       const sourceId = `img-${Date.now()}`;
       setItems(prev => [...prev, {
@@ -239,7 +276,6 @@ export default function MergePdf() {
         sourceId,
         sourceFileName: file.name,
         pageNumber: 1,
-        thumbnailUrl: safeObjectUrl,
         rotation: 0,
         backgroundColor: '#ffffff',
         file: pdfBlob
@@ -255,7 +291,6 @@ export default function MergePdf() {
     tempPdf.addPage([595.28, 841.89]);
     const pdfBytes = await tempPdf.save();
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const safeObjectUrl = URL.createObjectURL(pdfBlob);
     const sourceId = `blank-${Date.now()}`;
 
     setItems(prev => [...prev, {
@@ -272,7 +307,6 @@ export default function MergePdf() {
       sourceId,
       sourceFileName: 'Blank A4 Page.pdf',
       pageNumber: 1,
-      thumbnailUrl: safeObjectUrl,
       rotation: 0,
       backgroundColor: '#ffffff',
       file: pdfBlob
@@ -300,8 +334,6 @@ export default function MergePdf() {
         const arrayBuffer = await pdfBlob.arrayBuffer();
         const pdf = await PDFDocument.load(arrayBuffer);
         const totalPages = pdf.getPageCount();
-        const safeObjectUrl = URL.createObjectURL(pdfBlob);
-        
         const newPages = [];
         for (let i = 0; i < totalPages; i++) {
           newPages.push({
@@ -309,7 +341,6 @@ export default function MergePdf() {
             sourceId,
             sourceFileName: file.name,
             pageNumber: i + 1,
-            thumbnailUrl: safeObjectUrl,
             rotation: 0,
             backgroundColor: '#ffffff',
             file: pdfBlob
@@ -603,52 +634,6 @@ export default function MergePdf() {
     }
   };
 
-  // ========== UI Components ==========
-  const SortablePage = ({ page }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
-    
-    // Grid Setup for Drag and Drop
-    const style = {
-      transform: CSS.Transform.toString(transform), 
-      transition,
-      opacity: isDragging ? 0.5 : 1,
-      touchAction: 'none', 
-      zIndex: isDragging ? 50 : 1
-    };
-
-    return (
-      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
-        
-        <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
-          
-          {/* 🔥 PDF RENDERER: Ensure 'page.thumbnailUrl' is valid and accessible */}
-          <Document 
-            file={page.thumbnailUrl} 
-            loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
-            error={<div className="flex items-center justify-center h-full text-xs text-red-500 font-bold p-1 text-center">Failed to Render</div>}
-          >
-            <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
-          </Document>
-          
-          {page.backgroundColor !== '#ffffff' && (
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, opacity: 0.3 }} />
-          )}
-        </div>
-        
-        <div className="flex justify-between items-center mt-2">
-          <button onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}><RotateCw size={14} /></button>
-          <button onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}><Copy size={14} /></button>
-          <button onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}><Trash2 size={14} /></button>
-          <label className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
-            <input type="color" value={page.backgroundColor} onChange={(e) => setPageBg(page.id, e.target.value)} className="sr-only" />
-            <Palette size={14} />
-          </label>
-        </div>
-        <span className="absolute top-1 left-1 text-[10px] bg-gray-100 px-1 rounded shadow">{page.pageNumber}</span>
-      </div>
-    );
-  };
-
   return (
     <div className={`min-h-screen flex flex-col font-sans ${darkMode ? 'dark' : ''} ${darkMode ? 'bg-gray-900 text-white' : 'bg-[#F5F5F7] text-gray-900'}`}>
       <Head>
@@ -845,7 +830,16 @@ export default function MergePdf() {
                      <SortableContext items={pages.map(p => p.id)} strategy={rectSortingStrategy}>
                         <div className="flex flex-wrap gap-2 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg max-h-96 overflow-y-auto">
                           {pages.map(page => (
-                            <SortablePage key={page.id} page={page} />
+                            <SortablePage 
+                              key={page.id} 
+                              page={page} 
+                              zoomLevel={zoomLevel} 
+                              rotatePageById={rotatePageById} 
+                              duplicatePage={duplicatePage} 
+                              removePage={removePage} 
+                              setPageBg={setPageBg} 
+                              t={t} 
+                            />
                           ))}
                         </div>
                       </SortableContext>
