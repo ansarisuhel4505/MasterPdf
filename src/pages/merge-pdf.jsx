@@ -199,24 +199,26 @@ export default function MergePdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ========== File Upload & Extraction ==========
   const extractPagesFromPDF = async (file, sourceId) => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await PDFDocument.load(arrayBuffer);
     const totalPages = pdf.getPageCount();
     const newPages = [];
+    
+    // 🔥 FIX 1: URL sirf ek baar banegi loop ke bahar!
+    const objectUrl = URL.createObjectURL(file);
+
     for (let i = 0; i < totalPages; i++) {
       const pageId = `page-${sourceId}-${i}`;
-      const objectUrl = URL.createObjectURL(file);
       newPages.push({
         id: pageId,
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        thumbnailUrl: objectUrl,
+        thumbnailUrl: objectUrl, // Ab react-pdf cache use karega
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: file // reference for merging
+        file: file 
       });
     }
     return newPages;
@@ -707,10 +709,11 @@ export default function MergePdf() {
       <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 m-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
        <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
           {/* 🔥 FIX: file={page.file} use karo, URL.createObjectURL nahi */}
+        {/* 🔥 FIX 2: Wapas thumbnailUrl kar diya hai */}
           <Document 
-            file={page.file} 
+            file={page.thumbnailUrl} 
             loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
-            error={<div className="flex items-center justify-center h-full text-xs text-red-400">Failed to render</div>}
+            error={<div className="flex items-center justify-center h-full text-xs text-red-500 font-bold">Failed</div>}
           >
             <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
           </Document>
