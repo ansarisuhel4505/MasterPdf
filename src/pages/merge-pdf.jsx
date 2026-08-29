@@ -20,21 +20,11 @@ import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors
 } from '@dnd-kit/core';
 import {
-  SortableContext as SortableContext2,
-  verticalListSortingStrategy as verticalListSortingStrategy2,
-  rectSortingStrategy // 🔥 ADD THIS
-} from '@dnd-kit/sortable';
-import {
-  SortableContext, verticalListSortingStrategy, useSortable, arrayMove
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove, rectSortingStrategy
 } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
-// Dynamic imports for react-pdf (SSR disable)
-const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
-const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-
-// i18n translations
 const translations = {
   en: {
     mergeTitle: "Merge PDF",
@@ -193,59 +183,7 @@ export default function MergePdf() {
     useSensor(KeyboardSensor)
   );
 
-// ========== UI Components ==========
-  // Sortable page item for DnD
-  const SortablePage = ({ page }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
-    
-    // 🔥 FIX 2: Grid ke liye CSS.Transform use kiya aur touchAction add kiya
-    const style = {
-      transform: CSS.Transform.toString(transform), 
-      transition,
-      opacity: isDragging ? 0.5 : 1,
-      touchAction: 'none', 
-      zIndex: isDragging ? 50 : 1 // Drag karte waqt page sabse upar dikhega
-    };
 
-    return (
-      // 🔥 FIX 3: className se 'm-2' hata diya taaki Left-Right collision theek se kaam kare
-      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
-        
-        <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
-          
-          {/* 🔥 FIX 4: file={page.file} ki jagah wapas page.thumbnailUrl lagaya, ye hamesha render hota hai */}
-          <Document 
-            file={page.thumbnailUrl} 
-            loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
-            error={<div className="flex items-center justify-center h-full text-xs text-red-500 font-bold">Failed</div>}
-          >
-            <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
-          </Document>
-          
-          {page.backgroundColor !== '#ffffff' && (
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, opacity: 0.3 }} />
-          )}
-        </div>
-        
-        <div className="flex justify-between items-center mt-2">
-          <button onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}>
-            <RotateCw size={14} />
-          </button>
-          <button onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}>
-            <Copy size={14} />
-          </button>
-          <button onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}>
-            <Trash2 size={14} />
-          </button>
-          <label className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
-            <input type="color" value={page.backgroundColor} onChange={(e) => setPageBg(page.id, e.target.value)} className="sr-only" />
-            <Palette size={14} />
-          </label>
-        </div>
-        <span className="absolute top-1 left-1 text-[10px] bg-gray-100 px-1 rounded shadow">{page.pageNumber}</span>
-      </div>
-    );
-  };
   // Load history
   useEffect(() => {
     const saved = localStorage.getItem('masterpdf_merge_history');
