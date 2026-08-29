@@ -19,6 +19,11 @@ import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors
 } from '@dnd-kit/core';
 import {
+  SortableContext as SortableContext2,
+  verticalListSortingStrategy as verticalListSortingStrategy2,
+  rectSortingStrategy // 🔥 ADD THIS
+} from '@dnd-kit/sortable';
+import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove
 } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
@@ -180,10 +185,10 @@ export default function MergePdf() {
     useSensor(KeyboardSensor)
   );
 
-  useEffect(() => {
-    pdfjs.GlobalWorkerOptions.workerSrc = '//unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js';
+useEffect(() => {
+    // 🔥 FIX: Ensure versions match exactly or use the new recommended import
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
   }, []);
-
   // Load history
   useEffect(() => {
     const saved = localStorage.getItem('masterpdf_merge_history');
@@ -705,9 +710,14 @@ export default function MergePdf() {
     };
     return (
       <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 m-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
-        <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
-          <Document file={page.thumbnailUrl}>
-            <Page pageNumber={1} width={zoomLevel} />
+       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
+          {/* 🔥 FIX: file={page.file} use karo, URL.createObjectURL nahi */}
+          <Document 
+            file={page.file} 
+            loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
+            error={<div className="flex items-center justify-center h-full text-xs text-red-400">Failed to render</div>}
+          >
+            <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
           </Document>
           {page.backgroundColor !== '#ffffff' && (
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, opacity: 0.3 }} />
@@ -925,8 +935,8 @@ export default function MergePdf() {
                     <h4 className="font-bold mb-2 flex items-center gap-2">
                       <Layers size={18} /> {t.pageThumbnails} <span className="text-xs font-normal">({t.dragPages})</span>
                     </h4>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
-                      <SortableContext items={pages.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                     <SortableContext items={pages.map(p => p.id)} strategy={rectSortingStrategy}>
                         <div className="flex flex-wrap gap-2 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg max-h-96 overflow-y-auto">
                           {pages.map(page => (
                             <SortablePage key={page.id} page={page} />
