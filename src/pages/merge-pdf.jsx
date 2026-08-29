@@ -16,12 +16,10 @@ import {
   Presentation, File as FileIcon, Sparkles, AlertTriangle
 } from 'lucide-react';
 import {
-  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
-  useSortable, arrayMove, SortableContext, verticalListSortingStrategy
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors
 } from '@dnd-kit/core';
 import {
-  SortableContext as SortableContext2,
-  verticalListSortingStrategy as verticalListSortingStrategy2
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove
 } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
@@ -467,31 +465,88 @@ export default function MergePdf() {
         });
       }
 
-      // Merge pages
-      for (const page of pages) {
+    // 🔥 FEATURE 1: Page Range Filter Logic
+      let allowedIndices = [];
+      if (pageRange.trim()) {
+        const parts = pageRange.split(',');
+        parts.forEach(part => {
+          if (part.includes('-')) {
+            const [start, end] = part.split('-').map(Number);
+            for (let i = start; i <= end; i++) allowedIndices.push(i);
+          } else {
+            allowedIndices.push(Number(part.trim()));
+          }
+        });
+      }
+
+      // Filter pages (Agar range blank hai, toh sabhi pages aayenge)
+      const pagesToMerge = allowedIndices.length > 0 
+        ? pages.filter((_, idx) => allowedIndices.includes(idx + 1)) 
+        : pages;
+
+      if (pagesToMerge.length === 0) {
+        setIsProcessing(false);
+        return showToast('No pages match your selected range!', 'error');
+      }
+
+      // 🔥 FEATURE 2: Page Size Dimensions (in points)
+      const sizeMap = {
+        A4: [595.28, 841.89],
+        A3: [841.89, 1190.55],
+        Letter: [612, 792],
+        Legal: [612, 1008],
+        Tabloid: [792, 1224]
+      };
+      const targetSize = sizeMap[pageSizeOption] || sizeMap.A4;
+
+      // Merge pages with Smart Sizing
+      for (const page of pagesToMerge) {
         const arrayBuffer = await page.file.arrayBuffer();
         const pdf = await PDFDocument.load(arrayBuffer);
         const pageIndex = page.pageNumber - 1;
-        const [copiedPage] = await mergedPdf.copyPages(pdf, [pageIndex]);
+
+        // Purana page embedded image ki tarah nikalna taaki size change kar sakein
+        const [embeddedPage] = await mergedPdf.embedPdf(pdf, [pageIndex]);
         
-        // Apply rotation
-        if (page.rotation) {
-          copiedPage.setRotation(degrees(page.rotation));
-        }
-        // Apply background color
+        // Naya blank page banana user ke selected size ka (A4, A3 etc.)
+        const newPage = mergedPdf.addPage(targetSize);
+
+        // Background Color lagana (Solid)
         if (page.backgroundColor && page.backgroundColor !== '#ffffff') {
-          const { width, height } = copiedPage.getSize();
-          copiedPage.drawRectangle({
-            x: 0, y: 0, width, height,
+          newPage.drawRectangle({
+            x: 0, y: 0, width: targetSize[0], height: targetSize[1],
             color: rgb(
               parseInt(page.backgroundColor.slice(1,3), 16) / 255,
               parseInt(page.backgroundColor.slice(3,5), 16) / 255,
               parseInt(page.backgroundColor.slice(5,7), 16) / 255
             ),
-            opacity: 0.5
+            opacity: 1
           });
         }
-        mergedPdf.addPage(copiedPage);
+
+        // Calculate scaling taaki purana page naye size mein theek se fit ho jaye
+        const embDims = embeddedPage.scale(1);
+        const scaleX = targetSize[0] / embDims.width;
+        const scaleY = targetSize[1] / embDims.height;
+        const scale = Math.min(scaleX, scaleY); 
+
+        const scaledWidth = embDims.width * scale;
+        const scaledHeight = embDims.height * scale;
+        const xCenter = (targetSize[0] - scaledWidth) / 2;
+        const yCenter = (targetSize[1] - scaledHeight) / 2;
+
+        // Naye page ko ghumana agar user ne rotate kiya ho
+        if (page.rotation) {
+          newPage.setRotation(degrees(page.rotation));
+        }
+
+        // Purane page ko naye page par chipkana
+        newPage.drawPage(embeddedPage, {
+          x: xCenter, 
+          y: yCenter, 
+          width: scaledWidth, 
+          height: scaledHeight
+        });
       }
 
       // Add header/footer to all pages
