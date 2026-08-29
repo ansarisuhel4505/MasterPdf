@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { CSS } from '@dnd-kit/utilities'; // 🔥 ADD THIS LINE
+import { CSS } from '@dnd-kit/utilities'; 
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import Navbar from '../components/Navbar';
@@ -23,7 +23,6 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove, rectSortingStrategy
 } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-
 
 const translations = {
   en: {
@@ -131,26 +130,24 @@ const translations = {
     emailResult: "ईमेल परिणाम"
   }
 };
+
 // Dynamic imports for react-pdf
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-// 🔥 FIX 1: Worker ko component se bahar rakho taaki wo turant load ho jaye
+// Worker ko Component ke bahar define kiya gaya hai
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function MergePdf() {
-  const [items, setItems] = useState([]); // Original files list
-  const [pages, setPages] = useState([]); // All pages extracted (for thumbnails & reorder)
+  const [items, setItems] = useState([]); 
+  const [pages, setPages] = useState([]); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showPageSettings, setShowPageSettings] = useState(false);
   const [outputFormat, setOutputFormat] = useState('pdf');
   const [compressAfter, setCompressAfter] = useState(false);
   const [author, setAuthor] = useState('');
   const [title, setTitle] = useState('');
   const [pageRange, setPageRange] = useState('');
-  const [rotatePage, setRotatePage] = useState({}); // pageId -> rotation degree
-  const [pageBackground, setPageBackground] = useState({}); // pageId -> color
   const [watermark, setWatermark] = useState('');
   const [watermarkColor, setWatermarkColor] = useState('#ff0000');
   const [watermarkSize, setWatermarkSize] = useState(24);
@@ -164,7 +161,6 @@ export default function MergePdf() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [tocEnabled, setTocEnabled] = useState(false);
   const [pdfaCompliance, setPdfaCompliance] = useState(false);
-  const [dragMode, setDragMode] = useState('page'); // 'page' or 'file'
   const [zoomLevel, setZoomLevel] = useState(150);
   const [darkMode, setDarkMode] = useState(false);
   const [lang, setLang] = useState('en');
@@ -176,15 +172,12 @@ export default function MergePdf() {
 
   const t = translations[lang];
   const fileInputRef = useRef(null);
-  const imageInputRef = useRef(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor)
   );
 
-
-  // Load history
   useEffect(() => {
     const saved = localStorage.getItem('masterpdf_merge_history');
     if (saved) setHistory(JSON.parse(saved));
@@ -199,23 +192,21 @@ export default function MergePdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // ========== File Upload & Extraction (THE MAGIC BINARY FIX) ==========
   const extractPagesFromPDF = async (file, sourceId) => {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await PDFDocument.load(arrayBuffer);
+    const fileData = new Uint8Array(arrayBuffer); // 🔥 Browser Bypass: RAM/Memory Data
+    const pdf = await PDFDocument.load(fileData);
     const totalPages = pdf.getPageCount();
     const newPages = [];
     
-    // 🔥 FIX 1: URL sirf ek baar banegi loop ke bahar!
-    const objectUrl = URL.createObjectURL(file);
-
     for (let i = 0; i < totalPages; i++) {
-      const pageId = `page-${sourceId}-${i}`;
       newPages.push({
-        id: pageId,
+        id: `page-${sourceId}-${i}`,
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        thumbnailUrl: objectUrl, // Ab react-pdf cache use karega
+        fileData: fileData, // 🔥 Direct Memory Feed. No CORS, No Blobs.
         rotation: 0,
         backgroundColor: '#ffffff',
         file: file 
@@ -233,18 +224,17 @@ export default function MergePdf() {
     const newPages = [];
     for (const file of validPdfs) {
       const sourceId = `src-${Date.now()}-${Math.random()}`;
-      const totalPages = await extractPagesFromPDF(file, sourceId);
+      const extractedPages = await extractPagesFromPDF(file, sourceId);
       newItems.push({
         id: sourceId,
         name: file.name,
         type: 'pdf',
         file: file,
-        previewUrl: URL.createObjectURL(file),
-        pages: totalPages.length,
+        pages: extractedPages.length,
         size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
         modified: new Date(file.lastModified).toLocaleDateString()
       });
-      newPages.push(...totalPages);
+      newPages.push(...extractedPages);
     }
     setItems(prev => [...prev, ...newItems]);
     setPages(prev => [...prev, ...newPages]);
@@ -264,27 +254,25 @@ export default function MergePdf() {
       else image = await tempPdf.embedJpg(arrayBuffer);
       const page = tempPdf.addPage([image.width, image.height]);
       page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
-      const pdfBytes = await tempPdf.save();
+      const pdfBytes = await tempPdf.save(); // Uint8Array
       const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
 
       const sourceId = `img-${Date.now()}`;
-      const pageId = `page-${sourceId}-0`;
       setItems(prev => [...prev, {
         id: sourceId,
         name: file.name.replace(/\.[^/.]+$/, "") + ".pdf",
         type: 'image',
         file: pdfBlob,
-        previewUrl: URL.createObjectURL(pdfBlob),
         pages: 1,
         size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB',
         modified: new Date().toLocaleDateString()
       }]);
       setPages(prev => [...prev, {
-        id: pageId,
+        id: `page-${sourceId}-0`,
         sourceId,
         sourceFileName: file.name,
         pageNumber: 1,
-        thumbnailUrl: URL.createObjectURL(pdfBlob),
+        fileData: pdfBytes, // 🔥 Direct Memory Feed
         rotation: 0,
         backgroundColor: '#ffffff',
         file: pdfBlob
@@ -298,34 +286,31 @@ export default function MergePdf() {
   const handleInsertBlank = async () => {
     const tempPdf = await PDFDocument.create();
     tempPdf.addPage([595.28, 841.89]);
-    const pdfBytes = await tempPdf.save();
+    const pdfBytes = await tempPdf.save(); // Uint8Array
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
     const sourceId = `blank-${Date.now()}`;
-    const pageId = `page-${sourceId}-0`;
 
     setItems(prev => [...prev, {
       id: sourceId,
       name: 'Blank A4 Page.pdf',
       type: 'blank',
       file: pdfBlob,
-      previewUrl: URL.createObjectURL(pdfBlob),
       pages: 1,
       size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB',
       modified: new Date().toLocaleDateString()
     }]);
     setPages(prev => [...prev, {
-      id: pageId,
+      id: `page-${sourceId}-0`,
       sourceId,
       sourceFileName: 'Blank A4 Page.pdf',
       pageNumber: 1,
-      thumbnailUrl: URL.createObjectURL(pdfBlob),
+      fileData: pdfBytes, // 🔥 Direct Memory Feed
       rotation: 0,
       backgroundColor: '#ffffff',
       file: pdfBlob
     }]);
   };
 
-  // Multi-format import (Word/Excel/PPT) - uses backend convertapi to PDF
   const handleMultiFormatUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -343,26 +328,25 @@ export default function MergePdf() {
       const data = await response.json();
       if (response.ok && data.downloadUrl) {
         const pdfBlob = await (await fetch(data.downloadUrl)).blob();
-        // Reuse image upload logic (treat as PDF)
         const sourceId = `mf-${Date.now()}`;
         const arrayBuffer = await pdfBlob.arrayBuffer();
-        const pdf = await PDFDocument.load(arrayBuffer);
+        const fileData = new Uint8Array(arrayBuffer); // 🔥 Binary
+        const pdf = await PDFDocument.load(fileData);
         const totalPages = pdf.getPageCount();
         const newPages = [];
         for (let i = 0; i < totalPages; i++) {
-          const pageId = `page-${sourceId}-${i}`;
           newPages.push({
-            id: pageId,
+            id: `page-${sourceId}-${i}`,
             sourceId,
             sourceFileName: file.name,
             pageNumber: i + 1,
-            thumbnailUrl: URL.createObjectURL(pdfBlob),
+            fileData: fileData, // 🔥 Direct Memory Feed
             rotation: 0,
             backgroundColor: '#ffffff',
             file: pdfBlob
           });
         }
-        setItems(prev => [...prev, { id: sourceId, name: file.name + '.pdf', type: 'multi', file: pdfBlob, previewUrl: URL.createObjectURL(pdfBlob), pages: totalPages, size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB', modified: new Date().toLocaleDateString() }]);
+        setItems(prev => [...prev, { id: sourceId, name: file.name + '.pdf', type: 'multi', file: pdfBlob, pages: totalPages, size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB', modified: new Date().toLocaleDateString() }]);
         setPages(prev => [...prev, ...newPages]);
       } else {
         showToast(data.error || 'Conversion failed', 'error');
@@ -376,10 +360,8 @@ export default function MergePdf() {
   // ========== Page Operations ==========
   const removeItem = (index) => {
     const itemToRemove = items[index];
-    const removedPages = pages.filter(p => p.sourceId === itemToRemove.id);
     setItems(items.filter((_, i) => i !== index));
     setPages(pages.filter(p => p.sourceId !== itemToRemove.id));
-    removedPages.forEach(p => URL.revokeObjectURL(p.thumbnailUrl));
   };
 
   const removePage = (pageId) => {
@@ -456,7 +438,6 @@ export default function MergePdf() {
       saveState();
       const mergedPdf = await PDFDocument.create();
 
-      // Add Table of Contents if enabled
       if (tocEnabled) {
         const tocPage = mergedPdf.addPage([595.28, 841.89]);
         tocPage.drawText('Table of Contents', { x: 50, y: 750, size: 24, color: rgb(0, 0, 0) });
@@ -467,7 +448,6 @@ export default function MergePdf() {
         });
       }
 
-    // 🔥 FEATURE 1: Page Range Filter Logic
       let allowedIndices = [];
       if (pageRange.trim()) {
         const parts = pageRange.split(',');
@@ -481,7 +461,6 @@ export default function MergePdf() {
         });
       }
 
-      // Filter pages (Agar range blank hai, toh sabhi pages aayenge)
       const pagesToMerge = allowedIndices.length > 0 
         ? pages.filter((_, idx) => allowedIndices.includes(idx + 1)) 
         : pages;
@@ -491,7 +470,6 @@ export default function MergePdf() {
         return showToast('No pages match your selected range!', 'error');
       }
 
-      // 🔥 FEATURE 2: Page Size Dimensions (in points)
       const sizeMap = {
         A4: [595.28, 841.89],
         A3: [841.89, 1190.55],
@@ -501,19 +479,14 @@ export default function MergePdf() {
       };
       const targetSize = sizeMap[pageSizeOption] || sizeMap.A4;
 
-      // Merge pages with Smart Sizing
       for (const page of pagesToMerge) {
         const arrayBuffer = await page.file.arrayBuffer();
         const pdf = await PDFDocument.load(arrayBuffer);
         const pageIndex = page.pageNumber - 1;
 
-        // Purana page embedded image ki tarah nikalna taaki size change kar sakein
         const [embeddedPage] = await mergedPdf.embedPdf(pdf, [pageIndex]);
-        
-        // Naya blank page banana user ke selected size ka (A4, A3 etc.)
         const newPage = mergedPdf.addPage(targetSize);
 
-        // Background Color lagana (Solid)
         if (page.backgroundColor && page.backgroundColor !== '#ffffff') {
           newPage.drawRectangle({
             x: 0, y: 0, width: targetSize[0], height: targetSize[1],
@@ -526,7 +499,6 @@ export default function MergePdf() {
           });
         }
 
-        // Calculate scaling taaki purana page naye size mein theek se fit ho jaye
         const embDims = embeddedPage.scale(1);
         const scaleX = targetSize[0] / embDims.width;
         const scaleY = targetSize[1] / embDims.height;
@@ -537,41 +509,27 @@ export default function MergePdf() {
         const xCenter = (targetSize[0] - scaledWidth) / 2;
         const yCenter = (targetSize[1] - scaledHeight) / 2;
 
-        // Naye page ko ghumana agar user ne rotate kiya ho
         if (page.rotation) {
           newPage.setRotation(degrees(page.rotation));
         }
 
-        // Purane page ko naye page par chipkana
-        newPage.drawPage(embeddedPage, {
-          x: xCenter, 
-          y: yCenter, 
-          width: scaledWidth, 
-          height: scaledHeight
-        });
+        newPage.drawPage(embeddedPage, { x: xCenter, y: yCenter, width: scaledWidth, height: scaledHeight });
       }
 
-      // Add header/footer to all pages
       if (headerText || footerText) {
         const pages = mergedPdf.getPages();
         pages.forEach((p) => {
           const { width, height } = p.getSize();
-          if (headerText) {
-            p.drawText(headerText, { x: 50, y: height - 30, size: 12, color: rgb(0.5, 0.5, 0.5) });
-          }
-          if (footerText) {
-            p.drawText(footerText, { x: 50, y: 30, size: 12, color: rgb(0.5, 0.5, 0.5) });
-          }
+          if (headerText) p.drawText(headerText, { x: 50, y: height - 30, size: 12, color: rgb(0.5, 0.5, 0.5) });
+          if (footerText) p.drawText(footerText, { x: 50, y: 30, size: 12, color: rgb(0.5, 0.5, 0.5) });
         });
       }
 
-      // Set metadata
       if (title) mergedPdf.setTitle(title);
       if (author) mergedPdf.setAuthor(author);
 
       let finalBytes = await mergedPdf.save();
 
-      // Watermark - add via pdf-lib
       if (watermark) {
         const wmDoc = await PDFDocument.load(finalBytes);
         const wmPages = wmDoc.getPages();
@@ -593,14 +551,12 @@ export default function MergePdf() {
         finalBytes = await wmDoc.save();
       }
 
-      // Password protection (if requested)
       if (password) {
         const passDoc = await PDFDocument.load(finalBytes);
         passDoc.encrypt({ userPassword: password, ownerPassword: password, permissions: { printing: 'highResolution', copying: true, modifying: false } });
         finalBytes = await passDoc.save();
       }
 
-      // PDF/A compliance (backend call)
       if (pdfaCompliance) {
         const blobToUpload = new Blob([finalBytes], { type: 'application/pdf' });
         const blob = await upload('temp.pdf', blobToUpload, { access: 'public', handleUploadUrl: '/api/upload' });
@@ -609,12 +565,9 @@ export default function MergePdf() {
         if (response.ok && data.downloadUrl) {
           const pdfBlob = await (await fetch(data.downloadUrl)).blob();
           finalBytes = await pdfBlob.arrayBuffer();
-        } else {
-          showToast('PDF/A conversion failed', 'error');
-        }
+        } else showToast('PDF/A conversion failed', 'error');
       }
 
-      // Compress after merge
       if (compressAfter) {
         const blobToUpload = new Blob([finalBytes], { type: 'application/pdf' });
         const blob = await upload('merged_temp.pdf', blobToUpload, { access: 'public', handleUploadUrl: '/api/upload' });
@@ -623,12 +576,9 @@ export default function MergePdf() {
         if (response.ok && data.downloadUrl) {
           const pdfBlob = await (await fetch(data.downloadUrl)).blob();
           finalBytes = await pdfBlob.arrayBuffer();
-        } else {
-          showToast('Compression failed', 'error');
-        }
+        } else showToast('Compression failed', 'error');
       }
 
-      // Output as ZIP
       if (outputFormat === 'zip') {
         const zip = new JSZip();
         zip.file('Merged_Document.pdf', finalBytes);
@@ -642,13 +592,11 @@ export default function MergePdf() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         setIsProcessing(false);
-        // Update history
         const entry = { time: new Date().toLocaleString(), files: items.map(i => i.name), type: outputFormat };
         setHistory(prev => [entry, ...prev].slice(0, 10));
         return;
       }
 
-      // Save merged file
       const blob = new Blob([finalBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -659,25 +607,21 @@ export default function MergePdf() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      // Update history
       const entry = { time: new Date().toLocaleString(), files: items.map(i => i.name), type: 'PDF' };
       setHistory(prev => [entry, ...prev].slice(0, 10));
 
     } catch (error) {
       console.error("Error merging PDFs:", error);
-      showToast('Failed to merge PDFs. The file might be corrupted.', 'error');
+      showToast('Failed to merge PDFs.', 'error');
     }
     setIsProcessing(false);
   };
 
-  // AI Smart Optimization
   const runAIOptimization = async () => {
     if (!aiEnabled) return;
     setAiSummary('Analyzing...');
     setAiFilename('Generating...');
     try {
-      // Upload merged file to backend and get AI summary
-      // (simplified - assumes mergedPdf is available)
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -686,7 +630,6 @@ export default function MergePdf() {
       const data = await response.json();
       if (data.textResult) {
         setAiSummary(data.textResult);
-        // Generate filename from first few words
         const firstWords = data.textResult.split(' ').slice(0, 3).join('_');
         setAiFilename(`Merged_${firstWords || 'Document'}.pdf`);
       }
@@ -696,8 +639,7 @@ export default function MergePdf() {
     }
   };
 
-// ========== UI Components ==========
-  // Sortable page item for DnD
+  // ========== UI Components ==========
   const SortablePage = ({ page }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
     
@@ -714,11 +656,11 @@ export default function MergePdf() {
         
         <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
           
-          {/* 🔥 EXACT FIX: page.file use kiya taaki security block (CORS) na lage aur hamesha load ho */}
+          {/* 🔥 THE ULTIMATE FIX: Direct Memory Array (Uint8Array) passed */}
           <Document 
-            file={page.file} 
+            file={page.fileData} 
             loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
-            error={<div className="flex items-center justify-center h-full text-xs text-red-500 font-bold">Failed</div>}
+            error={(err) => <div className="flex items-center justify-center h-full text-[10px] leading-tight text-red-500 font-bold p-2 text-center">{err ? err.message : 'Error'}</div>}
           >
             <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
           </Document>
