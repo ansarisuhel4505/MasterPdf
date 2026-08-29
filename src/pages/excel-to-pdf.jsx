@@ -6,6 +6,10 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument, degrees, rgb } from 'pdf-lib';
 import { pdfjs } from 'react-pdf';
+// Import minimal CSS for react-pdf to prevent default styling issues
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
+
 import { upload } from '@vercel/blob/client';
 import JSZip from 'jszip';
 import { 
@@ -21,14 +25,13 @@ import {
   SortableContext, useSortable, arrayMove, rectSortingStrategy
 } from '@dnd-kit/sortable';
 
-// Dynamic imports for react-pdf to prevent SSR issues
+// Dynamic imports for react-pdf to prevent SSR hydration errors
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-// 🔥 ULTIMATE WORKER FIX: Use local path or strict unpkg format. 
-// Note: If you have pdf.worker.min.js in your public folder, set it to '/pdf.worker.min.js'
-// Using the most stable CDN link format for pdfjs
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// 🔥 STABLE WORKER CONFIGURATION
+// This ensures that the worker exactly matches the version of react-pdf installed.
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const translations = {
   en: {
@@ -160,8 +163,8 @@ export default function MergePdf() {
     const totalPages = pdf.getPageCount();
     const newPages = [];
     
-    // Create URL only ONCE per file to prevent memory leaks and browser crash
-    const objectUrl = URL.createObjectURL(file);
+    // 🔥 PREVENT MEMORY LEAK: Create ObjectURL just once per file
+    const safeObjectUrl = URL.createObjectURL(file);
 
     for (let i = 0; i < totalPages; i++) {
       newPages.push({
@@ -169,10 +172,10 @@ export default function MergePdf() {
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        thumbnailUrl: objectUrl, // Safe to use now
+        thumbnailUrl: safeObjectUrl, // We feed the Safe Object URL to react-pdf
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: file
+        file: file // Store raw file for backend processing
       });
     }
     return newPages;
@@ -219,7 +222,7 @@ export default function MergePdf() {
       page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
       const pdfBytes = await tempPdf.save();
       const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const objectUrl = URL.createObjectURL(pdfBlob);
+      const safeObjectUrl = URL.createObjectURL(pdfBlob);
 
       const sourceId = `img-${Date.now()}`;
       setItems(prev => [...prev, {
@@ -236,7 +239,7 @@ export default function MergePdf() {
         sourceId,
         sourceFileName: file.name,
         pageNumber: 1,
-        thumbnailUrl: objectUrl,
+        thumbnailUrl: safeObjectUrl,
         rotation: 0,
         backgroundColor: '#ffffff',
         file: pdfBlob
@@ -252,7 +255,7 @@ export default function MergePdf() {
     tempPdf.addPage([595.28, 841.89]);
     const pdfBytes = await tempPdf.save();
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const objectUrl = URL.createObjectURL(pdfBlob);
+    const safeObjectUrl = URL.createObjectURL(pdfBlob);
     const sourceId = `blank-${Date.now()}`;
 
     setItems(prev => [...prev, {
@@ -269,7 +272,7 @@ export default function MergePdf() {
       sourceId,
       sourceFileName: 'Blank A4 Page.pdf',
       pageNumber: 1,
-      thumbnailUrl: objectUrl,
+      thumbnailUrl: safeObjectUrl,
       rotation: 0,
       backgroundColor: '#ffffff',
       file: pdfBlob
@@ -297,15 +300,16 @@ export default function MergePdf() {
         const arrayBuffer = await pdfBlob.arrayBuffer();
         const pdf = await PDFDocument.load(arrayBuffer);
         const totalPages = pdf.getPageCount();
+        const safeObjectUrl = URL.createObjectURL(pdfBlob);
+        
         const newPages = [];
-        const objectUrl = URL.createObjectURL(pdfBlob);
         for (let i = 0; i < totalPages; i++) {
           newPages.push({
             id: `page-${sourceId}-${i}`,
             sourceId,
             sourceFileName: file.name,
             pageNumber: i + 1,
-            thumbnailUrl: objectUrl,
+            thumbnailUrl: safeObjectUrl,
             rotation: 0,
             backgroundColor: '#ffffff',
             file: pdfBlob
@@ -603,6 +607,7 @@ export default function MergePdf() {
   const SortablePage = ({ page }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
     
+    // Grid Setup for Drag and Drop
     const style = {
       transform: CSS.Transform.toString(transform), 
       transition,
@@ -616,11 +621,11 @@ export default function MergePdf() {
         
         <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
           
-          {/* Using objectUrl (page.thumbnailUrl) for proper rendering */}
+          {/* 🔥 PDF RENDERER: Ensure 'page.thumbnailUrl' is valid and accessible */}
           <Document 
             file={page.thumbnailUrl} 
             loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
-            error={(error) => <div className="flex items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center">Failed<br/>{error?.message?.substring(0,20)}</div>}
+            error={<div className="flex items-center justify-center h-full text-xs text-red-500 font-bold p-1 text-center">Failed to Render</div>}
           >
             <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
           </Document>
