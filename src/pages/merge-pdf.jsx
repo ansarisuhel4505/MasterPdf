@@ -29,8 +29,9 @@ import {
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-// 🔥 WORKER CONFIGURATION
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// 🔥 THE FIX: Added explicit 'https://' 
+// Bina iske localhost HTTP samajh kar worker ko fail kar raha tha.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const translations = {
   en: {
@@ -103,8 +104,7 @@ const translations = {
   }
 };
 
-// 🔥 FIX 1: SortablePage ko MergePdf ke BAHAR rakha hai. 
-// Isse Infinite Loading wala Loop hamesha ke liye khatam ho jayega.
+// SortablePage component separated safely to prevent render loops
 const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePage, setPageBg, t }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
   
@@ -120,12 +120,15 @@ const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePa
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
       
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
-        
-        {/* 🔥 FIX 2: Wapas page.file pass kiya. URL nahi diya, isliye CORS/Failed error ab nahi aayega! */}
         <Document 
           file={page.file} 
           loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
-          error={(error) => <div className="flex items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center">Failed<br/>{error?.message?.substring(0,20)}</div>}
+          error={(error) => (
+            <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center">
+              <span>Failed</span>
+              <span className="font-normal text-gray-400 mt-1">{error?.message?.substring(0,25)}</span>
+            </div>
+          )}
         >
           <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
         </Document>
@@ -135,12 +138,11 @@ const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePa
         )}
       </div>
       
-      {/* onPointerDown lagaya hai taki button click karte waqt page drag na ho */}
       <div className="flex justify-between items-center mt-2 border-t pt-2">
-        <button onPointerDown={(e)=>e.stopPropagation()} onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}><RotateCw size={14} /></button>
-        <button onPointerDown={(e)=>e.stopPropagation()} onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}><Copy size={14} /></button>
-        <button onPointerDown={(e)=>e.stopPropagation()} onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}><Trash2 size={14} /></button>
-        <label onPointerDown={(e)=>e.stopPropagation()} className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
+        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}><RotateCw size={14} /></button>
+        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}><Copy size={14} /></button>
+        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}><Trash2 size={14} /></button>
+        <label onPointerDown={(e) => e.stopPropagation()} className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
           <input type="color" value={page.backgroundColor} onChange={(e) => setPageBg(page.id, e.target.value)} className="sr-only" />
           <Palette size={14} />
         </label>
@@ -217,7 +219,7 @@ export default function MergePdf() {
         pageNumber: i + 1,
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: file // Direct Native File object passed
+        file: file // Original File object perfectly readable by react-pdf
       });
     }
     return newPages;
@@ -338,6 +340,7 @@ export default function MergePdf() {
         const arrayBuffer = await pdfBlob.arrayBuffer();
         const pdf = await PDFDocument.load(arrayBuffer);
         const totalPages = pdf.getPageCount();
+        
         const newPages = [];
         for (let i = 0; i < totalPages; i++) {
           newPages.push({
@@ -830,7 +833,7 @@ export default function MergePdf() {
                     <h4 className="font-bold mb-2 flex items-center gap-2">
                       <Layers size={18} /> {t.pageThumbnails} <span className="text-xs font-normal">({t.dragPages})</span>
                     </h4>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                      <SortableContext items={pages.map(p => p.id)} strategy={rectSortingStrategy}>
                         <div className="flex flex-wrap gap-2 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg max-h-96 overflow-y-auto">
                           {pages.map(page => (
