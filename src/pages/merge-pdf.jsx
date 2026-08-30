@@ -6,23 +6,31 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument, degrees, rgb } from 'pdf-lib';
 import { pdfjs } from 'react-pdf';
+// Import minimal CSS for react-pdf to prevent default styling issues
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
+
 import { upload } from '@vercel/blob/client';
 import JSZip from 'jszip';
 import { 
   UploadCloud, FileText, X, ArrowRight, Settings, 
-  Image as ImageIcon, Layers, ArrowUp, ArrowDown, 
-  Lock, Unlock, Download, FileOutput, RotateCw, Copy, Trash2,
-  Plus, ChevronDown, ChevronUp, Sun, Moon, History, Undo, Redo, 
-  Type, Palette, ZoomIn, ZoomOut, FileCode, FileSpreadsheet,
-  Presentation, File as FileIcon, Sparkles, AlertTriangle
+  Image as ImageIcon, Layers, RotateCw, Copy, Trash2,
+  ChevronDown, ChevronUp, Sun, Moon, History, Undo, Redo, 
+  Palette, ZoomIn, ZoomOut, File as FileIcon, Sparkles
 } from 'lucide-react';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors
 } from '@dnd-kit/core';
 import {
-  SortableContext, verticalListSortingStrategy, useSortable, arrayMove, rectSortingStrategy
+  SortableContext, useSortable, arrayMove, rectSortingStrategy
 } from '@dnd-kit/sortable';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+
+// Dynamic imports for react-pdf to prevent SSR hydration errors
+const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
+const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
+
+// 🔥 STABLE WORKER CONFIGURATION
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const translations = {
   en: {
@@ -33,14 +41,9 @@ const translations = {
     addImage: "Insert Image",
     addBlank: "Insert Blank",
     proSettings: "Pro Settings",
-    hidePro: "Hide Pro",
     outputFormat: "Output Format",
-    singlePdf: "Single PDF",
     downloadZip: "Download as ZIP",
     compressOutput: "Compress Output (Reduce size)",
-    metadata: "Document Metadata",
-    authorName: "Author Name",
-    docTitle: "Document Title",
     pageRange: "Page Range (e.g., 1-5, 8)",
     pageThumbnails: "Page Thumbnails",
     dragPages: "Drag & Drop pages to reorder",
@@ -51,11 +54,8 @@ const translations = {
     zoomOut: "Zoom Out",
     pageBackground: "Page Background",
     watermark: "Watermark Text",
-    watermarkColor: "Watermark Color",
-    watermarkSize: "Watermark Size",
     password: "Password",
     confirmPassword: "Confirm Password",
-    headerFooter: "Header/Footer",
     headerText: "Header Text",
     footerText: "Footer Text",
     pageSize: "Page Size",
@@ -63,19 +63,9 @@ const translations = {
     aiSummary: "AI Summary",
     aiFilename: "AI Suggested Filename",
     tableOfContents: "Auto Table of Contents",
-    multiFormatImport: "Multi-Format Import",
-    cloudIntegration: "Cloud Integration",
-    history: "History",
-    clearHistory: "Clear History",
-    darkMode: "Dark Mode",
-    undo: "Undo",
-    redo: "Redo",
-    smartFilename: "Smart Filename Generator",
-    localProcessing: "Privacy-First (Local Processing)",
     pdfaCompliance: "PDF/A Compliance",
-    batchProcessing: "Batch Processing (Large Files)",
-    pageSizeOptions: "A4, A3, Letter, Legal, Tabloid",
-    emailResult: "Email Result"
+    history: "History",
+    clearHistory: "Clear History"
   },
   hi: {
     mergeTitle: "PDF मर्ज करें",
@@ -85,14 +75,9 @@ const translations = {
     addImage: "छवि जोड़ें",
     addBlank: "रिक्त जोड़ें",
     proSettings: "प्रो सेटिंग्स",
-    hidePro: "प्रो छुपाएं",
     outputFormat: "आउटपुट फॉर्मेट",
-    singlePdf: "एकल PDF",
     downloadZip: "ZIP डाउनलोड करें",
     compressOutput: "आउटपुट संपीड़ित करें (आकार घटाएं)",
-    metadata: "दस्तावेज़ मेटाडेटा",
-    authorName: "लेखक का नाम",
-    docTitle: "दस्तावेज़ शीर्षक",
     pageRange: "पृष्ठ रेंज (जैसे 1-5, 8)",
     pageThumbnails: "पृष्ठ थंबनेल",
     dragPages: "पुनः क्रमबद्ध करने के लिए पृष्ठ खींचें और छोड़ें",
@@ -103,11 +88,8 @@ const translations = {
     zoomOut: "ज़ूम आउट",
     pageBackground: "पृष्ठ पृष्ठभूमि",
     watermark: "वॉटरमार्क टेक्स्ट",
-    watermarkColor: "वॉटरमार्क रंग",
-    watermarkSize: "वॉटरमार्क आकार",
     password: "पासवर्ड",
     confirmPassword: "पासवर्ड की पुष्टि करें",
-    headerFooter: "हेडर/फुटर",
     headerText: "हेडर टेक्स्ट",
     footerText: "फुटर टेक्स्ट",
     pageSize: "पृष्ठ आकार",
@@ -115,28 +97,68 @@ const translations = {
     aiSummary: "AI सारांश",
     aiFilename: "AI सुझाया गया फ़ाइलनाम",
     tableOfContents: "स्वचालित विषय-सूची",
-    multiFormatImport: "मल्टी-फॉर्मेट आयात",
-    cloudIntegration: "क्लाउड एकीकरण",
-    history: "इतिहास",
-    clearHistory: "इतिहास साफ़ करें",
-    darkMode: "डार्क मोड",
-    undo: "पूर्ववत",
-    redo: "फिर करें",
-    smartFilename: "स्मार्ट फ़ाइलनाम जनरेटर",
-    localProcessing: "गोपनीयता-प्रथम (स्थानीय प्रोसेसिंग)",
     pdfaCompliance: "PDF/A अनुपालन",
-    batchProcessing: "बैच प्रोसेसिंग (बड़ी फ़ाइलें)",
-    pageSizeOptions: "A4, A3, Letter, Legal, Tabloid",
-    emailResult: "ईमेल परिणाम"
+    history: "इतिहास",
+    clearHistory: "इतिहास साफ़ करें"
   }
 };
 
-// Dynamic imports for react-pdf
-const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
-const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
+// 🔥 HELPER FUNCTION: Convert File/Blob to Base64 Data URL (Bypasses Worker CORS issues completely)
+const blobToDataURL = (blob) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (_e) => resolve(reader.result);
+    reader.onerror = (_e) => reject(new Error('Failed to read blob'));
+    reader.readAsDataURL(blob);
+  });
+};
 
-// Worker ko Component ke bahar define kiya gaya hai
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// 🔥 FIX: SortablePage ko main component ke BAHAR define kiya gaya hai taaki Infinite Loading loop na bane
+const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePage, setPageBg, t }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
+  
+  const style = {
+    transform: CSS.Transform.toString(transform), 
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none', 
+    zIndex: isDragging ? 50 : 1
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-indigo-400' : ''}`}>
+      <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
+        
+        {/* PDF RENDERER: Ab Data URL se direct render hoga */}
+        <div style={{ pointerEvents: 'none' }}> {/* Prevents text selection while dragging */}
+          <Document 
+            file={page.dataUrl} 
+            loading={<div className="flex items-center justify-center h-full text-xs text-gray-500 font-medium">Loading...</div>}
+            error={<div className="flex items-center justify-center h-full text-xs text-red-500 font-bold p-1 text-center">Failed</div>}
+          >
+            <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
+          </Document>
+        </div>
+        
+        {page.backgroundColor !== '#ffffff' && (
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, opacity: 0.3 }} />
+        )}
+      </div>
+      
+      {/* onPointerDown={(e) => e.stopPropagation()} is added to buttons so clicking them doesn't start dragging */}
+      <div className="flex justify-between items-center mt-2 border-t pt-2">
+        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}><RotateCw size={14} /></button>
+        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}><Copy size={14} /></button>
+        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}><Trash2 size={14} /></button>
+        <label onPointerDown={(e) => e.stopPropagation()} className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
+          <input type="color" value={page.backgroundColor} onChange={(e) => setPageBg(page.id, e.target.value)} className="sr-only" />
+          <Palette size={14} />
+        </label>
+      </div>
+      <span className="absolute top-1 left-1 text-[10px] bg-gray-800 text-white px-1.5 py-0.5 rounded shadow">{page.pageNumber}</span>
+    </div>
+  );
+};
 
 export default function MergePdf() {
   const [items, setItems] = useState([]); 
@@ -167,11 +189,9 @@ export default function MergePdf() {
   const [history, setHistory] = useState([]);
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
-  const [draggedId, setDraggedId] = useState(null);
   const [toast, setToast] = useState(null);
 
   const t = translations[lang];
-  const fileInputRef = useRef(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -192,24 +212,26 @@ export default function MergePdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ========== File Upload & Extraction (THE MAGIC BINARY FIX) ==========
+  // ========== File Upload & Extraction ==========
   const extractPagesFromPDF = async (file, sourceId) => {
     const arrayBuffer = await file.arrayBuffer();
-    const fileData = new Uint8Array(arrayBuffer); // 🔥 Browser Bypass: RAM/Memory Data
-    const pdf = await PDFDocument.load(fileData);
+    const pdf = await PDFDocument.load(arrayBuffer);
     const totalPages = pdf.getPageCount();
     const newPages = [];
     
+    // 🔥 SOLID FIX: Convert file to Base64 String to completely bypass Worker CORS
+    const dataUrl = await blobToDataURL(file);
+
     for (let i = 0; i < totalPages; i++) {
       newPages.push({
         id: `page-${sourceId}-${i}`,
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        fileData: fileData, // 🔥 Direct Memory Feed. No CORS, No Blobs.
+        dataUrl: dataUrl, // Safe base64 string for react-pdf
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: file 
+        file: file // Keep original file for the final merge process
       });
     }
     return newPages;
@@ -254,8 +276,10 @@ export default function MergePdf() {
       else image = await tempPdf.embedJpg(arrayBuffer);
       const page = tempPdf.addPage([image.width, image.height]);
       page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
-      const pdfBytes = await tempPdf.save(); // Uint8Array
+      const pdfBytes = await tempPdf.save();
       const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+      
+      const dataUrl = await blobToDataURL(pdfBlob);
 
       const sourceId = `img-${Date.now()}`;
       setItems(prev => [...prev, {
@@ -272,7 +296,7 @@ export default function MergePdf() {
         sourceId,
         sourceFileName: file.name,
         pageNumber: 1,
-        fileData: pdfBytes, // 🔥 Direct Memory Feed
+        dataUrl: dataUrl,
         rotation: 0,
         backgroundColor: '#ffffff',
         file: pdfBlob
@@ -286,8 +310,9 @@ export default function MergePdf() {
   const handleInsertBlank = async () => {
     const tempPdf = await PDFDocument.create();
     tempPdf.addPage([595.28, 841.89]);
-    const pdfBytes = await tempPdf.save(); // Uint8Array
+    const pdfBytes = await tempPdf.save();
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const dataUrl = await blobToDataURL(pdfBlob);
     const sourceId = `blank-${Date.now()}`;
 
     setItems(prev => [...prev, {
@@ -304,7 +329,7 @@ export default function MergePdf() {
       sourceId,
       sourceFileName: 'Blank A4 Page.pdf',
       pageNumber: 1,
-      fileData: pdfBytes, // 🔥 Direct Memory Feed
+      dataUrl: dataUrl,
       rotation: 0,
       backgroundColor: '#ffffff',
       file: pdfBlob
@@ -330,9 +355,10 @@ export default function MergePdf() {
         const pdfBlob = await (await fetch(data.downloadUrl)).blob();
         const sourceId = `mf-${Date.now()}`;
         const arrayBuffer = await pdfBlob.arrayBuffer();
-        const fileData = new Uint8Array(arrayBuffer); // 🔥 Binary
-        const pdf = await PDFDocument.load(fileData);
+        const pdf = await PDFDocument.load(arrayBuffer);
         const totalPages = pdf.getPageCount();
+        const dataUrl = await blobToDataURL(pdfBlob);
+        
         const newPages = [];
         for (let i = 0; i < totalPages; i++) {
           newPages.push({
@@ -340,7 +366,7 @@ export default function MergePdf() {
             sourceId,
             sourceFileName: file.name,
             pageNumber: i + 1,
-            fileData: fileData, // 🔥 Direct Memory Feed
+            dataUrl: dataUrl,
             rotation: 0,
             backgroundColor: '#ffffff',
             file: pdfBlob
@@ -413,10 +439,6 @@ export default function MergePdf() {
   };
 
   // ========== DnD ==========
-  const handleDragStart = (event) => {
-    setDraggedId(event.active.id);
-  };
-
   const handleDragEnd = (event) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
@@ -425,7 +447,6 @@ export default function MergePdf() {
       const newIndex = pages.findIndex(p => p.id === over.id);
       setPages(prev => arrayMove(prev, oldIndex, newIndex));
     }
-    setDraggedId(null);
   };
 
   // ========== Merge Process ==========
@@ -517,8 +538,8 @@ export default function MergePdf() {
       }
 
       if (headerText || footerText) {
-        const pages = mergedPdf.getPages();
-        pages.forEach((p) => {
+        const mPages = mergedPdf.getPages();
+        mPages.forEach((p) => {
           const { width, height } = p.getSize();
           if (headerText) p.drawText(headerText, { x: 50, y: height - 30, size: 12, color: rgb(0.5, 0.5, 0.5) });
           if (footerText) p.drawText(footerText, { x: 50, y: 30, size: 12, color: rgb(0.5, 0.5, 0.5) });
@@ -637,57 +658,6 @@ export default function MergePdf() {
       setAiSummary('AI analysis failed.');
       setAiFilename('Merged_Document.pdf');
     }
-  };
-
-  // ========== UI Components ==========
-  const SortablePage = ({ page }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
-    
-    const style = {
-      transform: CSS.Transform.toString(transform), 
-      transition,
-      opacity: isDragging ? 0.5 : 1,
-      touchAction: 'none', 
-      zIndex: isDragging ? 50 : 1
-    };
-
-    return (
-      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
-        
-        <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
-          
-          {/* 🔥 THE ULTIMATE FIX: Direct Memory Array (Uint8Array) passed */}
-          <Document 
-            file={page.fileData} 
-            loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
-            error={(err) => <div className="flex items-center justify-center h-full text-[10px] leading-tight text-red-500 font-bold p-2 text-center">{err ? err.message : 'Error'}</div>}
-          >
-            <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
-          </Document>
-          
-          {page.backgroundColor !== '#ffffff' && (
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, opacity: 0.3 }} />
-          )}
-        </div>
-        
-        <div className="flex justify-between items-center mt-2">
-          <button onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}>
-            <RotateCw size={14} />
-          </button>
-          <button onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}>
-            <Copy size={14} />
-          </button>
-          <button onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}>
-            <Trash2 size={14} />
-          </button>
-          <label className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
-            <input type="color" value={page.backgroundColor} onChange={(e) => setPageBg(page.id, e.target.value)} className="sr-only" />
-            <Palette size={14} />
-          </label>
-        </div>
-        <span className="absolute top-1 left-1 text-[10px] bg-gray-100 px-1 rounded shadow">{page.pageNumber}</span>
-      </div>
-    );
   };
 
   return (
@@ -882,11 +852,20 @@ export default function MergePdf() {
                     <h4 className="font-bold mb-2 flex items-center gap-2">
                       <Layers size={18} /> {t.pageThumbnails} <span className="text-xs font-normal">({t.dragPages})</span>
                     </h4>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                      <SortableContext items={pages.map(p => p.id)} strategy={rectSortingStrategy}>
                         <div className="flex flex-wrap gap-2 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg max-h-96 overflow-y-auto">
                           {pages.map(page => (
-                            <SortablePage key={page.id} page={page} />
+                            <SortablePage 
+                              key={page.id} 
+                              page={page} 
+                              zoomLevel={zoomLevel}
+                              rotatePageById={rotatePageById}
+                              duplicatePage={duplicatePage}
+                              removePage={removePage}
+                              setPageBg={setPageBg}
+                              t={t}
+                            />
                           ))}
                         </div>
                       </SortableContext>
