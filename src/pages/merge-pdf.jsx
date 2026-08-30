@@ -120,9 +120,10 @@ const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePa
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
       
      <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
-        <Document 
+       <Document 
           file={{ data: page.fileData }} // 🔥 ULTIMATE FIX: Pass raw binary data directly
           loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
+          error={(error) => (
             <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center">
               <span>Failed</span>
               <span className="font-normal text-gray-400 mt-1">{error?.message?.substring(0,25)}</span>
