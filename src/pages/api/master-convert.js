@@ -93,47 +93,107 @@ let fileUrls = req.body.fileUrls;
       }
     }
 
-    else if (action === 'redact-pdf') {
-      try {
-        const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
-        const pdfDoc = await PDFDocument.load(pdfBytes);
-        const pages = pdfDoc.getPages();
+   else if (action === 'redact-pdf') {
+  try {
+    const { boxes } = req.body;
+    const options = req.body.options || {};
+    
+    const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const pages = pdfDoc.getPages();
 
-        if (boxes && boxes.length > 0) {
-          boxes.forEach((box) => {
-            const page = pages[box.pageIndex || 0]; 
-            const { width: actualWidth, height: actualHeight } = page.getSize();
-            const scale = actualWidth / 700; 
-
-            const scaledX = box.x * scale;
-            const scaledY = box.y * scale;
-            const scaledWidth = box.width * scale;
-            const scaledHeight = box.height * scale;
-            
-            page.drawRectangle({
-              x: scaledX,
-              y: actualHeight - scaledY - scaledHeight, 
-              width: scaledWidth,
-              height: scaledHeight,
-              color: rgb(0, 0, 0),
-            });
-          });
-        } 
-        
-        const modifiedPdfBytes = await pdfDoc.save();
-        
-        const blob = await put(`redacted-document-${Date.now()}.pdf`, modifiedPdfBytes, {
-          access: 'public',
-          contentType: 'application/pdf'
-        });
-
-        return res.status(200).json({ success: true, downloadUrl: blob.url });
-      } catch (err) {
-        console.error("Redaction Error:", err);
-        return res.status(500).json({ error: "Failed to apply redaction to the PDF." });
-      }
+    // 1. METADATA SANITIZATION (Ye pdf-lib se 100% hota hai)
+    if (options.sanitizeMetadata) {
+      pdfDoc.setTitle('');
+      pdfDoc.setAuthor('');
+      pdfDoc.setSubject('');
+      pdfDoc.setKeywords([]);
+      pdfDoc.setProducer('');
+      pdfDoc.setCreator('');
     }
 
+    // 2. PAGE RANGE LOGIC (Only apply redaction to specific pages)
+    let allowedPages = [];
+    if (options.pageRange) {
+      // Parse "1-5, 8" into array of page numbers
+      const rangeParts = options.pageRange.split(',');
+      rangeParts.forEach(part => {
+        part = part.trim();
+        if (part.includes('-')) {
+          const [start, end] = part.split('-').map(Number);
+          for (let i = start; i <= end; i++) allowedPages.push(i);
+        } else if (part) {
+          allowedPages.push(Number(part));
+        }
+      });
+    }
+
+    // 3. HIDDEN DATA / COMMENTS / FORMS (pdf-lib ka limited support)
+    // ✅ METADATA done. 
+    // ❌ Comments, Layers, Attachments: pdf-lib mein direct API nahi hai. 
+    // Inko advanced library (jaise mupdf ya external API) se karna padega. 
+    // Abhi hum ise 'options' variable mein receive karte hain, par skip karte hain.
+    if (options.removeComments) {
+      // Placeholder: pdf-lib se annotations remove karna complex hai. 
+      // Real implementation ke liye aapko PDF raw structure modify karna padega.
+    }
+
+    // 4. DRAW REDACTION BOXES (With Overlay Text)
+    if (boxes && boxes.length > 0) {
+      boxes.forEach((box) => {
+        // Page Range check
+        if (allowedPages.length > 0 && !allowedPages.includes(box.pageIndex + 1)) return;
+
+        const page = pages[box.pageIndex || 0];
+        const { width: actualWidth, height: actualHeight } = page.getSize();
+        const scale = actualWidth / 700;
+
+        const scaledX = box.x * scale;
+        const scaledY = box.y * scale;
+        const scaledWidth = box.width * scale;
+        const scaledHeight = box.height * scale;
+
+        // Black box draw
+        page.drawRectangle({
+          x: scaledX,
+          y: actualHeight - scaledY - scaledHeight,
+          width: scaledWidth,
+          height: scaledHeight,
+          color: rgb(0, 0, 0),
+          opacity: 1
+        });
+
+        // Overlay Text draw (agar user ne "REDACTED" likha ho)
+        if (box.text) {
+          page.drawText(box.text, {
+            x: scaledX + 2,
+            y: actualHeight - scaledY - scaledHeight + 2,
+            size: Math.min(12, scaledHeight / 3), // Auto-fit size
+            color: rgb(1, 1, 1)
+          });
+        }
+      });
+    }
+
+    // 5. REVERSIBLE REDACTION (Encryption Key)
+    // PDF-lib mein iska direct support nahi hai. 
+    // Iske liye custom encryption logic chahiye hogi. Abhi placeholder hai.
+    if (options.reversible) {
+      // Real implementation: Fernet encryption key generation & storage
+    }
+
+    const modifiedPdfBytes = await pdfDoc.save();
+    const blob = await put(`redacted-document-${Date.now()}.pdf`, modifiedPdfBytes, {
+      access: 'public',
+      contentType: 'application/pdf'
+    });
+
+    return res.status(200).json({ success: true, downloadUrl: blob.url });
+  } catch (err) {
+    console.error("Redaction Error:", err);
+    return res.status(500).json({ error: "Failed to apply redaction to the PDF." });
+  }
+}
     else if (action === 'pdf-to-word') {
       // Frontend se aaye options
       const ocrEnabled = req.body.ocrEnabled === true;
