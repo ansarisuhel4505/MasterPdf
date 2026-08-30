@@ -184,6 +184,7 @@ export default function ImageToPdf() {
     aiSort: false,
     smartFilename: false,
   });
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const fileInputRef = useRef(null);
   const t = translations[lang];
