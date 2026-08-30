@@ -100,6 +100,7 @@ const translations = {
   }
 };
 
+// SortablePage component separated safely to prevent render loops
 const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePage, setPageBg, t }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
   
@@ -125,24 +126,29 @@ const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePa
             </div>
           )}
         >
-          <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
+          {/* 🔥 FIX 1: Added rotate={page.rotation} to reflect rotation instantly in UI */}
+          <Page pageNumber={page.pageNumber} width={zoomLevel} rotate={page.rotation || 0} renderTextLayer={false} renderAnnotationLayer={false} />
         </Document>
         
+        {/* 🔥 FIX 2: Used mixBlendMode so color looks like a natural tint, and pointerEvents none so it doesn't block clicks */}
         {page.backgroundColor !== '#ffffff' && (
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, opacity: 0.3 }} />
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, mixBlendMode: 'multiply', pointerEvents: 'none' }} />
         )}
       </div>
       
-      <div className="flex justify-between items-center mt-2 border-t pt-2">
+      {/* 🔥 Added relative z-10 so buttons stay above the dragging layer */}
+      <div className="flex justify-between items-center mt-2 border-t pt-2 relative z-10">
         <button onPointerDown={(e) => e.stopPropagation()} onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}><RotateCw size={14} /></button>
         <button onPointerDown={(e) => e.stopPropagation()} onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}><Copy size={14} /></button>
         <button onPointerDown={(e) => e.stopPropagation()} onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}><Trash2 size={14} /></button>
-        <label onPointerDown={(e) => e.stopPropagation()} className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
-          <input type="color" value={page.backgroundColor} onChange={(e) => setPageBg(page.id, e.target.value)} className="sr-only" />
-          <Palette size={14} />
-        </label>
+        
+        {/* 🔥 FIX 3: Fixed Color Picker Click Blocker. Now clicking anywhere on the icon opens the palette perfectly */}
+        <div onPointerDown={(e) => e.stopPropagation()} className="relative flex items-center justify-center w-6 h-6 overflow-hidden rounded hover:bg-gray-100 cursor-pointer" title={t.pageBackground}>
+          <input type="color" value={page.backgroundColor || '#ffffff'} onChange={(e) => setPageBg(page.id, e.target.value)} className="absolute inset-0 w-[200%] h-[200%] -top-1/2 -left-1/2 cursor-pointer opacity-0 z-20" />
+          <Palette size={14} className="text-gray-500 pointer-events-none relative z-10" />
+        </div>
       </div>
-      <span className="absolute top-1 left-1 text-[10px] bg-gray-100 px-1 rounded shadow">{page.pageNumber}</span>
+      <span className="absolute top-1 left-1 text-[10px] bg-gray-100 px-1 rounded shadow pointer-events-none">{page.pageNumber}</span>
     </div>
   );
 };
