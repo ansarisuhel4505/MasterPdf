@@ -30,8 +30,8 @@ const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), 
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
 
-// 🔥 THE FIX: Use cdnjs for stable worker loading
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// 🔥 THE FIX: Back to official worker (.mjs is required for react-pdf v7+)
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const translations = {
   en: {
@@ -119,11 +119,10 @@ const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePa
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
       
-      <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
+     <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
         <Document 
-          file={page.file} 
+          file={{ data: page.fileData }} // 🔥 ULTIMATE FIX: Pass raw binary data directly
           loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
-          error={(error) => (
             <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center">
               <span>Failed</span>
               <span className="font-normal text-gray-400 mt-1">{error?.message?.substring(0,25)}</span>
@@ -204,9 +203,9 @@ export default function MergePdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ========== File Upload & Extraction ==========
-const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
+const extractPagesFromPDF = async (file, sourceId) => {
     const arrayBuffer = await file.arrayBuffer();
+    const pdfBytes = new Uint8Array(arrayBuffer); // 🔥 Convert to raw binary data
     const pdf = await PDFDocument.load(arrayBuffer);
     const totalPages = pdf.getPageCount();
     const newPages = [];
@@ -219,7 +218,8 @@ const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
         pageNumber: i + 1,
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: fileUrl // 🔥 RAW file ki jagah ObjectURL use ho raha hai
+        fileData: pdfBytes, // 🔥 React-pdf ke liye raw data
+        file: file // 🔥 Merging process ke liye original file
       });
     }
     return newPages;
@@ -234,13 +234,12 @@ const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
     const newPages = [];
     for (const file of validPdfs) {
       const sourceId = `src-${Date.now()}-${Math.random()}`;
-      const fileUrl = URL.createObjectURL(file); // 🔥 URL Generate kiya
-      const extractedPages = await extractPagesFromPDF(file, sourceId, fileUrl);
+      const extractedPages = await extractPagesFromPDF(file, sourceId);
       newItems.push({
         id: sourceId,
         name: file.name,
         type: 'pdf',
-        file: fileUrl, // 🔥 Yahan update kiya
+        file: file, 
         pages: extractedPages.length,
         size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
         modified: new Date(file.lastModified).toLocaleDateString()
@@ -265,16 +264,15 @@ const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
       else image = await tempPdf.embedJpg(arrayBuffer);
       const page = tempPdf.addPage([image.width, image.height]);
       page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
-     const pdfBytes = await tempPdf.save();
+    const pdfBytes = await tempPdf.save();
       const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Blob se URL banaya
 
       const sourceId = `img-${Date.now()}`;
       setItems(prev => [...prev, {
         id: sourceId,
         name: file.name.replace(/\.[^/.]+$/, "") + ".pdf",
         type: 'image',
-        file: fileUrl, // 🔥 Update kiya
+        file: pdfBlob, 
         pages: 1,
         size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB',
         modified: new Date().toLocaleDateString()
@@ -286,7 +284,8 @@ const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
         pageNumber: 1,
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: fileUrl // 🔥 Update kiya
+        fileData: pdfBytes, // 🔥 RAW data directly generated from tempPdf
+        file: pdfBlob
       }]);
     } catch (error) {
       showToast('Failed to process image', 'error');
@@ -297,16 +296,15 @@ const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
   const handleInsertBlank = async () => {
     const tempPdf = await PDFDocument.create();
     tempPdf.addPage([595.28, 841.89]);
-    const pdfBytes = await tempPdf.save();
+   const pdfBytes = await tempPdf.save();
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Blob se URL banaya
     const sourceId = `blank-${Date.now()}`;
 
     setItems(prev => [...prev, {
       id: sourceId,
       name: 'Blank A4 Page.pdf',
       type: 'blank',
-      file: fileUrl, // 🔥 Update kiya
+      file: pdfBlob,
       pages: 1,
       size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB',
       modified: new Date().toLocaleDateString()
@@ -318,7 +316,8 @@ const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
       pageNumber: 1,
       rotation: 0,
       backgroundColor: '#ffffff',
-      file: fileUrl // 🔥 Update kiya
+      fileData: pdfBytes, // 🔥 RAW data
+      file: pdfBlob
     }]);
   };
 
@@ -341,6 +340,7 @@ const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
         const pdfBlob = await (await fetch(data.downloadUrl)).blob();
         const sourceId = `mf-${Date.now()}`;
         const arrayBuffer = await pdfBlob.arrayBuffer();
+        const pdfBytes = new Uint8Array(arrayBuffer); // 🔥 Convert to raw data
         const pdf = await PDFDocument.load(arrayBuffer);
         const totalPages = pdf.getPageCount();
         
@@ -353,6 +353,7 @@ const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
             pageNumber: i + 1,
             rotation: 0,
             backgroundColor: '#ffffff',
+            fileData: pdfBytes, // 🔥 RAW data
             file: pdfBlob
           });
         }
