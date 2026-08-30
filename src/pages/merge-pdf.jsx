@@ -29,7 +29,6 @@ import {
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-
 // 🔥 THE FIX: Back to official worker (.mjs is required for react-pdf v7+)
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -119,14 +118,14 @@ const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePa
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
       
-     <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
-       <Document 
-          file={{ data: page.fileData }} // 🔥 ULTIMATE FIX: Pass raw binary data directly
+      <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
+        <Document 
+          file={page.renderUrl} // 🔥 FIX: Display ke liye sirf URL pass karein
           loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
           error={(error) => (
-            <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center">
+            <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center overflow-hidden">
               <span>Failed</span>
-              <span className="font-normal text-gray-400 mt-1">{error?.message?.substring(0,25)}</span>
+              <span className="font-normal text-gray-400 mt-1" title={error?.message}>{error?.message?.substring(0,35)}</span>
             </div>
           )}
         >
@@ -204,9 +203,8 @@ export default function MergePdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
-const extractPagesFromPDF = async (file, sourceId) => {
+  const extractPagesFromPDF = async (file, sourceId, renderUrl) => {
     const arrayBuffer = await file.arrayBuffer();
-    const pdfBytes = new Uint8Array(arrayBuffer); // 🔥 Convert to raw binary data
     const pdf = await PDFDocument.load(arrayBuffer);
     const totalPages = pdf.getPageCount();
     const newPages = [];
@@ -219,8 +217,8 @@ const extractPagesFromPDF = async (file, sourceId) => {
         pageNumber: i + 1,
         rotation: 0,
         backgroundColor: '#ffffff',
-        fileData: pdfBytes, // 🔥 React-pdf ke liye raw data
-        file: file // 🔥 Merging process ke liye original file
+        renderUrl: renderUrl, // 🔥 Display URL
+        file: file // 🔥 Merging process ke liye Original File
       });
     }
     return newPages;
@@ -235,7 +233,8 @@ const extractPagesFromPDF = async (file, sourceId) => {
     const newPages = [];
     for (const file of validPdfs) {
       const sourceId = `src-${Date.now()}-${Math.random()}`;
-      const extractedPages = await extractPagesFromPDF(file, sourceId);
+      const fileUrl = URL.createObjectURL(file); // 🔥 Naya URL banaya
+      const extractedPages = await extractPagesFromPDF(file, sourceId, fileUrl);
       newItems.push({
         id: sourceId,
         name: file.name,
@@ -265,8 +264,9 @@ const extractPagesFromPDF = async (file, sourceId) => {
       else image = await tempPdf.embedJpg(arrayBuffer);
       const page = tempPdf.addPage([image.width, image.height]);
       page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
-    const pdfBytes = await tempPdf.save();
+      const pdfBytes = await tempPdf.save();
       const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Dikhane ke liye URL banaya
 
       const sourceId = `img-${Date.now()}`;
       setItems(prev => [...prev, {
@@ -285,8 +285,8 @@ const extractPagesFromPDF = async (file, sourceId) => {
         pageNumber: 1,
         rotation: 0,
         backgroundColor: '#ffffff',
-        fileData: pdfBytes, // 🔥 RAW data directly generated from tempPdf
-        file: pdfBlob
+        renderUrl: fileUrl, // 🔥 Display URL pass kiya
+        file: pdfBlob // 🔥 Merge ke liye Blob rakha
       }]);
     } catch (error) {
       showToast('Failed to process image', 'error');
@@ -297,8 +297,9 @@ const extractPagesFromPDF = async (file, sourceId) => {
   const handleInsertBlank = async () => {
     const tempPdf = await PDFDocument.create();
     tempPdf.addPage([595.28, 841.89]);
-   const pdfBytes = await tempPdf.save();
+    const pdfBytes = await tempPdf.save();
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Dikhane ke liye URL banaya
     const sourceId = `blank-${Date.now()}`;
 
     setItems(prev => [...prev, {
@@ -317,8 +318,8 @@ const extractPagesFromPDF = async (file, sourceId) => {
       pageNumber: 1,
       rotation: 0,
       backgroundColor: '#ffffff',
-      fileData: pdfBytes, // 🔥 RAW data
-      file: pdfBlob
+      renderUrl: fileUrl, // 🔥 Display URL pass kiya
+      file: pdfBlob // 🔥 Merge ke liye Blob rakha
     }]);
   };
 
@@ -341,7 +342,7 @@ const extractPagesFromPDF = async (file, sourceId) => {
         const pdfBlob = await (await fetch(data.downloadUrl)).blob();
         const sourceId = `mf-${Date.now()}`;
         const arrayBuffer = await pdfBlob.arrayBuffer();
-        const pdfBytes = new Uint8Array(arrayBuffer); // 🔥 Convert to raw data
+        const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Dikhane ke liye URL banaya
         const pdf = await PDFDocument.load(arrayBuffer);
         const totalPages = pdf.getPageCount();
         
@@ -354,8 +355,8 @@ const extractPagesFromPDF = async (file, sourceId) => {
             pageNumber: i + 1,
             rotation: 0,
             backgroundColor: '#ffffff',
-            fileData: pdfBytes, // 🔥 RAW data
-            file: pdfBlob
+            renderUrl: fileUrl, // 🔥 Display URL pass kiya
+            file: pdfBlob // 🔥 Merge ke liye Blob rakha
           });
         }
         setItems(prev => [...prev, { id: sourceId, name: file.name + '.pdf', type: 'multi', file: pdfBlob, pages: totalPages, size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB', modified: new Date().toLocaleDateString() }]);
