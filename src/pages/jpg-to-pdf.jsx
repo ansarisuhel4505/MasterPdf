@@ -9,7 +9,7 @@ import {
   Sun, Moon, History, Download, Lock, Palette, RotateCw,
   Image as ImageIcon, Settings, SlidersHorizontal, ZoomIn, ZoomOut,
   Type, Combine, Split, Shield, FileText, Sparkles,
-  FlipHorizontal, FlipVertical, CheckCircle2
+  FlipHorizontal, FlipVertical, CheckCircle2,Undo, Redo 
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors
