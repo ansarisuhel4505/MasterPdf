@@ -828,7 +828,60 @@ let fileUrls = req.body.fileUrls;
       }
     }
     
-    else if (action === 'pdf-to-markdown') result = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+  else if (action === 'pdf-to-markdown') {
+  if (!process.env.GROQ_API_KEY) {
+    return res.status(200).json({ markdown: "⚠️ Groq API Key missing. Add GROQ_API_KEY in environment." });
+  }
+  try {
+    const apiKey = process.env.GROQ_API_KEY;
+    const options = req.body.options || {};
+    const fileUrls = req.body.fileUrls || [req.body.fileUrl];
+
+    let combinedText = "";
+    for (const url of fileUrls) {
+      const convertOptions = { File: url };
+      if (options.pageRange) convertOptions.PageRange = options.pageRange;
+      if (options.ocrEnabled) convertOptions.Ocr = "true";
+      
+      const txtResult = await convertapi.convert('txt', convertOptions, 'pdf');
+      const text = await (await fetch(txtResult.response.Files[0].Url)).text();
+      combinedText += text + "\n\n";
+    }
+    combinedText = combinedText.substring(0, 20000);
+
+    // Build prompt based on options
+    let prompt = `Convert the following PDF text into clean, structured Markdown (.md).\n\n`;
+    prompt += `Rules:\n`;
+    if (options.includeHeadings) prompt += `- Preserve headings (H1-H6) based on font size. \n`;
+    if (options.includeLists) prompt += `- Convert lists to bullet points (- ) or numbered lists. \n`;
+    if (options.includeTables) prompt += `- Convert tables into GFM pipe tables. \n`;
+    if (options.includeCodeBlocks) prompt += `- Detect code blocks and wrap in triple backticks. \n`;
+    if (options.includeBlockquotes) prompt += `- Convert quotes to > blockquotes. \n`;
+    if (options.includeImages) prompt += `- Note image placeholders as ![alt text](image_url). \n`;
+    if (options.removeNoise) prompt += `- Remove page numbers, headers, footers, and separators. \n`;
+    if (options.llmEnabled) prompt += `- Use AI to intelligently structure the content. \n`;
+    prompt += `\n\nDocument Text:\n${combinedText}`;
+
+    const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
+    const activeModel = process.env.CURRENT_GROQ_MODEL || "openai/gpt-oss-20b";
+    const aiResponse = await fetch(groqUrl, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: activeModel,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2
+      })
+    });
+    const data = await aiResponse.json();
+    const markdown = data.choices?.[0]?.message?.content || "Conversion failed.";
+
+    return res.status(200).json({ success: true, markdown });
+  } catch (error) {
+    console.error('PDF to Markdown error:', error);
+    return res.status(500).json({ error: 'PDF to Markdown conversion failed.' });
+  }
+}
     
     else if (action === 'ocr-pdf') {
       const format = req.body.format || 'txt'; 
