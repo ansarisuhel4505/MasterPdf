@@ -29,7 +29,7 @@ import {
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-// 🔥 STABLE WORKER CONFIGURATION
+// 🔥 WORKER CONFIGURATION
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const translations = {
@@ -103,17 +103,8 @@ const translations = {
   }
 };
 
-// 🔥 HELPER FUNCTION: Convert File/Blob to Base64 Data URL (Bypasses Worker CORS issues completely)
-const blobToDataURL = (blob) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (_e) => resolve(reader.result);
-    reader.onerror = (_e) => reject(new Error('Failed to read blob'));
-    reader.readAsDataURL(blob);
-  });
-};
-
-// 🔥 FIX: SortablePage ko main component ke BAHAR define kiya gaya hai taaki Infinite Loading loop na bane
+// 🔥 FIX 1: SortablePage ko MergePdf ke BAHAR rakha hai. 
+// Isse Infinite Loading wala Loop hamesha ke liye khatam ho jayega.
 const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePage, setPageBg, t }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
   
@@ -126,36 +117,35 @@ const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePa
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-indigo-400' : ''}`}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md p-2 ${isDragging ? 'ring-2 ring-red-300' : ''}`}>
+      
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
         
-        {/* PDF RENDERER: Ab Data URL se direct render hoga */}
-        <div style={{ pointerEvents: 'none' }}> {/* Prevents text selection while dragging */}
-          <Document 
-            file={page.dataUrl} 
-            loading={<div className="flex items-center justify-center h-full text-xs text-gray-500 font-medium">Loading...</div>}
-            error={<div className="flex items-center justify-center h-full text-xs text-red-500 font-bold p-1 text-center">Failed</div>}
-          >
-            <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
-          </Document>
-        </div>
+        {/* 🔥 FIX 2: Wapas page.file pass kiya. URL nahi diya, isliye CORS/Failed error ab nahi aayega! */}
+        <Document 
+          file={page.file} 
+          loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
+          error={(error) => <div className="flex items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center">Failed<br/>{error?.message?.substring(0,20)}</div>}
+        >
+          <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
+        </Document>
         
         {page.backgroundColor !== '#ffffff' && (
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: page.backgroundColor, opacity: 0.3 }} />
         )}
       </div>
       
-      {/* onPointerDown={(e) => e.stopPropagation()} is added to buttons so clicking them doesn't start dragging */}
+      {/* onPointerDown lagaya hai taki button click karte waqt page drag na ho */}
       <div className="flex justify-between items-center mt-2 border-t pt-2">
-        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}><RotateCw size={14} /></button>
-        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}><Copy size={14} /></button>
-        <button onPointerDown={(e) => e.stopPropagation()} onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}><Trash2 size={14} /></button>
-        <label onPointerDown={(e) => e.stopPropagation()} className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
+        <button onPointerDown={(e)=>e.stopPropagation()} onClick={() => rotatePageById(page.id)} className="text-gray-500 hover:text-blue-600 p-1" title={t.rotate}><RotateCw size={14} /></button>
+        <button onPointerDown={(e)=>e.stopPropagation()} onClick={() => duplicatePage(page.id)} className="text-gray-500 hover:text-green-600 p-1" title={t.duplicate}><Copy size={14} /></button>
+        <button onPointerDown={(e)=>e.stopPropagation()} onClick={() => removePage(page.id)} className="text-gray-500 hover:text-red-600 p-1" title={t.delete}><Trash2 size={14} /></button>
+        <label onPointerDown={(e)=>e.stopPropagation()} className="text-gray-500 hover:text-purple-600 p-1 cursor-pointer" title={t.pageBackground}>
           <input type="color" value={page.backgroundColor} onChange={(e) => setPageBg(page.id, e.target.value)} className="sr-only" />
           <Palette size={14} />
         </label>
       </div>
-      <span className="absolute top-1 left-1 text-[10px] bg-gray-800 text-white px-1.5 py-0.5 rounded shadow">{page.pageNumber}</span>
+      <span className="absolute top-1 left-1 text-[10px] bg-gray-100 px-1 rounded shadow">{page.pageNumber}</span>
     </div>
   );
 };
@@ -219,19 +209,15 @@ export default function MergePdf() {
     const totalPages = pdf.getPageCount();
     const newPages = [];
     
-    // 🔥 SOLID FIX: Convert file to Base64 String to completely bypass Worker CORS
-    const dataUrl = await blobToDataURL(file);
-
     for (let i = 0; i < totalPages; i++) {
       newPages.push({
         id: `page-${sourceId}-${i}`,
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        dataUrl: dataUrl, // Safe base64 string for react-pdf
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: file // Keep original file for the final merge process
+        file: file // Direct Native File object passed
       });
     }
     return newPages;
@@ -278,8 +264,6 @@ export default function MergePdf() {
       page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
       const pdfBytes = await tempPdf.save();
       const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-      
-      const dataUrl = await blobToDataURL(pdfBlob);
 
       const sourceId = `img-${Date.now()}`;
       setItems(prev => [...prev, {
@@ -296,7 +280,6 @@ export default function MergePdf() {
         sourceId,
         sourceFileName: file.name,
         pageNumber: 1,
-        dataUrl: dataUrl,
         rotation: 0,
         backgroundColor: '#ffffff',
         file: pdfBlob
@@ -312,7 +295,6 @@ export default function MergePdf() {
     tempPdf.addPage([595.28, 841.89]);
     const pdfBytes = await tempPdf.save();
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const dataUrl = await blobToDataURL(pdfBlob);
     const sourceId = `blank-${Date.now()}`;
 
     setItems(prev => [...prev, {
@@ -329,7 +311,6 @@ export default function MergePdf() {
       sourceId,
       sourceFileName: 'Blank A4 Page.pdf',
       pageNumber: 1,
-      dataUrl: dataUrl,
       rotation: 0,
       backgroundColor: '#ffffff',
       file: pdfBlob
@@ -357,8 +338,6 @@ export default function MergePdf() {
         const arrayBuffer = await pdfBlob.arrayBuffer();
         const pdf = await PDFDocument.load(arrayBuffer);
         const totalPages = pdf.getPageCount();
-        const dataUrl = await blobToDataURL(pdfBlob);
-        
         const newPages = [];
         for (let i = 0; i < totalPages; i++) {
           newPages.push({
@@ -366,7 +345,6 @@ export default function MergePdf() {
             sourceId,
             sourceFileName: file.name,
             pageNumber: i + 1,
-            dataUrl: dataUrl,
             rotation: 0,
             backgroundColor: '#ffffff',
             file: pdfBlob
@@ -852,7 +830,7 @@ export default function MergePdf() {
                     <h4 className="font-bold mb-2 flex items-center gap-2">
                       <Layers size={18} /> {t.pageThumbnails} <span className="text-xs font-normal">({t.dragPages})</span>
                     </h4>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                      <SortableContext items={pages.map(p => p.id)} strategy={rectSortingStrategy}>
                         <div className="flex flex-wrap gap-2 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg max-h-96 overflow-y-auto">
                           {pages.map(page => (
