@@ -29,9 +29,9 @@ import {
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-// 🔥 THE FIX: Added explicit 'https://' 
-// Bina iske localhost HTTP samajh kar worker ko fail kar raha tha.
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+// 🔥 THE FIX: Use cdnjs for stable worker loading
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 const translations = {
   en: {
@@ -205,7 +205,7 @@ export default function MergePdf() {
   };
 
   // ========== File Upload & Extraction ==========
-  const extractPagesFromPDF = async (file, sourceId) => {
+const extractPagesFromPDF = async (file, sourceId, fileUrl) => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await PDFDocument.load(arrayBuffer);
     const totalPages = pdf.getPageCount();
@@ -219,7 +219,7 @@ export default function MergePdf() {
         pageNumber: i + 1,
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: file // Original File object perfectly readable by react-pdf
+        file: fileUrl // 🔥 RAW file ki jagah ObjectURL use ho raha hai
       });
     }
     return newPages;
@@ -234,12 +234,13 @@ export default function MergePdf() {
     const newPages = [];
     for (const file of validPdfs) {
       const sourceId = `src-${Date.now()}-${Math.random()}`;
-      const extractedPages = await extractPagesFromPDF(file, sourceId);
+      const fileUrl = URL.createObjectURL(file); // 🔥 URL Generate kiya
+      const extractedPages = await extractPagesFromPDF(file, sourceId, fileUrl);
       newItems.push({
         id: sourceId,
         name: file.name,
         type: 'pdf',
-        file: file,
+        file: fileUrl, // 🔥 Yahan update kiya
         pages: extractedPages.length,
         size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
         modified: new Date(file.lastModified).toLocaleDateString()
@@ -264,15 +265,16 @@ export default function MergePdf() {
       else image = await tempPdf.embedJpg(arrayBuffer);
       const page = tempPdf.addPage([image.width, image.height]);
       page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
-      const pdfBytes = await tempPdf.save();
+     const pdfBytes = await tempPdf.save();
       const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Blob se URL banaya
 
       const sourceId = `img-${Date.now()}`;
       setItems(prev => [...prev, {
         id: sourceId,
         name: file.name.replace(/\.[^/.]+$/, "") + ".pdf",
         type: 'image',
-        file: pdfBlob,
+        file: fileUrl, // 🔥 Update kiya
         pages: 1,
         size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB',
         modified: new Date().toLocaleDateString()
@@ -284,7 +286,7 @@ export default function MergePdf() {
         pageNumber: 1,
         rotation: 0,
         backgroundColor: '#ffffff',
-        file: pdfBlob
+        file: fileUrl // 🔥 Update kiya
       }]);
     } catch (error) {
       showToast('Failed to process image', 'error');
@@ -297,13 +299,14 @@ export default function MergePdf() {
     tempPdf.addPage([595.28, 841.89]);
     const pdfBytes = await tempPdf.save();
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Blob se URL banaya
     const sourceId = `blank-${Date.now()}`;
 
     setItems(prev => [...prev, {
       id: sourceId,
       name: 'Blank A4 Page.pdf',
       type: 'blank',
-      file: pdfBlob,
+      file: fileUrl, // 🔥 Update kiya
       pages: 1,
       size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB',
       modified: new Date().toLocaleDateString()
@@ -315,7 +318,7 @@ export default function MergePdf() {
       pageNumber: 1,
       rotation: 0,
       backgroundColor: '#ffffff',
-      file: pdfBlob
+      file: fileUrl // 🔥 Update kiya
     }]);
   };
 
