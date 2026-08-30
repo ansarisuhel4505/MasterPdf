@@ -5,7 +5,7 @@ import Footer from '../components/Footer';
 import { upload } from '@vercel/blob/client';
 import {
   UploadCloud, X, ArrowRight, Settings, Trash2, Plus,
-  Sun, Moon, History, Download, Copy, CheckCircle2,
+  Sun, Moon, History, Download, Copy, CheckCircle2, 
   FileCode, Image as ImageIcon, Table, Code, List,
   Type, Eye, Layout, SlidersHorizontal, Loader2,
   ChevronDown, ChevronUp, Layers, FileText, Sparkles
