@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CSS } from '@dnd-kit/utilities'; 
 import Head from 'next/head';
-import dynamic from 'next/dynamic';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument, degrees, rgb } from 'pdf-lib';
-import { pdfjs } from 'react-pdf';
-// Import minimal CSS for react-pdf to prevent default styling issues
+
+// 🔥 FIX 1: Removed dynamic imports. Using standard imports exactly like edit-pdf.jsx
+import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
@@ -25,12 +25,10 @@ import {
   SortableContext, useSortable, arrayMove, rectSortingStrategy
 } from '@dnd-kit/sortable';
 
-// Dynamic imports for react-pdf to prevent SSR hydration errors
-const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
-const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
-
-// 🔥 THE FIX: Back to official worker (.mjs is required for react-pdf v7+)
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// 🔥 FIX 2: Window check for worker initialization exactly like edit-pdf.jsx
+if (typeof window !== 'undefined') {
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
+}
 
 const translations = {
   en: {
@@ -103,7 +101,6 @@ const translations = {
   }
 };
 
-// SortablePage component separated safely to prevent render loops
 const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePage, setPageBg, t }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
   
@@ -120,7 +117,7 @@ const SortablePage = ({ page, zoomLevel, rotatePageById, duplicatePage, removePa
       
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }}>
         <Document 
-          file={page.renderUrl} // 🔥 FIX: Display ke liye sirf URL pass karein
+          file={page.file} // 🔥 FIX 3: Passing raw File/Blob safely.
           loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">Loading...</div>}
           error={(error) => (
             <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center overflow-hidden">
@@ -203,7 +200,7 @@ export default function MergePdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const extractPagesFromPDF = async (file, sourceId, renderUrl) => {
+  const extractPagesFromPDF = async (file, sourceId) => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await PDFDocument.load(arrayBuffer);
     const totalPages = pdf.getPageCount();
@@ -217,8 +214,7 @@ export default function MergePdf() {
         pageNumber: i + 1,
         rotation: 0,
         backgroundColor: '#ffffff',
-        renderUrl: renderUrl, // 🔥 Display URL
-        file: file // 🔥 Merging process ke liye Original File
+        file: file // 🔥 Kept it simple: Original File object
       });
     }
     return newPages;
@@ -233,8 +229,7 @@ export default function MergePdf() {
     const newPages = [];
     for (const file of validPdfs) {
       const sourceId = `src-${Date.now()}-${Math.random()}`;
-      const fileUrl = URL.createObjectURL(file); // 🔥 Naya URL banaya
-      const extractedPages = await extractPagesFromPDF(file, sourceId, fileUrl);
+      const extractedPages = await extractPagesFromPDF(file, sourceId);
       newItems.push({
         id: sourceId,
         name: file.name,
@@ -266,7 +261,6 @@ export default function MergePdf() {
       page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
       const pdfBytes = await tempPdf.save();
       const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Dikhane ke liye URL banaya
 
       const sourceId = `img-${Date.now()}`;
       setItems(prev => [...prev, {
@@ -285,8 +279,7 @@ export default function MergePdf() {
         pageNumber: 1,
         rotation: 0,
         backgroundColor: '#ffffff',
-        renderUrl: fileUrl, // 🔥 Display URL pass kiya
-        file: pdfBlob // 🔥 Merge ke liye Blob rakha
+        file: pdfBlob
       }]);
     } catch (error) {
       showToast('Failed to process image', 'error');
@@ -299,7 +292,6 @@ export default function MergePdf() {
     tempPdf.addPage([595.28, 841.89]);
     const pdfBytes = await tempPdf.save();
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Dikhane ke liye URL banaya
     const sourceId = `blank-${Date.now()}`;
 
     setItems(prev => [...prev, {
@@ -318,8 +310,7 @@ export default function MergePdf() {
       pageNumber: 1,
       rotation: 0,
       backgroundColor: '#ffffff',
-      renderUrl: fileUrl, // 🔥 Display URL pass kiya
-      file: pdfBlob // 🔥 Merge ke liye Blob rakha
+      file: pdfBlob
     }]);
   };
 
@@ -342,7 +333,6 @@ export default function MergePdf() {
         const pdfBlob = await (await fetch(data.downloadUrl)).blob();
         const sourceId = `mf-${Date.now()}`;
         const arrayBuffer = await pdfBlob.arrayBuffer();
-        const fileUrl = URL.createObjectURL(pdfBlob); // 🔥 Dikhane ke liye URL banaya
         const pdf = await PDFDocument.load(arrayBuffer);
         const totalPages = pdf.getPageCount();
         
@@ -355,8 +345,7 @@ export default function MergePdf() {
             pageNumber: i + 1,
             rotation: 0,
             backgroundColor: '#ffffff',
-            renderUrl: fileUrl, // 🔥 Display URL pass kiya
-            file: pdfBlob // 🔥 Merge ke liye Blob rakha
+            file: pdfBlob
           });
         }
         setItems(prev => [...prev, { id: sourceId, name: file.name + '.pdf', type: 'multi', file: pdfBlob, pages: totalPages, size: (pdfBlob.size / (1024 * 1024)).toFixed(2) + ' MB', modified: new Date().toLocaleDateString() }]);
