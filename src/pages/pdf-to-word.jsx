@@ -24,7 +24,7 @@ const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }} className="bg-gray-50 flex items-center justify-center rounded">
-        {/* 🔥 FIX: Exact same as MergePdf - Direct page.file native object */}
+        {/* 🔥 FIX: Direct page.file (jo ab blob URL hai) */}
         <Document 
           file={page.file} 
           loading={<Loader2 size={16} className="animate-spin text-gray-400" />}
@@ -94,13 +94,16 @@ export default function PdfToWord() {
     
     const newPages = [];
     
+    // 🔥 FIX: Har page ke liye blob URL banao (File object pass karne se "Failed" aata tha)
+    const fileUrl = URL.createObjectURL(file);
+    
     for (let i = 0; i < totalPages; i++) {
       newPages.push({
         id: `page-${sourceId}-${i}`,
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        file: file, // Native File object exactly like MergePdf
+        file: fileUrl, // <-- Blob URL (stable)
         rawBuffer: uint8Array 
       });
     }
@@ -152,8 +155,20 @@ export default function PdfToWord() {
     }
   };
 
-  const removePage = (pageId) => setPages(prev => prev.filter(p => p.id !== pageId));
-  const clearAll = () => setPages([]);
+  const removePage = (pageId) => {
+    setPages(prev => {
+      const pageToRemove = prev.find(p => p.id === pageId);
+      if (pageToRemove) {
+        URL.revokeObjectURL(pageToRemove.file); // <-- BLOB URL REVOKE KARO
+      }
+      return prev.filter(p => p.id !== pageId);
+    });
+  };
+
+  const clearAll = () => {
+    pages.forEach(page => URL.revokeObjectURL(page.file)); // <-- SAB REVOKE KARO
+    setPages([]);
+  };
 
   const startProgressSimulation = () => {
     setProgress(0);
@@ -294,7 +309,6 @@ export default function PdfToWord() {
                     </div>
                   </label>
 
-                  {/* 🔥 FIX: Reverted to ConvertAPI 3-letter codes */}
                   {ocrEnabled && (
                     <div className="pl-2 pr-2">
                       <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1"><Globe size={14}/> Document Language</label>
