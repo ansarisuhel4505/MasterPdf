@@ -214,10 +214,11 @@ let fileUrls = req.body.fileUrls;
         }
 
         // 2. OCR (ConvertAPI uses 3-letter codes like 'eng', 'hin')
-        if (options.ocrEnabled) {
-          convertOptions.Ocr = 'true';
-          convertOptions.OcrLanguage = options.ocrLanguage || 'eng'; 
-        }
+       // PDF-to-Word action block ke andar
+if (options.ocrEnabled) {
+  convertOptions.Ocr = 'true';
+  convertOptions.OcrLanguage = options.ocrLanguage || 'en'; // 'eng' ko 'en' banao
+}
 
         // 3. HIGH QUALITY
         if (options.highQuality || options.ocrEnabled) {
