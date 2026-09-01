@@ -102,8 +102,8 @@ let fileUrls = req.body.fileUrls;
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const pages = pdfDoc.getPages();
 
-    // 1. METADATA SANITIZATION (Ye pdf-lib se 100% hota hai)
-    if (options.sanitizeMetadata) {
+    // 1. Metadata removal (if enabled)
+    if (options.removeMetadata) {
       pdfDoc.setTitle('');
       pdfDoc.setAuthor('');
       pdfDoc.setSubject('');
@@ -112,10 +112,9 @@ let fileUrls = req.body.fileUrls;
       pdfDoc.setCreator('');
     }
 
-    // 2. PAGE RANGE LOGIC (Only apply redaction to specific pages)
+    // 2. Page range logic
     let allowedPages = [];
     if (options.pageRange) {
-      // Parse "1-5, 8" into array of page numbers
       const rangeParts = options.pageRange.split(',');
       rangeParts.forEach(part => {
         part = part.trim();
@@ -128,20 +127,9 @@ let fileUrls = req.body.fileUrls;
       });
     }
 
-    // 3. HIDDEN DATA / COMMENTS / FORMS (pdf-lib ka limited support)
-    // ✅ METADATA done. 
-    // ❌ Comments, Layers, Attachments: pdf-lib mein direct API nahi hai. 
-    // Inko advanced library (jaise mupdf ya external API) se karna padega. 
-    // Abhi hum ise 'options' variable mein receive karte hain, par skip karte hain.
-    if (options.removeComments) {
-      // Placeholder: pdf-lib se annotations remove karna complex hai. 
-      // Real implementation ke liye aapko PDF raw structure modify karna padega.
-    }
-
-    // 4. DRAW REDACTION BOXES (With Overlay Text)
+    // 3. Draw redaction boxes
     if (boxes && boxes.length > 0) {
       boxes.forEach((box) => {
-        // Page Range check
         if (allowedPages.length > 0 && !allowedPages.includes(box.pageIndex + 1)) return;
 
         const page = pages[box.pageIndex || 0];
@@ -153,33 +141,24 @@ let fileUrls = req.body.fileUrls;
         const scaledWidth = box.width * scale;
         const scaledHeight = box.height * scale;
 
-        // Black box draw
         page.drawRectangle({
           x: scaledX,
           y: actualHeight - scaledY - scaledHeight,
           width: scaledWidth,
           height: scaledHeight,
           color: rgb(0, 0, 0),
-          opacity: 1
+          opacity: (box.opacity || 100) / 100
         });
 
-        // Overlay Text draw (agar user ne "REDACTED" likha ho)
         if (box.text) {
           page.drawText(box.text, {
             x: scaledX + 2,
             y: actualHeight - scaledY - scaledHeight + 2,
-            size: Math.min(12, scaledHeight / 3), // Auto-fit size
+            size: Math.min(12, scaledHeight / 3),
             color: rgb(1, 1, 1)
           });
         }
       });
-    }
-
-    // 5. REVERSIBLE REDACTION (Encryption Key)
-    // PDF-lib mein iska direct support nahi hai. 
-    // Iske liye custom encryption logic chahiye hogi. Abhi placeholder hai.
-    if (options.reversible) {
-      // Real implementation: Fernet encryption key generation & storage
     }
 
     const modifiedPdfBytes = await pdfDoc.save();
