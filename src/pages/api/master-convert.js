@@ -93,86 +93,44 @@ let fileUrls = req.body.fileUrls;
       }
     }
 
-   else if (action === 'redact-pdf') {
-  try {
-    const { boxes } = req.body;
-    const options = req.body.options || {};
-    
-    const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    const pages = pdfDoc.getPages();
+  else if (action === 'ai-detect-pii') {
+      if (!process.env.GROQ_API_KEY) return res.status(200).json({ error: "Groq API Key missing." });
+      try {
+        const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+        const text = await (await fetch(txtResult.response.Files[0].Url)).text();
+        const shortText = text.substring(0, 15000); // Prevent token limit error
 
-    // 1. Metadata removal (if enabled)
-    if (options.removeMetadata) {
-      pdfDoc.setTitle('');
-      pdfDoc.setAuthor('');
-      pdfDoc.setSubject('');
-      pdfDoc.setKeywords([]);
-      pdfDoc.setProducer('');
-      pdfDoc.setCreator('');
-    }
+        const prompt = `Extract all sensitive PII (Names, Phone Numbers, Emails, Social Security Numbers, Bank Accounts, Passwords) from the following text. Return ONLY a valid JSON array of exact matching strings. Do not include markdown, explanations, or any other text. Example format: ["John Doe", "+1234567890", "test@email.com"]
 
-    // 2. Page range logic
-    let allowedPages = [];
-    if (options.pageRange) {
-      const rangeParts = options.pageRange.split(',');
-      rangeParts.forEach(part => {
-        part = part.trim();
-        if (part.includes('-')) {
-          const [start, end] = part.split('-').map(Number);
-          for (let i = start; i <= end; i++) allowedPages.push(i);
-        } else if (part) {
-          allowedPages.push(Number(part));
-        }
-      });
-    }
-
-    // 3. Draw redaction boxes
-    if (boxes && boxes.length > 0) {
-      boxes.forEach((box) => {
-        if (allowedPages.length > 0 && !allowedPages.includes(box.pageIndex + 1)) return;
-
-        const page = pages[box.pageIndex || 0];
-        const { width: actualWidth, height: actualHeight } = page.getSize();
-        const scale = actualWidth / 700;
-
-        const scaledX = box.x * scale;
-        const scaledY = box.y * scale;
-        const scaledWidth = box.width * scale;
-        const scaledHeight = box.height * scale;
-
-        page.drawRectangle({
-          x: scaledX,
-          y: actualHeight - scaledY - scaledHeight,
-          width: scaledWidth,
-          height: scaledHeight,
-          color: rgb(0, 0, 0),
-          opacity: (box.opacity || 100) / 100
+Text:
+${shortText}`;
+        
+        const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
+        const aiResponse = await fetch(groqUrl, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: "mixtral-8x7b-32768",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.1
+          })
         });
+        
+        const data = await aiResponse.json();
+        let content = data.choices[0].message.content.trim();
+        
+        // Clean markdown wrapper if AI adds it
+        if (content.startsWith('```json')) content = content.replace(/```json/g, '').replace(/```/g, '').trim();
+        else if (content.startsWith('```')) content = content.replace(/```/g, '').trim();
 
-        if (box.text) {
-          page.drawText(box.text, {
-            x: scaledX + 2,
-            y: actualHeight - scaledY - scaledHeight + 2,
-            size: Math.min(12, scaledHeight / 3),
-            color: rgb(1, 1, 1)
-          });
-        }
-      });
+        const piiList = JSON.parse(content);
+        return res.status(200).json({ success: true, piiList });
+      } catch (err) {
+        console.error("AI Detect Error:", err);
+        return res.status(500).json({ error: "AI Detection failed" });
+      }
     }
 
-    const modifiedPdfBytes = await pdfDoc.save();
-    const blob = await put(`redacted-document-${Date.now()}.pdf`, modifiedPdfBytes, {
-      access: 'public',
-      contentType: 'application/pdf'
-    });
-
-    return res.status(200).json({ success: true, downloadUrl: blob.url });
-  } catch (err) {
-    console.error("Redaction Error:", err);
-    return res.status(500).json({ error: "Failed to apply redaction to the PDF." });
-  }
-}
  else if (action === 'pdf-to-word') {
       try {
         const options = req.body.options || {};
