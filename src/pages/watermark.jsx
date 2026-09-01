@@ -6,9 +6,11 @@ import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
+
+// 🔥 FIX: Added 'Stamp' and 'Loader2' to the imports
 import { 
   UploadCloud, X, Type, Image as ImageIcon, Layers, 
-  ChevronLeft, ChevronRight, Download, Sliders, Shield, LayoutGrid
+  ChevronLeft, ChevronRight, Download, Sliders, Shield, LayoutGrid, Stamp, Loader2
 } from 'lucide-react';
 
 if (typeof window !== 'undefined') {
@@ -162,10 +164,6 @@ export default function AdvancedWatermark() {
 
         const { width, height } = page.getSize();
         
-        // Z-Index Handling
-        // If Background, we actually draw over the page but we can't truly put it UNDER PDF text natively without complex content stream editing. 
-        // We use low opacity blending instead to simulate background for text overlays.
-
         if (watermarkType === 'text') {
           const textSize = Number(textOptions.fontSize);
           const angleRad = (Number(textOptions.rotation) * Math.PI) / 180;
@@ -224,7 +222,7 @@ export default function AdvancedWatermark() {
       // 4. Flatten Security
       if (flattenPdf) {
         const form = pdfDoc.getForm();
-        try { form.flatten(); } catch(e){} // Flattens interactive fields
+        try { form.flatten(); } catch(e){} 
       }
 
       // 5. Output Extraction
