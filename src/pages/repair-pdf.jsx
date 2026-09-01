@@ -7,7 +7,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { motion, AnimatePresence } from 'framer-motion'; 
 import { 
   UploadCloud, Download, FileText, Settings, CheckCircle, 
-  AlertTriangle, Loader2, Lock, Eye, Shield, Trash2, Cpu, Wrench
+  AlertTriangle, Loader2, Lock, Eye, Shield, Trash2, Cpu, Wrench, Sliders // <-- Sliders yahan add ho gaya hai
 } from 'lucide-react';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
