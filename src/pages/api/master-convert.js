@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   }
 
   const { action, fileUrl, password, boxes, pageIndices } = req.body; 
-  // Handle multiple files: if fileUrls array is present, use it; else convert single fileUrl to array
+  // Handle multiple files: if fileUrls array is present, use it; else convert single fileUrl to array 
 let fileUrls = req.body.fileUrls;
   if (!fileUrls && fileUrl) {
     fileUrls = [fileUrl];
