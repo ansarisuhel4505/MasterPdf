@@ -1,4 +1,4 @@
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { put } from '@vercel/blob';
 const convertapi = require('convertapi')(process.env.CONVERT_API_SECRET);
 
@@ -1058,16 +1058,7 @@ else if (action === 'repair-pdf') {
     return res.status(500).json({ error: "Repair process failed." });
   }
 }
-// ✅ Helper function ko handler ke bahar rakho (file ke bottom me)
-function calculateRecoveryScore(damage, tier) {
-  let score = 100;
-  if (damage.isEncrypted) score -= 20;
-  if (damage.hasMissingFonts) score -= 10;
-  if (damage.hasCorruptImages) score -= 15;
-  if (tier === 'Tier 2') score -= 30;
-  if (tier === 'Tier 3') score -= 60;
-  return Math.max(0, score);
-}
+
     
   else if (action === 'pdf-to-markdown') {
   if (!process.env.GROQ_API_KEY) {
@@ -1508,4 +1499,13 @@ else if (action === 'html-to-pdf') {
     console.error("Backend Error:", error);
     return res.status(500).json({ error: 'Server processing failed.' });
   }
+}
+function calculateRecoveryScore(damage, tier) {
+  let score = 100;
+  if (damage.isEncrypted) score -= 20;
+  if (damage.hasMissingFonts) score -= 10;
+  if (damage.hasCorruptImages) score -= 15;
+  if (tier === 'Tier 2') score -= 30;
+  if (tier === 'Tier 3') score -= 60;
+  return Math.max(0, score);
 }
