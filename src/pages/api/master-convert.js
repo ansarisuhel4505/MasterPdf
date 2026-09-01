@@ -194,25 +194,28 @@ let fileUrls = req.body.fileUrls;
     return res.status(500).json({ error: "Failed to apply redaction to the PDF." });
   }
 }
-  else if (action === 'pdf-to-word') {
+ else if (action === 'pdf-to-word') {
       try {
-        let sourceUrl = req.body.fileUrl;
-        if (!sourceUrl && req.body.fileUrls && req.body.fileUrls.length > 0) {
-            sourceUrl = req.body.fileUrls[0];
-        }
-        
-        if (!sourceUrl || sourceUrl === 'null') {
-          return res.status(400).json({ error: "File URL is missing. Upload failed on frontend." });
-        }
-
         const options = req.body.options || {};
-        const convertOptions = { File: sourceUrl };
+        let convertOptions = {};
+
+        // 🔥 NAYA CODE: Agar direct Base64 aayi hai, toh buffer pass karo URL ki jagah
+        if (req.body.fileBase64) {
+          const fileBuffer = Buffer.from(req.body.fileBase64, 'base64');
+          // ConvertAPI natively supports file buffers
+          convertOptions.File = new convertapi.FileUpload(fileBuffer, req.body.fileName || 'document.pdf');
+        } 
+        else {
+          let sourceUrl = req.body.fileUrl;
+          if (!sourceUrl && req.body.fileUrls && req.body.fileUrls.length > 0) sourceUrl = req.body.fileUrls[0];
+          if (!sourceUrl || sourceUrl === 'null') return res.status(400).json({ error: "File URL or Base64 is missing." });
+          convertOptions.File = sourceUrl;
+        }
 
         if (options.preserveLayout) {
           convertOptions.PreserveLayout = 'true';
         }
 
-        // 🔥 FIX: Safe OCR Language Assignment
         if (options.ocrEnabled) {
           convertOptions.Ocr = 'true';
           let lang = options.ocrLanguage || 'en';
