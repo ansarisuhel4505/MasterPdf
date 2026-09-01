@@ -196,70 +196,90 @@ let fileUrls = req.body.fileUrls;
 }
    else if (action === 'pdf-to-word') {
       try {
-        const fileUrls = req.body.fileUrls || [req.body.fileUrl];
-        const sourceUrl = fileUrls[0];
+        // 🔥 FIX: Strict check for fileUrl
+        let sourceUrl = req.body.fileUrl;
+        if (!sourceUrl && req.body.fileUrls && req.body.fileUrls.length > 0) {
+            sourceUrl = req.body.fileUrls[0];
+        }
+        
+        if (!sourceUrl || sourceUrl === 'null' || sourceUrl === 'undefined') {
+          throw new Error("File URL is null. Backend did not receive a valid file to process.");
+        }
 
-        // 1. Adobe OAuth 2.0 Token Generate
+        const clientId = process.env.ADOBE_CLIENT_ID;
+        const clientSecret = process.env.ADOBE_CLIENT_SECRET;
+
+        if (!clientId || !clientSecret) {
+          throw new Error("Adobe API keys are missing in environment variables.");
+        }
+
+        // 1. ADOBE OAUTH TOKEN GENERATE KAREIN
         const tokenRes = await fetch('https://pdf-services.adobe.io/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            client_id: process.env.ADOBE_CLIENT_ID,
-            client_secret: process.env.ADOBE_CLIENT_SECRET
-          })
+          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret })
         });
         const tokenData = await tokenRes.json();
+        if (!tokenData.access_token) throw new Error('Adobe Token Failed: Invalid Keys');
         const accessToken = tokenData.access_token;
 
-        if (!accessToken) {
-          throw new Error('Adobe Authentication Failed. Check API credentials.');
-        }
-
-        // 2. Upload Asset Slot Reserve
+        // 2. ASSET SLOT RESERVE KAREIN
         const assetRes = await fetch('https://pdf-services.adobe.io/assets', {
           method: 'POST',
           headers: {
-            'X-API-Key': process.env.ADOBE_CLIENT_ID,
+            'X-API-Key': clientId,
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ mediaType: 'application/pdf' })
         });
         const assetData = await assetRes.json();
-        const { uploadUri, assetID } = assetData;
+        const uploadUri = assetData.uploadUri;
+        const assetID = assetData.assetID;
 
-        // 3. Source PDF Download karke Adobe Asset slot me push karo
-        const pdfBuffer = await (await fetch(sourceUrl)).arrayBuffer();
+        // 3. FILE UPLOAD KAREIN
+        const pdfBuffer = await fetch(sourceUrl).then(res => res.arrayBuffer());
         await fetch(uploadUri, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/pdf' },
           body: pdfBuffer
         });
 
-        // 4. Adobe Export Job Run Karo (PDF to DOCX)
+        // 4. LANGUAGE MAPPER FOR ADOBE
+        const langMap = {
+          'en': 'en-US',
+          'es': 'es-ES',
+          'fr': 'fr-FR',
+          'de': 'de-DE',
+          'auto': 'en-US' // Default Adobe fallback
+        };
+        const adobeLang = langMap[req.body.options?.ocrLanguage] || 'en-US';
+
+        // 5. EXPORT JOB START KAREIN (PDF to DOCX)
         const jobRes = await fetch('https://pdf-services.adobe.io/operation/exportpdf', {
           method: 'POST',
           headers: {
-            'X-API-Key': process.env.ADOBE_CLIENT_ID,
+            'X-API-Key': clientId,
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             assetID: assetID,
             targetFormat: 'docx',
-            ocrLanguage: 'en-US'
+            ocrLanguage: adobeLang
           })
         });
-
+        
         const jobLocation = jobRes.headers.get('location');
 
-        // 5. Job Status Poll Karo (Jab tak Adobe process na kar le)
+        // 6. RESULT KA WAIT KAREIN (Polling Mechanism)
         let downloadUri = null;
-        while (!downloadUri) {
-          await new Promise((res) => setTimeout(res, 2000));
+        let attempts = 0;
+        while (!downloadUri && attempts < 25) { // Wait maximum ~50 seconds
+          await new Promise(res => setTimeout(res, 2000));
           const statusRes = await fetch(jobLocation, {
             headers: {
-              'X-API-Key': process.env.ADOBE_CLIENT_ID,
+              'X-API-Key': clientId,
               'Authorization': `Bearer ${accessToken}`
             }
           });
@@ -268,22 +288,25 @@ let fileUrls = req.body.fileUrls;
           if (statusData.status === 'done') {
             downloadUri = statusData.asset.downloadUri;
           } else if (statusData.status === 'failed') {
-            throw new Error('Adobe conversion failed on server.');
+            throw new Error('Adobe AI failed to process this specific layout.');
           }
+          attempts++;
         }
 
-        // 6. Final DOCX Download karke Vercel Blob me save karo
-        const docxBuffer = await (await fetch(downloadUri)).arrayBuffer();
-        const finalBlob = await put(`adobe_converted_${Date.now()}.docx`, docxBuffer, {
+        if (!downloadUri) throw new Error("Conversion timed out (Took too long).");
+
+        // 7. FILE DOWNLOAD AND SAVE TO VERCEL
+        const docxBuffer = await fetch(downloadUri).then(res => res.arrayBuffer());
+        const finalBlob = await put(`masterpdf_pro_word_${Date.now()}.docx`, docxBuffer, {
           access: 'public',
           contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         });
 
         return res.status(200).json({ success: true, downloadUrl: finalBlob.url });
 
-      } catch (adobeErr) {
-        console.error("Adobe PDF-to-Word Error:", adobeErr);
-        return res.status(500).json({ error: adobeErr.message || "Adobe conversion failed." });
+      } catch (err) {
+        console.error("Adobe PDF-to-Word Error:", err);
+        return res.status(500).json({ error: err.message || "Adobe Pro conversion failed." });
       }
     }
    else if (action === 'pdf-to-excel') {
