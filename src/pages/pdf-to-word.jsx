@@ -20,16 +20,13 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
 }
 
-// ==========================================
-// POSITION 1: PageThumbnail Component
-// ==========================================
 const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }} className="bg-gray-50 flex items-center justify-center rounded">
-        {/* 🔥 FIX: fileData pass kiya gaya hai (Uint8Array) jisse loading fail na ho */}
+        {/* 🔥 FIX: MergePdf ki tarah direct page.file use kar rahe hain */}
         <Document 
-          file={page.fileData} 
+          file={page.file} 
           loading={<Loader2 size={16} className="animate-spin text-gray-400" />}
           error={(error) => <div className="text-[10px] text-red-500 font-bold text-center">Failed<br/>{error?.message?.substring(0, 15)}</div>}
         >
@@ -73,9 +70,6 @@ export default function PdfToWord() {
     return () => clearInterval(progressInterval.current);
   }, []);
 
-  // ==========================================
-  // POSITION 2: extractPagesFromPDF Function
-  // ==========================================
   const extractPagesFromPDF = async (file, sourceId) => {
     let buffer;
     if (file.arrayBuffer) {
@@ -101,8 +95,7 @@ export default function PdfToWord() {
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        // 🔥 FIX: Direct memory pass (No URL, No Blob, No CORS error)
-        fileData: uint8Array, 
+        file: file, // 🔥 FIX: Direct Native File Object (Like MergePdf)
         rawBuffer: uint8Array 
       });
     }
@@ -190,17 +183,22 @@ export default function PdfToWord() {
       const finalBlob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const mainFilename = pages[0].sourceFileName.replace('.pdf', '');
 
+      // 🔥 FIX: Strict check for Vercel Blob URL to prevent "null" error
       const uploadedBlob = await upload(`to_word_${Date.now()}.pdf`, finalBlob, {
         access: 'public',
         handleUploadUrl: '/api/upload',
       });
+
+      if (!uploadedBlob || !uploadedBlob.url) {
+        throw new Error("Failed to upload file to temporary storage. Please try again.");
+      }
 
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'pdf-to-word', 
-          fileUrl: uploadedBlob.url,
+          fileUrl: uploadedBlob.url, // Ensure this is not null
           options: {
             ocrEnabled: ocrEnabled,
             ocrLanguage: ocrLanguage,
@@ -231,7 +229,7 @@ export default function PdfToWord() {
       }
     } catch (error) {
       console.error(error);
-      alert("Critical Error: Failed to connect to conversion server.");
+      alert(`Critical Error: ${error.message || "Failed to connect to conversion server."}`);
     } finally {
       clearInterval(progressInterval.current);
       setTimeout(() => { setProgress(0); setIsConverting(false); }, 1000);
