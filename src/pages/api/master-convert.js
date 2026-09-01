@@ -194,53 +194,96 @@ let fileUrls = req.body.fileUrls;
     return res.status(500).json({ error: "Failed to apply redaction to the PDF." });
   }
 }
-    else if (action === 'pdf-to-word') {
+   else if (action === 'pdf-to-word') {
       try {
-        const options = req.body.options || {};
         const fileUrls = req.body.fileUrls || [req.body.fileUrl];
-        const convertedUrls = [];
+        const sourceUrl = fileUrls[0];
 
-        for (const url of fileUrls) {
-          const convertOptions = { File: url };
+        // 1. Adobe OAuth 2.0 Token Generate
+        const tokenRes = await fetch('https://pdf-services.adobe.io/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: process.env.ADOBE_CLIENT_ID,
+            client_secret: process.env.ADOBE_CLIENT_SECRET
+          })
+        });
+        const tokenData = await tokenRes.json();
+        const accessToken = tokenData.access_token;
 
-          // 🔥 1. LAYOUT PRESERVATION
-          convertOptions.PreserveLayout = options.preserveLayout === false ? 'false' : 'true';
+        if (!accessToken) {
+          throw new Error('Adobe Authentication Failed. Check API credentials.');
+        }
 
-          // 🔥 2. STRICT LANGUAGE FIX (CRASH PREVENTER)
-          if (options.ocrEnabled) {
-            convertOptions.Ocr = 'true';
-            let rawLang = options.ocrLanguage || 'en';
-            
-            // API Supported Exact Codes
-            const validLangs = ['auto', 'ar', 'ca', 'zh', 'da', 'nl', 'en', 'fi', 'fr', 'de', 'el', 'ko', 'it', 'ja', 'no', 'pl', 'pt', 'ro', 'ru', 'sl', 'es', 'sv', 'tr', 'ua', 'th'];
-            
-            // Agar language supported list me hai toh wo use karo, warna 'auto' kardo taki crash na ho
-            if (validLangs.includes(rawLang)) {
-              convertOptions.OcrLanguage = rawLang;
-            } else {
-              convertOptions.OcrLanguage = 'auto'; 
+        // 2. Upload Asset Slot Reserve
+        const assetRes = await fetch('https://pdf-services.adobe.io/assets', {
+          method: 'POST',
+          headers: {
+            'X-API-Key': process.env.ADOBE_CLIENT_ID,
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ mediaType: 'application/pdf' })
+        });
+        const assetData = await assetRes.json();
+        const { uploadUri, assetID } = assetData;
+
+        // 3. Source PDF Download karke Adobe Asset slot me push karo
+        const pdfBuffer = await (await fetch(sourceUrl)).arrayBuffer();
+        await fetch(uploadUri, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/pdf' },
+          body: pdfBuffer
+        });
+
+        // 4. Adobe Export Job Run Karo (PDF to DOCX)
+        const jobRes = await fetch('https://pdf-services.adobe.io/operation/exportpdf', {
+          method: 'POST',
+          headers: {
+            'X-API-Key': process.env.ADOBE_CLIENT_ID,
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            assetID: assetID,
+            targetFormat: 'docx',
+            ocrLanguage: 'en-US'
+          })
+        });
+
+        const jobLocation = jobRes.headers.get('location');
+
+        // 5. Job Status Poll Karo (Jab tak Adobe process na kar le)
+        let downloadUri = null;
+        while (!downloadUri) {
+          await new Promise((res) => setTimeout(res, 2000));
+          const statusRes = await fetch(jobLocation, {
+            headers: {
+              'X-API-Key': process.env.ADOBE_CLIENT_ID,
+              'Authorization': `Bearer ${accessToken}`
             }
-          }
+          });
+          const statusData = await statusRes.json();
 
-          // 🔥 3. HIGH QUALITY SCANS (300 DPI)
-          if (options.highQuality || options.ocrEnabled) {
-            convertOptions.ImageResolution = '300';
+          if (statusData.status === 'done') {
+            downloadUri = statusData.asset.downloadUri;
+          } else if (statusData.status === 'failed') {
+            throw new Error('Adobe conversion failed on server.');
           }
-
-          const result = await convertapi.convert('docx', convertOptions, 'pdf');
-          convertedUrls.push(result.response.Files[0].Url);
         }
 
-        // Return logic
-        if (convertedUrls.length > 1 && !options.merge) {
-          return res.status(200).json({ success: true, downloadUrls: convertedUrls });
-        } else {
-          return res.status(200).json({ success: true, downloadUrl: convertedUrls[0] });
-        }
+        // 6. Final DOCX Download karke Vercel Blob me save karo
+        const docxBuffer = await (await fetch(downloadUri)).arrayBuffer();
+        const finalBlob = await put(`adobe_converted_${Date.now()}.docx`, docxBuffer, {
+          access: 'public',
+          contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        });
 
-      } catch (err) {
-        console.error("PDF-to-Word error:", err);
-        return res.status(500).json({ error: "Advanced PDF to Word conversion failed." });
+        return res.status(200).json({ success: true, downloadUrl: finalBlob.url });
+
+      } catch (adobeErr) {
+        console.error("Adobe PDF-to-Word Error:", adobeErr);
+        return res.status(500).json({ error: adobeErr.message || "Adobe conversion failed." });
       }
     }
    else if (action === 'pdf-to-excel') {
