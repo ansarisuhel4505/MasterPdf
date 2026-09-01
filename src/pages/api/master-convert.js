@@ -201,18 +201,18 @@ let fileUrls = req.body.fileUrls;
             sourceUrl = req.body.fileUrls[0];
         }
         
-        if (!sourceUrl || sourceUrl === 'null') {
-          throw new Error("File upload failed on frontend. Please try again.");
+        if (!sourceUrl || sourceUrl === 'null' || sourceUrl === 'undefined') {
+          throw new Error("File URL is missing. Upload failed on frontend.");
         }
 
         const clientId = process.env.ADOBE_CLIENT_ID;
         const clientSecret = process.env.ADOBE_CLIENT_SECRET;
 
         if (!clientId || !clientSecret) {
-          throw new Error("Adobe API keys are missing in environment variables.");
+          throw new Error("Adobe API keys are missing in Vercel environment variables.");
         }
 
-        // 1. ADOBE OAUTH TOKEN (Latest Endpoint)
+        // 1. ADOBE OAUTH TOKEN GENERATE
         const tokenRes = await fetch('https://pdf-services-ue1.adobe.io/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -224,7 +224,7 @@ let fileUrls = req.body.fileUrls;
         }
         const accessToken = tokenData.access_token;
 
-        // 2. ASSET SLOT RESERVE KAREIN
+        // 2. ASSET SLOT RESERVE
         const assetRes = await fetch('https://pdf-services-ue1.adobe.io/assets', {
           method: 'POST',
           headers: {
@@ -236,17 +236,13 @@ let fileUrls = req.body.fileUrls;
         });
         const assetData = await assetRes.json();
         
-        // 🔥 CRASH PREVENTER: Agar uploadUri null aaya, yahi error throw karo
         if (!assetRes.ok || !assetData.uploadUri) {
-          throw new Error(`Adobe Asset Error: API did not return Upload URL. Response: ${JSON.stringify(assetData)}`);
+          throw new Error(`Adobe Asset Error: ${JSON.stringify(assetData)}`);
         }
-        
-        const uploadUri = assetData.uploadUri;
-        const assetID = assetData.assetID;
 
-        // 3. FILE UPLOAD KAREIN
+        // 3. FILE UPLOAD TO ADOBE
         const pdfBuffer = await fetch(sourceUrl).then(res => res.arrayBuffer());
-        await fetch(uploadUri, {
+        await fetch(assetData.uploadUri, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/pdf' },
           body: pdfBuffer
@@ -256,7 +252,16 @@ let fileUrls = req.body.fileUrls;
         const langMap = { 'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR', 'de': 'de-DE', 'auto': 'en-US' };
         const adobeLang = langMap[req.body.options?.ocrLanguage] || 'en-US';
 
-        // 5. EXPORT JOB START KAREIN (PDF to DOCX)
+        // 5. EXPORT JOB START (CRASH FIX: Used 'ocrLang' instead of 'ocrLanguage')
+        const payload = {
+          assetID: assetData.assetID,
+          targetFormat: 'docx'
+        };
+        // Adobe rejects the request if ocrLang is passed when OCR is not explicitly required or if key is wrong
+        if (req.body.options?.ocrEnabled) {
+          payload.ocrLang = adobeLang; 
+        }
+
         const jobRes = await fetch('https://pdf-services-ue1.adobe.io/operation/exportpdf', {
           method: 'POST',
           headers: {
@@ -264,23 +269,20 @@ let fileUrls = req.body.fileUrls;
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            assetID: assetID,
-            targetFormat: 'docx',
-            ocrLanguage: adobeLang
-          })
+          body: JSON.stringify(payload)
         });
         
-        if (!jobRes.ok) {
-           const jobErr = await jobRes.text();
-           throw new Error(`Adobe Export Error: ${jobErr}`);
+        const jobLocation = jobRes.headers.get('location') || jobRes.headers.get('Location');
+        
+        if (!jobLocation) {
+          const errDetails = await jobRes.text();
+          throw new Error(`Adobe Export Job Failed. Details: ${errDetails}`);
         }
-        const jobLocation = jobRes.headers.get('location');
 
         // 6. RESULT KA WAIT KAREIN
         let downloadUri = null;
         let attempts = 0;
-        while (!downloadUri && attempts < 25) { 
+        while (!downloadUri && attempts < 30) { 
           await new Promise(res => setTimeout(res, 2000));
           const statusRes = await fetch(jobLocation, {
             headers: { 'X-API-Key': clientId, 'Authorization': `Bearer ${accessToken}` }
@@ -290,12 +292,12 @@ let fileUrls = req.body.fileUrls;
           if (statusData.status === 'done') {
             downloadUri = statusData.asset.downloadUri;
           } else if (statusData.status === 'failed') {
-            throw new Error('Adobe AI failed to process this specific layout.');
+            throw new Error(`Adobe AI processing failed for this specific document layout.`);
           }
           attempts++;
         }
 
-        if (!downloadUri) throw new Error("Conversion timed out.");
+        if (!downloadUri) throw new Error("Conversion Timed Out.");
 
         // 7. FILE DOWNLOAD AND SAVE
         const docxBuffer = await fetch(downloadUri).then(res => res.arrayBuffer());
