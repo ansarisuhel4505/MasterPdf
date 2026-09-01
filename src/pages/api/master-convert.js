@@ -885,24 +885,20 @@ let fileUrls = req.body.fileUrls;
         PdfaFormat: formatLevel
       }, 'pdf');
     }
-    else if (action === 'compress-pdf') result = await convertapi.convert('compress', { File: fileUrl }, 'pdf');
-    
-  // ============================================================
-// 🔧 REPAIR PDF – Enterprise Grade A-to-Z
-// ============================================================
+   else if (action === 'compress-pdf') result = await convertapi.convert('compress', { File: fileUrl }, 'pdf');
 else if (action === 'repair-pdf') {
   try {
     const { fileUrl, options } = req.body;
-    const recoveryLevel = options?.recoveryLevel || 'auto'; // 'quick' | 'balanced' | 'deep'
-    const applyTransform = options?.applyTransform || {};   // { compress, watermark, encrypt, ... }
+    const recoveryLevel = options?.recoveryLevel || 'auto';
+    const applyTransform = options?.applyTransform || {};
     const aiCleanup = options?.aiCleanup || false;
-    const includeReport = options?.includeReport !== false;  // default true
+    const includeReport = options?.includeReport !== false;
 
     // Fetch file bytes
     const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
     const originalSize = pdfBytes.byteLength;
 
-    // === Damage Analysis (Diagnostics) ===
+    // Damage Analysis
     let damageReport = {
       isEncrypted: false,
       hasMissingFonts: false,
@@ -911,15 +907,12 @@ else if (action === 'repair-pdf') {
       note: ''
     };
 
-    // Use pdf-lib to attempt a basic load (will throw if encrypted or broken)
     try {
-      const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: false });
-      // If we get here, file is structurally OK – maybe only minor issues
+      await PDFDocument.load(pdfBytes, { ignoreEncryption: false });
     } catch (e) {
       damageReport.note = e.message;
     }
 
-    // Try loading with ignoreEncryption to check if it's just password
     try {
       await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     } catch (e) {
@@ -927,44 +920,39 @@ else if (action === 'repair-pdf') {
       damageReport.note = "File is password-protected.";
     }
 
-    // ====== TIER 1 – STRUCTURAL REBUILD ======
+    // TIER 1
     let tier1Success = false;
     let recoveredBytes = null;
     let recoveryTier = 'Tier 1';
 
     try {
       const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true, updateMetadata: false });
-      // Remove broken resources? We'll just save; pdf-lib will reconstruct cross-refs
-      recoveredBytes = await pdfDoc.save({ useObjectStreams: false }); // force rewrite
+      recoveredBytes = await pdfDoc.save({ useObjectStreams: false });
       tier1Success = true;
     } catch (tier1Err) {
       console.log("Tier 1 failed:", tier1Err.message);
     }
 
-    // ====== TIER 2 – CONTENT RECOVERY (if Tier 1 failed) ======
+    // TIER 2
     if (!tier1Success) {
       recoveryTier = 'Tier 2';
       try {
-        // Use pdfjs-dist to get raw text and images? We'll simulate with ConvertAPI 'repair'
-        // Actually ConvertAPI's 'repair' endpoint can do a deeper repair
         const repairResult = await convertapi.convert('repair', { File: fileUrl }, 'pdf');
         const repairUrl = repairResult.response.Files[0].Url;
         const repairedPdf = await fetch(repairUrl).then(r => r.arrayBuffer());
         recoveredBytes = repairedPdf;
-        tier1Success = true; // Tier 2 succeeded
+        tier1Success = true;
       } catch (tier2Err) {
         console.log("Tier 2 failed:", tier2Err.message);
       }
     }
 
-    // ====== TIER 3 – TEXT EXTRACTION + REBUILD ======
+    // TIER 3
     if (!tier1Success) {
       recoveryTier = 'Tier 3';
       try {
-        // Extract text via ConvertAPI
         const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
         const textContent = await (await fetch(txtResult.response.Files[0].Url)).text();
-        // Create a new PDF with only text (no formatting)
         const newDoc = await PDFDocument.create();
         const page = newDoc.addPage([600, 800]);
         const font = await newDoc.embedFont(StandardFonts.Helvetica);
@@ -975,19 +963,16 @@ else if (action === 'repair-pdf') {
         recoveredBytes = await newDoc.save();
         recoveryTier = 'Tier 3 – Text-Only (no images)';
       } catch (tier3Err) {
-        console.log("Tier 3 failed:", tier3Err.message);
         return res.status(500).json({ error: "File is mathematically destroyed beyond recovery." });
       }
     }
 
-    // === AI Cleanup (optional) ===
+    // AI Cleanup
     if (aiCleanup && process.env.GROQ_API_KEY) {
       try {
-        // Extract text from the repaired PDF to feed AI
         const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
         const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
         const aiPrompt = `Clean up the metadata of a PDF. Suggest a title, author, and keywords based on the following content.\nContent:\n${extractedText.substring(0, 3000)}`;
-        // Call Groq API (as before) and then set metadata
         const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
@@ -999,9 +984,7 @@ else if (action === 'repair-pdf') {
         });
         const aiData = await aiResponse.json();
         const aiText = aiData.choices?.[0]?.message?.content || '';
-        // Simple parse of JSON response (we'll assume AI returns JSON like {title, author, keywords})
         const meta = JSON.parse(aiText);
-        // Load recovered PDF and set metadata
         const pdfDoc = await PDFDocument.load(recoveredBytes);
         if (meta.title) pdfDoc.setTitle(meta.title);
         if (meta.author) pdfDoc.setAuthor(meta.author);
@@ -1012,21 +995,18 @@ else if (action === 'repair-pdf') {
       }
     }
 
-    // === Post-Repair Transformations ===
+    // Post-Repair Transformations
     let finalBytes = recoveredBytes;
     let finalUrl = null;
 
-    // Compress (if requested)
     if (applyTransform.compress) {
       try {
-        // Upload interim PDF, use ConvertAPI compress
         const tmpBlob = await put(`temp-repaired-${Date.now()}.pdf`, finalBytes, { access: 'public', contentType: 'application/pdf' });
         const compressResult = await convertapi.convert('compress', { File: tmpBlob.url }, 'pdf');
         finalBytes = await fetch(compressResult.response.Files[0].Url).then(r => r.arrayBuffer());
       } catch (e) { console.log("Compress failed:", e.message); }
     }
 
-    // Watermark (if requested)
     if (applyTransform.watermark) {
       try {
         const tmpBlob = await put(`temp-repaired-${Date.now()}.pdf`, finalBytes, { access: 'public', contentType: 'application/pdf' });
@@ -1040,7 +1020,6 @@ else if (action === 'repair-pdf') {
       } catch (e) { console.log("Watermark failed:", e.message); }
     }
 
-    // Encrypt (if requested)
     if (applyTransform.encrypt && applyTransform.encrypt.password) {
       const tmpBlob = await put(`temp-repaired-${Date.now()}.pdf`, finalBytes, { access: 'public', contentType: 'application/pdf' });
       const encResult = await convertapi.convert('encrypt', {
@@ -1052,14 +1031,12 @@ else if (action === 'repair-pdf') {
       finalBytes = await fetch(encResult.response.Files[0].Url).then(r => r.arrayBuffer());
     }
 
-    // Upload final PDF to Vercel Blob
     const blob = await put(`repaired-${Date.now()}.pdf`, finalBytes, {
       access: 'public',
       contentType: 'application/pdf'
     });
     finalUrl = blob.url;
 
-    // === Build recovery report ===
     const recoveryReport = {
       originalSize,
       finalSize: finalBytes.byteLength,
@@ -1071,7 +1048,6 @@ else if (action === 'repair-pdf') {
       timestamp: new Date().toISOString()
     };
 
-    // Return response with optional report
     const responseData = { success: true, downloadUrl: finalUrl };
     if (includeReport) responseData.report = recoveryReport;
 
@@ -1082,8 +1058,7 @@ else if (action === 'repair-pdf') {
     return res.status(500).json({ error: "Repair process failed." });
   }
 }
-
-// Helper function to estimate recovery score (you can refine)
+// ✅ Helper function ko handler ke bahar rakho (file ke bottom me)
 function calculateRecoveryScore(damage, tier) {
   let score = 100;
   if (damage.isEncrypted) score -= 20;
