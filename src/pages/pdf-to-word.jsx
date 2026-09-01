@@ -16,7 +16,7 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
 }
 
-// 🔥 FAST THUMBNAIL COMPONENT (No more crashes or "Failed" errors)
+// FAST THUMBNAIL COMPONENT 
 const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
@@ -54,7 +54,7 @@ export default function PdfToWord() {
   const [zoomLevel, setZoomLevel] = useState(120);
   
   const [ocrEnabled, setOcrEnabled] = useState(true);
-  const [ocrLanguage, setOcrLanguage] = useState('en'); // 🔥 FIX: Default to 'en'
+  const [ocrLanguage, setOcrLanguage] = useState('en'); 
   const [highQuality, setHighQuality] = useState(true);
   const [preserveLayout, setPreserveLayout] = useState(true);
   
@@ -68,14 +68,13 @@ export default function PdfToWord() {
     return () => clearInterval(progressInterval.current);
   }, []);
 
-  // 🔥 FAST BASE64 THUMBNAIL EXTRACTOR (Memory Safe)
+  // FAST BASE64 THUMBNAIL EXTRACTOR (Memory Safe)
   const extractPagesFromPDF = async (file, sourceId) => {
     const arrayBuffer = await file.arrayBuffer();
     
     // .slice(0) is used to prevent pdfjs from detaching our original buffer
     const uint8Array = new Uint8Array(arrayBuffer.slice(0)); 
     
-    // Thumbnails ke liye PDFJS (Fast Canvas Render)
     const pdfJsDoc = await pdfjs.getDocument({ data: uint8Array }).promise;
     const totalPages = pdfJsDoc.numPages; 
     
@@ -83,7 +82,7 @@ export default function PdfToWord() {
     
     for (let i = 1; i <= totalPages; i++) {
       const page = await pdfJsDoc.getPage(i);
-      const viewport = page.getViewport({ scale: 0.5 }); // Low scale for fast thumbnail rendering
+      const viewport = page.getViewport({ scale: 0.5 }); 
       
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -99,7 +98,7 @@ export default function PdfToWord() {
         sourceFileName: file.name,
         pageNumber: i,
         thumbnail: thumbnailUrl, 
-        file: file // 🔥 IMPORTANT: Save original File object for fresh buffer reading later
+        file: file 
       });
     }
     return newPages;
@@ -168,7 +167,7 @@ export default function PdfToWord() {
     }, 400);
   };
 
- const convertToWord = async () => {
+  const convertToWord = async () => {
     if (pages.length === 0) return;
     setIsConverting(true);
     startProgressSimulation();
@@ -189,20 +188,26 @@ export default function PdfToWord() {
       }
 
       const finalPdfBytes = await newPdf.save();
+      const finalBlob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const mainFilename = pages[0].sourceFileName.replace('.pdf', '');
 
-      // 🔥 SUPER FAST FIX: Skip Vercel Blob Upload, Send Base64 Directly
-      const base64String = btoa(
-        new Uint8Array(finalPdfBytes).reduce((data, byte) => data + String.fromCharCode(byte), '')
-      );
+      // 1. SAFE UPLOAD: Vercel Blob par wapas upload karna taaki 4.5MB limit hit na ho
+      const uploadedBlob = await upload(`to_word_${Date.now()}.pdf`, finalBlob, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      });
 
+      if (!uploadedBlob || !uploadedBlob.url) {
+        throw new Error("Failed to upload file to temporary storage. Please try again.");
+      }
+
+      // 2. CONVERT API CALL
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'pdf-to-word', 
-          fileBase64: base64String, // <-- Seedha Base64 bheja
-          fileName: `${mainFilename}.pdf`,
+          fileUrl: uploadedBlob.url, // URL bheja, Base64 nahi
           options: {
             ocrEnabled: ocrEnabled,
             ocrLanguage: ocrLanguage,
@@ -215,7 +220,7 @@ export default function PdfToWord() {
       const data = await response.json();
       
       if (response.ok && data.downloadUrl) {
-        // Fast local download
+        // FAST LOCAL DOWNLOAD
         const docRes = await fetch(data.downloadUrl);
         const docBlob = await docRes.blob();
         const localUrl = URL.createObjectURL(docBlob);
@@ -246,6 +251,7 @@ export default function PdfToWord() {
       setTimeout(() => { setProgress(0); setIsConverting(false); }, 1000);
     }
   };
+
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head>
