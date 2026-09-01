@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Head from 'next/head';
-import dynamic from 'next/dynamic';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { PDFDocument } from 'pdf-lib';
@@ -13,30 +12,24 @@ import {
   History, Loader2, Trash2, CheckCircle2, FolderOpen, Layers, Globe
 } from 'lucide-react';
 
-const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
-const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
-
 if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
 }
 
+// 🔥 NAYA THUMBNAIL COMPONENT (Jo kabhi crash nahi hoga)
 const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }} className="bg-gray-50 flex items-center justify-center rounded">
-        {/* 🔥 FIX: Direct page.file (jo ab blob URL hai) */}
-        <Document 
-          file={page.file} 
-          loading={<Loader2 size={16} className="animate-spin text-gray-400" />}
-          error={(error) => (
-            <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center overflow-hidden">
-              <span>Failed</span>
-              <span className="font-normal text-gray-400 mt-1" title={error?.message}>{error?.message?.substring(0,35)}</span>
-            </div>
-          )}
-        >
-          <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
-        </Document>
+        {page.thumbnail ? (
+          <img 
+            src={page.thumbnail} 
+            alt={`Page ${page.pageNumber}`} 
+            className="w-full h-full object-contain pointer-events-none" 
+          />
+        ) : (
+          <Loader2 size={16} className="animate-spin text-gray-400" />
+        )}
       </div>
       <div className="flex justify-between items-center mt-2 border-t pt-2">
         <span className="text-[10px] font-bold text-gray-500 truncate w-20" title={page.sourceFileName}>
@@ -61,7 +54,7 @@ export default function PdfToWord() {
   const [zoomLevel, setZoomLevel] = useState(120);
   
   const [ocrEnabled, setOcrEnabled] = useState(true);
-  const [ocrLanguage, setOcrLanguage] = useState('en');
+  const [ocrLanguage, setOcrLanguage] = useState('en'); // 🔥 Default fix kiya
   const [highQuality, setHighQuality] = useState(true);
   const [preserveLayout, setPreserveLayout] = useState(true);
   
@@ -75,40 +68,53 @@ export default function PdfToWord() {
     return () => clearInterval(progressInterval.current);
   }, []);
 
-const extractPagesFromPDF = async (file, sourceId) => {
-  let buffer;
-  if (file.arrayBuffer) {
-    buffer = await file.arrayBuffer();
-  } else {
-    buffer = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  }
+  // 🔥 FAST BASE64 THUMBNAIL EXTRACTOR
+  const extractPagesFromPDF = async (file, sourceId) => {
+    let buffer;
+    if (file.arrayBuffer) {
+      buffer = await file.arrayBuffer();
+    } else {
+      buffer = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+    }
 
-  const uint8Array = new Uint8Array(buffer);
-  const pdf = await PDFDocument.load(uint8Array, { ignoreEncryption: true }); 
-  const totalPages = pdf.getPageCount();
-  
-  const newPages = [];
-  
-  // 🔥 Ek hi Blob URL banayenge saare pages ke liye
-  const fileUrl = URL.createObjectURL(file); 
-  
-  for (let i = 0; i < totalPages; i++) {
-    newPages.push({
-      id: `page-${sourceId}-${i}`,
-      sourceId,
-      sourceFileName: file.name,
-      pageNumber: i + 1,
-      file: fileUrl,        // <-- Blob URL wapas use karo (ye crash nahi hoga)
-      rawBuffer: uint8Array 
-    });
-  }
-  return newPages;
-};
+    const uint8Array = new Uint8Array(buffer);
+    
+    // ConvertAPI/PDF-Lib ke merge ke liye buffer
+    const pdf = await PDFDocument.load(uint8Array, { ignoreEncryption: true }); 
+    const totalPages = pdf.getPageCount();
+    
+    // Thumbnails ke liye PDFJS (Fast Canvas Render)
+    const pdfJsDoc = await pdfjs.getDocument({ data: uint8Array }).promise;
+    const newPages = [];
+    
+    for (let i = 1; i <= totalPages; i++) {
+      const page = await pdfJsDoc.getPage(i);
+      const viewport = page.getViewport({ scale: 0.5 }); // Low scale for thumbnail speed
+      
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      
+      await page.render({ canvasContext: context, viewport }).promise;
+      const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+      newPages.push({
+        id: `page-${sourceId}-${i - 1}`,
+        sourceId,
+        sourceFileName: file.name,
+        pageNumber: i,
+        thumbnail: thumbnailUrl, 
+        rawBuffer: uint8Array
+      });
+    }
+    return newPages;
+  };
 
   const handleFileChange = async (e) => {
     if (!e.target.files) return;
@@ -154,17 +160,15 @@ const extractPagesFromPDF = async (file, sourceId) => {
       setPages(prev => [...prev, ...newPages]);
     }
   };
-const removePage = (pageId) => {
-  // 🔥 Yahan par URL revoke NAHI karna hai (isiliye crash ho raha tha)
-  setPages(prev => prev.filter(p => p.id !== pageId));
-};
 
-const clearAll = () => {
-  // 🔥 Yahan safely saare URLs memory se hatao aur list khali karo
-  const uniqueUrls = [...new Set(pages.map(p => p.file))];
-  uniqueUrls.forEach(url => URL.revokeObjectURL(url));
-  setPages([]);
-};
+  const removePage = (pageId) => {
+    setPages(prev => prev.filter(p => p.id !== pageId));
+  };
+
+  const clearAll = () => {
+    setPages([]);
+  };
+
   const startProgressSimulation = () => {
     setProgress(0);
     progressInterval.current = setInterval(() => {
@@ -225,15 +229,22 @@ const clearAll = () => {
       const data = await response.json();
       
       if (response.ok && data.downloadUrl) {
+        // 🔥 FAST LOCAL DOWNLOAD FIX
+        const docRes = await fetch(data.downloadUrl);
+        const docBlob = await docRes.blob();
+        const localUrl = URL.createObjectURL(docBlob);
+
         clearInterval(progressInterval.current);
         setProgress(100);
         
         const link = document.createElement('a');
-        link.href = data.downloadUrl;
+        link.href = localUrl;
         link.setAttribute('download', `${mainFilename}_MasterPdf.docx`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+
+        setTimeout(() => URL.revokeObjectURL(localUrl), 2000); // Cleanup memory
 
         const newRecent = [{ name: `${mainFilename}.docx`, time: new Date().toLocaleString() }, ...recentFiles].slice(0, 5);
         setRecentFiles(newRecent);
