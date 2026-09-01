@@ -24,14 +24,13 @@ const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }} className="bg-gray-50 flex items-center justify-center rounded">
-        {/* 🔥 FIX: Exact same as MergePdf - Direct page.file implementation */}
+        {/* 🔥 FIX: Uses foolproof blob URL for rendering */}
         <Document 
-          file={page.file} 
+          file={page.previewUrl} 
           loading={<Loader2 size={16} className="animate-spin text-gray-400" />}
           error={(error) => (
             <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center overflow-hidden">
               <span>Failed</span>
-              <span className="font-normal text-gray-400 mt-1" title={error?.message}>{error?.message?.substring(0,35)}</span>
             </div>
           )}
         >
@@ -72,7 +71,12 @@ export default function PdfToWord() {
   useEffect(() => {
     const saved = localStorage.getItem('masterpdf-recent-word');
     if (saved) setRecentFiles(JSON.parse(saved));
-    return () => clearInterval(progressInterval.current);
+    
+    // Cleanup Object URLs on unmount to prevent memory leaks
+    return () => {
+      clearInterval(progressInterval.current);
+      pages.forEach(p => URL.revokeObjectURL(p.previewUrl));
+    };
   }, []);
 
   const extractPagesFromPDF = async (file, sourceId) => {
@@ -92,16 +96,19 @@ export default function PdfToWord() {
     const pdf = await PDFDocument.load(uint8Array, { ignoreEncryption: true }); 
     const totalPages = pdf.getPageCount();
     
-    const newPages = [];
+    // 🔥 SAFE PREVIEW URL GENERATION
+    const blobForPreview = new Blob([uint8Array], { type: 'application/pdf' });
+    const safePreviewUrl = URL.createObjectURL(blobForPreview);
     
+    const newPages = [];
     for (let i = 0; i < totalPages; i++) {
       newPages.push({
         id: `page-${sourceId}-${i}`,
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        file: file, // 🔥 Exactly identical to MergePdf implementation
-        rawBuffer: uint8Array 
+        previewUrl: safePreviewUrl, // 🔥 Secure URL passed to React-PDF
+        rawBuffer: uint8Array // Kept for merging later
       });
     }
     return newPages;
@@ -233,7 +240,7 @@ export default function PdfToWord() {
       }
     } catch (error) {
       console.error(error);
-      alert(`Critical Error: ${error.message || "Failed to connect to conversion server."}`);
+      alert(`Error: ${error.message || "Failed to connect to server."}`);
     } finally {
       clearInterval(progressInterval.current);
       setTimeout(() => { setProgress(0); setIsConverting(false); }, 1000);
