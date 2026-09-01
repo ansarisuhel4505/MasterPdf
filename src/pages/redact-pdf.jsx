@@ -7,19 +7,22 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import {
   UploadCloud, X, Trash2, Sun, Moon, History,
   Settings, ChevronDown, ChevronUp, Search,
-  Shield, Loader2, Sparkles, AlertCircle
+  Shield, Loader2, Sparkles
 } from 'lucide-react';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// 🔥 FIX 1: Safe Worker URL (Matches your pdf-to-word file to prevent version crash)
+if (typeof window !== 'undefined') {
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
+}
 
 const ACCEPTED_FORMATS = '.pdf';
-const MAX_FILE_SIZE = 100 * 1024 * 1024;
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 export default function RedactPdf() {
   const [file, setFile] = useState(null);
-  const [fileUrl, setFileUrl] = useState('');
+  const [fileUrl, setFileUrl] = useState(''); // Local preview URL
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [boxes, setBoxes] = useState([]); 
@@ -32,7 +35,6 @@ export default function RedactPdf() {
   const [searchText, setSearchText] = useState('');
   const [drawMode, setDrawMode] = useState(true);
   
-  // 🔥 NAYA STATE: PDF js object ko memory mein save karne ke liye
   const [pdfDocProxy, setPdfDocProxy] = useState(null);
 
   const [options, setOptions] = useState({
@@ -53,9 +55,31 @@ export default function RedactPdf() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleFileChange = async (e) => {
+  useEffect(() => {
+    const saved = localStorage.getItem('masterpdf_redact_history');
+    if (saved) setHistory(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('masterpdf_redact_history', JSON.stringify(history));
+  }, [history]);
+
+  const validateFile = (file) => {
+    if (file.type !== 'application/pdf') {
+      showToast("Invalid file type. Only PDF allowed.", 'error');
+      return false;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      showToast("File too large. Max 100 MB.", 'error');
+      return false;
+    }
+    return true;
+  };
+
+  // 🔥 FIX 2: Instant Local Preview (Prevents "Failed to load PDF file")
+  const handleFileChange = (e) => {
     const selectedFile = e.target.files?.[0];
-    if (!selectedFile || selectedFile.type !== 'application/pdf') return;
+    if (!selectedFile || !validateFile(selectedFile)) return;
     
     setFile(selectedFile);
     setBoxes([]);
@@ -63,12 +87,27 @@ export default function RedactPdf() {
     setSearchText('');
     setPdfDocProxy(null);
     
-    const blob = await upload(selectedFile.name, selectedFile, { access: 'public', handleUploadUrl: '/api/upload' });
-    setFileUrl(blob.url);
+    // Create instant local URL for viewer, avoid network CORS errors
+    setFileUrl(URL.createObjectURL(selectedFile));
     e.target.value = '';
   };
 
+  const handleDrop = (e) => {
+    e.preventDefault();
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (!droppedFile || !validateFile(droppedFile)) return;
+    
+    setFile(droppedFile);
+    setBoxes([]);
+    setCurrentPage(1);
+    setSearchText('');
+    setPdfDocProxy(null);
+    
+    setFileUrl(URL.createObjectURL(droppedFile));
+  };
+
   const clearAll = () => {
+    if (fileUrl) URL.revokeObjectURL(fileUrl);
     setFile(null);
     setFileUrl('');
     setBoxes([]);
@@ -76,13 +115,12 @@ export default function RedactPdf() {
     setPdfDocProxy(null);
   };
 
-  // 🔥 PDF LOAD HONE PAR MEMORY MEIN RAKHO
   const onDocumentLoadSuccess = (pdfDoc) => {
     setNumPages(pdfDoc.numPages);
     setPdfDocProxy(pdfDoc);
   };
 
-  // --- MANUAL MOUSE DRAWING (Perfect Coordinates) ---
+  // --- MANUAL MOUSE DRAWING (100% REAL) ---
   const handleMouseDown = (e) => {
     if (!drawMode) return;
     const rect = pdfContainerRef.current.getBoundingClientRect();
@@ -129,7 +167,7 @@ export default function RedactPdf() {
     setBoxes(prev => prev.filter((_, i) => i !== index));
   };
 
-  // 🔥 REAL-TIME TEXT FINDER & MARKER (Magic Math)
+  // --- 🔥 REAL TEXT FINDER & MARKER (Extracts exact PDF coordinates) ---
   const performSearchAndMark = async (searchTerms) => {
     if (!pdfDocProxy || searchTerms.length === 0) return;
     setIsProcessing(true);
@@ -148,13 +186,12 @@ export default function RedactPdf() {
           const isMatch = terms.some(term => str.includes(term));
           
           if (isMatch && item.str.trim() !== "") {
-            // Transform matrix: [scaleX, skewY, skewX, scaleY, tx, ty]
             const tx = item.transform[4];
             const ty = item.transform[5];
             const fontHeight = item.transform[3] || item.height || 10;
             const width = item.width;
 
-            // Convert PDF Native (bottom-left) coordinates to Frontend Percentages (top-left)
+            // Map native PDF coordinates to frontend percentage
             const xPct = (tx / viewport.width) * 100;
             const yPct = ((viewport.height - ty - fontHeight) / viewport.height) * 100;
             const wPct = (width / viewport.width) * 100;
@@ -163,7 +200,7 @@ export default function RedactPdf() {
             newBoxes.push({
               pageIndex: i - 1,
               x: Math.max(0, xPct), 
-              y: Math.max(0, yPct - 1), // -1 for slight visual padding adjustment
+              y: Math.max(0, yPct - 1), 
               width: wPct + 1, 
               height: hPct + 2,
               isDrawing: false,
@@ -194,33 +231,31 @@ export default function RedactPdf() {
     performSearchAndMark([searchText]);
   };
 
-  // 🔥 AI SMART DETECTION
+  // --- 🔥 AI SMART DETECTION (REAL Groq API CALL) ---
   const runAiDetection = async () => {
     if (!pdfDocProxy) return showToast("Upload a PDF first", "error");
     setIsProcessing(true);
     showToast("AI is analyzing document...");
 
     try {
-      // 1. Extract all text for AI to read
       let fullText = "";
       for (let i = 1; i <= numPages; i++) {
         const page = await pdfDocProxy.getPage(i);
         const textContent = await page.getTextContent();
         fullText += textContent.items.map(item => item.str).join(" ") + "\n";
       }
-      fullText = fullText.substring(0, 10000); // Send first 10,000 chars to avoid API limit
+      fullText = fullText.substring(0, 10000); 
 
-      // 2. Send to Backend
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'ai-redact-detect', text: fullText })
       });
+      
       const data = await response.json();
 
       if (response.ok && data.entities && data.entities.length > 0) {
-        // 3. Mark detected words automatically
-        await performSearchAndMark(data.entities);
+        await performSearchAndMark(data.entities); // Auto mark all AI found entities
       } else {
         showToast("AI couldn't find any sensitive data.", "success");
       }
@@ -232,9 +267,9 @@ export default function RedactPdf() {
     }
   };
 
-  // --- APPLY REDACTION (DOWNLOAD) ---
+  // --- 🔥 APPLY REDACTION ---
   const processRedaction = async () => {
-    if (!fileUrl) return showToast('No file found', 'error');
+    if (!file) return showToast('No file found', 'error');
     if (boxes.length === 0) return showToast('No redaction boxes to apply.', 'error');
     if (!window.confirm("Are you sure? This will permanently black out the selected areas.")) return;
     
@@ -243,10 +278,13 @@ export default function RedactPdf() {
     
     try {
       const progressInterval = setInterval(() => {
-        setProgress(prev => prev >= 90 ? prev : prev + 15);
-      }, 200);
+        setProgress(prev => prev >= 85 ? prev : prev + 15);
+      }, 300);
 
-      // Convert % back to exact 700px scale required by Backend
+      // Upload file to Vercel Blob ONLY when processing starts
+      const uploadedBlob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
+      const finalFileUrl = uploadedBlob.url;
+
       const scaledBoxes = boxes.map(box => ({
         pageIndex: box.pageIndex,
         x: (box.x / 100) * 700, 
@@ -263,7 +301,7 @@ export default function RedactPdf() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'redact-pdf', 
-          fileUrl,
+          fileUrl: finalFileUrl,
           boxes: scaledBoxes,
           options
         })
@@ -281,6 +319,8 @@ export default function RedactPdf() {
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
 
+        const entry = { time: new Date().toLocaleString(), file: file.name };
+        setHistory(prev => [entry, ...prev].slice(0, 10));
         showToast("Redaction Applied Successfully!", 'success');
         setProgress(100);
       } else {
@@ -345,10 +385,11 @@ export default function RedactPdf() {
           <div className="flex-1">
             <div className={`rounded-2xl shadow-sm border p-6 min-h-[600px] flex flex-col items-center ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
               {!file ? (
-                <div className="flex-1 w-full border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-center">
+                <div className="flex-1 w-full border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-center" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
                   <input type="file" accept={ACCEPTED_FORMATS} onChange={handleFileChange} className="hidden" ref={fileInputRef} />
                   <UploadCloud size={48} className="text-blue-500 mb-3" />
-                  <button onClick={() => fileInputRef.current.click()} className="bg-[#E5322D] text-white px-8 py-3 rounded-xl font-bold mt-4 hover:bg-red-700 transition shadow-lg">Upload PDF</button>
+                  <p className="text-lg font-semibold">Upload PDF Document</p>
+                  <button onClick={() => fileInputRef.current.click()} className="bg-[#E5322D] text-white px-8 py-3 rounded-xl font-bold mt-4 hover:bg-red-700 transition shadow-lg">Browse File</button>
                 </div>
               ) : (
                 <div className="flex-1 w-full flex flex-col">
@@ -427,6 +468,28 @@ export default function RedactPdf() {
                 </div>
               )}
             </div>
+
+            {/* History Footer */}
+            {history.length > 0 && (
+              <div className="mt-6 border-t pt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-bold flex items-center gap-2">
+                    <History size={18} /> History
+                  </h4>
+                  <button onClick={() => setHistory([])} className="text-red-500 text-sm hover:underline font-bold">
+                    Clear History
+                  </button>
+                </div>
+                <ul className="space-y-2 max-h-40 overflow-y-auto">
+                  {history.map((item, idx) => (
+                    <li key={idx} className="flex justify-between items-center text-sm bg-white dark:bg-gray-800 border p-3 rounded-lg shadow-sm">
+                      <span className="font-medium">{item.file}</span>
+                      <span className="opacity-50 text-xs">{item.time}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </main>
