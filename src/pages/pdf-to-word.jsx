@@ -24,13 +24,14 @@ const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }} className="bg-gray-50 flex items-center justify-center rounded">
-        {/* 🔥 FIX: Uses foolproof blob URL for rendering */}
+        {/* 🔥 FIX: Exact same as MergePdf - Direct page.file native object */}
         <Document 
-          file={page.previewUrl} 
+          file={page.file} 
           loading={<Loader2 size={16} className="animate-spin text-gray-400" />}
           error={(error) => (
             <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center overflow-hidden">
               <span>Failed</span>
+              <span className="font-normal text-gray-400 mt-1" title={error?.message}>{error?.message?.substring(0,35)}</span>
             </div>
           )}
         >
@@ -60,7 +61,7 @@ export default function PdfToWord() {
   const [zoomLevel, setZoomLevel] = useState(120);
   
   const [ocrEnabled, setOcrEnabled] = useState(true);
-  const [ocrLanguage, setOcrLanguage] = useState('en');
+  const [ocrLanguage, setOcrLanguage] = useState('eng');
   const [highQuality, setHighQuality] = useState(true);
   const [preserveLayout, setPreserveLayout] = useState(true);
   
@@ -71,12 +72,7 @@ export default function PdfToWord() {
   useEffect(() => {
     const saved = localStorage.getItem('masterpdf-recent-word');
     if (saved) setRecentFiles(JSON.parse(saved));
-    
-    // Cleanup Object URLs on unmount to prevent memory leaks
-    return () => {
-      clearInterval(progressInterval.current);
-      pages.forEach(p => URL.revokeObjectURL(p.previewUrl));
-    };
+    return () => clearInterval(progressInterval.current);
   }, []);
 
   const extractPagesFromPDF = async (file, sourceId) => {
@@ -96,19 +92,16 @@ export default function PdfToWord() {
     const pdf = await PDFDocument.load(uint8Array, { ignoreEncryption: true }); 
     const totalPages = pdf.getPageCount();
     
-    // 🔥 SAFE PREVIEW URL GENERATION
-    const blobForPreview = new Blob([uint8Array], { type: 'application/pdf' });
-    const safePreviewUrl = URL.createObjectURL(blobForPreview);
-    
     const newPages = [];
+    
     for (let i = 0; i < totalPages; i++) {
       newPages.push({
         id: `page-${sourceId}-${i}`,
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        previewUrl: safePreviewUrl, // 🔥 Secure URL passed to React-PDF
-        rawBuffer: uint8Array // Kept for merging later
+        file: file, // Native File object exactly like MergePdf
+        rawBuffer: uint8Array 
       });
     }
     return newPages;
@@ -240,7 +233,7 @@ export default function PdfToWord() {
       }
     } catch (error) {
       console.error(error);
-      alert(`Error: ${error.message || "Failed to connect to server."}`);
+      alert(`Critical Error: ${error.message || "Failed to connect to conversion server."}`);
     } finally {
       clearInterval(progressInterval.current);
       setTimeout(() => { setProgress(0); setIsConverting(false); }, 1000);
@@ -301,16 +294,16 @@ export default function PdfToWord() {
                     </div>
                   </label>
 
+                  {/* 🔥 FIX: Reverted to ConvertAPI 3-letter codes */}
                   {ocrEnabled && (
                     <div className="pl-2 pr-2">
                       <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1"><Globe size={14}/> Document Language</label>
                       <select value={ocrLanguage} onChange={(e) => setOcrLanguage(e.target.value)} className="w-full p-2 border rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="auto">Auto Detect (Any Language)</option>
-                        <option value="en">English</option>
-                        <option value="es">Spanish</option>
-                        <option value="fr">French</option>
-                        <option value="de">German</option>
-                        <option value="ar">Arabic</option>
+                        <option value="eng">English</option>
+                        <option value="hin">Hindi</option>
+                        <option value="spa">Spanish</option>
+                        <option value="fra">French</option>
+                        <option value="deu">German</option>
                       </select>
                     </div>
                   )}
