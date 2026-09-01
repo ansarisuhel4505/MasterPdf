@@ -168,7 +168,7 @@ export default function PdfToWord() {
     }, 400);
   };
 
-  const convertToWord = async () => {
+ const convertToWord = async () => {
     if (pages.length === 0) return;
     setIsConverting(true);
     startProgressSimulation();
@@ -180,7 +180,6 @@ export default function PdfToWord() {
       for (const page of pages) {
         let sourcePdf = loadedPdfs[page.sourceId];
         if (!sourcePdf) {
-          // 🔥 NAYA CODE: Convert karte time file se fresh buffer read karo
           const freshBuffer = await page.file.arrayBuffer();
           sourcePdf = await PDFDocument.load(freshBuffer, { ignoreEncryption: true });
           loadedPdfs[page.sourceId] = sourcePdf;
@@ -190,24 +189,20 @@ export default function PdfToWord() {
       }
 
       const finalPdfBytes = await newPdf.save();
-      const finalBlob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const mainFilename = pages[0].sourceFileName.replace('.pdf', '');
 
-      const uploadedBlob = await upload(`to_word_${Date.now()}.pdf`, finalBlob, {
-        access: 'public',
-        handleUploadUrl: '/api/upload',
-      });
-
-      if (!uploadedBlob || !uploadedBlob.url) {
-        throw new Error("Failed to upload file to temporary storage. Please try again.");
-      }
+      // 🔥 SUPER FAST FIX: Skip Vercel Blob Upload, Send Base64 Directly
+      const base64String = btoa(
+        new Uint8Array(finalPdfBytes).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
 
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'pdf-to-word', 
-          fileUrl: uploadedBlob.url,
+          fileBase64: base64String, // <-- Seedha Base64 bheja
+          fileName: `${mainFilename}.pdf`,
           options: {
             ocrEnabled: ocrEnabled,
             ocrLanguage: ocrLanguage,
@@ -220,7 +215,7 @@ export default function PdfToWord() {
       const data = await response.json();
       
       if (response.ok && data.downloadUrl) {
-        // 🔥 FAST LOCAL DOWNLOAD FIX
+        // Fast local download
         const docRes = await fetch(data.downloadUrl);
         const docBlob = await docRes.blob();
         const localUrl = URL.createObjectURL(docBlob);
@@ -235,7 +230,7 @@ export default function PdfToWord() {
         link.click();
         document.body.removeChild(link);
 
-        setTimeout(() => URL.revokeObjectURL(localUrl), 2000); // Cleanup memory
+        setTimeout(() => URL.revokeObjectURL(localUrl), 2000); 
 
         const newRecent = [{ name: `${mainFilename}.docx`, time: new Date().toLocaleString() }, ...recentFiles].slice(0, 5);
         setRecentFiles(newRecent);
@@ -251,7 +246,6 @@ export default function PdfToWord() {
       setTimeout(() => { setProgress(0); setIsConverting(false); }, 1000);
     }
   };
-
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
       <Head>
