@@ -13,21 +13,30 @@ import {
   History, Loader2, Trash2, CheckCircle2, FolderOpen, Layers, Globe
 } from 'lucide-react';
 
-// Dynamic imports for react-pdf to prevent SSR hydration errors
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), { ssr: false });
 const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), { ssr: false });
 
-// 🔥 STABLE WORKER CONFIGURATION
 if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
 }
+
+// 🔥 HELPER FUNCTION: Convert File to Base64 (Bypasses Worker CORS issues completely)
+const blobToDataURL = (blob) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (_e) => resolve(reader.result);
+    reader.onerror = (_e) => reject(new Error('Failed to read blob'));
+    reader.readAsDataURL(blob);
+  });
+};
 
 const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }} className="bg-gray-50 flex items-center justify-center rounded">
+        {/* 🔥 FIX: Used Base64 dataUrl so rendering never fails */}
         <Document 
-          file={page.file} 
+          file={page.dataUrl} 
           loading={<Loader2 size={16} className="animate-spin text-gray-400" />}
           error={<span className="text-[10px] text-red-500 font-bold">Failed</span>}
         >
@@ -56,9 +65,8 @@ export default function PdfToWord() {
   const [dragActive, setDragActive] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(120);
   
-  // Advanced Conversion Options
   const [ocrEnabled, setOcrEnabled] = useState(true);
-  const [ocrLanguage, setOcrLanguage] = useState('eng');
+  const [ocrLanguage, setOcrLanguage] = useState('en');
   const [highQuality, setHighQuality] = useState(true);
   const [preserveLayout, setPreserveLayout] = useState(true);
   
@@ -88,6 +96,9 @@ export default function PdfToWord() {
     const uint8Array = new Uint8Array(buffer);
     const pdf = await PDFDocument.load(uint8Array, { ignoreEncryption: true }); 
     const totalPages = pdf.getPageCount();
+    
+    // 🔥 Convert to Base64 to bypass all rendering issues
+    const dataUrl = await blobToDataURL(file);
     const newPages = [];
     
     for (let i = 0; i < totalPages; i++) {
@@ -96,8 +107,8 @@ export default function PdfToWord() {
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        file: file,
-        rawBuffer: uint8Array // Keep buffer to extract specific pages later
+        dataUrl: dataUrl, 
+        rawBuffer: uint8Array 
       });
     }
     return newPages;
@@ -148,10 +159,7 @@ export default function PdfToWord() {
     }
   };
 
-  const removePage = (pageId) => {
-    setPages(prev => prev.filter(p => p.id !== pageId));
-  };
-
+  const removePage = (pageId) => setPages(prev => prev.filter(p => p.id !== pageId));
   const clearAll = () => setPages([]);
 
   const startProgressSimulation = () => {
@@ -170,7 +178,6 @@ export default function PdfToWord() {
     startProgressSimulation();
 
     try {
-      // 1. Combine remaining pages into a single PDF Document before sending to backend
       const newPdf = await PDFDocument.create();
       const loadedPdfs = {};
 
@@ -188,13 +195,11 @@ export default function PdfToWord() {
       const finalBlob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const mainFilename = pages[0].sourceFileName.replace('.pdf', '');
 
-      // 2. Upload to Vercel Blob
       const uploadedBlob = await upload(`to_word_${Date.now()}.pdf`, finalBlob, {
         access: 'public',
         handleUploadUrl: '/api/upload',
       });
 
-      // 3. Call the Advanced Backend API
       const response = await fetch('/api/master-convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -216,7 +221,6 @@ export default function PdfToWord() {
         clearInterval(progressInterval.current);
         setProgress(100);
         
-        // Trigger Download
         const link = document.createElement('a');
         link.href = data.downloadUrl;
         link.setAttribute('download', `${mainFilename}_MasterPdf.docx`);
@@ -224,7 +228,6 @@ export default function PdfToWord() {
         link.click();
         document.body.removeChild(link);
 
-        // Update History
         const newRecent = [{ name: `${mainFilename}.docx`, time: new Date().toLocaleString() }, ...recentFiles].slice(0, 5);
         setRecentFiles(newRecent);
         localStorage.setItem('masterpdf-recent-word', JSON.stringify(newRecent));
@@ -274,12 +277,10 @@ export default function PdfToWord() {
           ) : !isConverting ? (
             <div className="w-full flex flex-col lg:flex-row gap-6">
               
-              {/* Left Side: Advanced Settings Panel */}
               <div className="w-full lg:w-80 flex-shrink-0 bg-gray-50 border rounded-xl p-5 h-fit">
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Settings size={20}/> Advanced Settings</h3>
                 
                 <div className="space-y-4">
-                  {/* Layout Preservation */}
                   <label className="flex items-start gap-3 p-3 bg-white border rounded-lg cursor-pointer hover:border-blue-300 transition">
                     <input type="checkbox" checked={preserveLayout} onChange={(e) => setPreserveLayout(e.target.checked)} className="mt-1 w-5 h-5 accent-blue-600" />
                     <div>
@@ -288,7 +289,6 @@ export default function PdfToWord() {
                     </div>
                   </label>
 
-                  {/* OCR Settings */}
                   <label className="flex items-start gap-3 p-3 bg-white border rounded-lg cursor-pointer hover:border-blue-300 transition">
                     <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} className="mt-1 w-5 h-5 accent-blue-600" />
                     <div>
@@ -297,22 +297,21 @@ export default function PdfToWord() {
                     </div>
                   </label>
 
-                  {/* OCR Language Dropdown */}
+                  {/* 🔥 FIX: Only 2-letter exact API supported codes are here */}
                   {ocrEnabled && (
                     <div className="pl-2 pr-2">
                       <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1"><Globe size={14}/> Document Language</label>
                       <select value={ocrLanguage} onChange={(e) => setOcrLanguage(e.target.value)} className="w-full p-2 border rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="eng">English</option>
-                        <option value="hin">Hindi</option>
-                        <option value="spa">Spanish</option>
-                        <option value="fra">French</option>
-                        <option value="ger">German</option>
-                        <option value="ara">Arabic</option>
+                        <option value="auto">Auto Detect (Any Language)</option>
+                        <option value="en">English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="ar">Arabic</option>
                       </select>
                     </div>
                   )}
 
-                  {/* High Quality */}
                   <label className="flex items-start gap-3 p-3 bg-white border rounded-lg cursor-pointer hover:border-blue-300 transition">
                     <input type="checkbox" checked={highQuality} onChange={(e) => setHighQuality(e.target.checked)} className="mt-1 w-5 h-5 accent-blue-600" />
                     <div>
@@ -327,7 +326,6 @@ export default function PdfToWord() {
                 </div>
               </div>
 
-              {/* Right Side: Page Grid View */}
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-4 border-b pb-2">
                   <h3 className="font-bold text-lg flex items-center gap-2"><Layers size={20}/> Selected Pages ({pages.length})</h3>
