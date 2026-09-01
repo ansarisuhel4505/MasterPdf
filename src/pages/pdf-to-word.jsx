@@ -8,7 +8,7 @@ import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { upload } from '@vercel/blob/client';
 import { 
-  UploadCloud, FileText, X, ArrowRight, Settings, ScanText, 
+  UploadCloud, FileText, ArrowRight, Settings, ScanText, 
   History, Loader2, Trash2, CheckCircle2, FolderOpen, Layers, Globe
 } from 'lucide-react';
 
@@ -16,7 +16,7 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
 }
 
-// 🔥 NAYA THUMBNAIL COMPONENT (Jo kabhi crash nahi hoga)
+// 🔥 FAST THUMBNAIL COMPONENT (No more crashes or "Failed" errors)
 const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
@@ -54,7 +54,7 @@ export default function PdfToWord() {
   const [zoomLevel, setZoomLevel] = useState(120);
   
   const [ocrEnabled, setOcrEnabled] = useState(true);
-  const [ocrLanguage, setOcrLanguage] = useState('en'); // 🔥 Default fix kiya
+  const [ocrLanguage, setOcrLanguage] = useState('en'); // 🔥 FIX: Default to 'en'
   const [highQuality, setHighQuality] = useState(true);
   const [preserveLayout, setPreserveLayout] = useState(true);
   
@@ -68,33 +68,22 @@ export default function PdfToWord() {
     return () => clearInterval(progressInterval.current);
   }, []);
 
-  // 🔥 FAST BASE64 THUMBNAIL EXTRACTOR
+  // 🔥 FAST BASE64 THUMBNAIL EXTRACTOR (Memory Safe)
   const extractPagesFromPDF = async (file, sourceId) => {
-    let buffer;
-    if (file.arrayBuffer) {
-      buffer = await file.arrayBuffer();
-    } else {
-      buffer = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
-      });
-    }
-
-    const uint8Array = new Uint8Array(buffer);
+    const arrayBuffer = await file.arrayBuffer();
     
-    // ConvertAPI/PDF-Lib ke merge ke liye buffer
-    const pdf = await PDFDocument.load(uint8Array, { ignoreEncryption: true }); 
-    const totalPages = pdf.getPageCount();
+    // .slice(0) is used to prevent pdfjs from detaching our original buffer
+    const uint8Array = new Uint8Array(arrayBuffer.slice(0)); 
     
     // Thumbnails ke liye PDFJS (Fast Canvas Render)
     const pdfJsDoc = await pdfjs.getDocument({ data: uint8Array }).promise;
+    const totalPages = pdfJsDoc.numPages; 
+    
     const newPages = [];
     
     for (let i = 1; i <= totalPages; i++) {
       const page = await pdfJsDoc.getPage(i);
-      const viewport = page.getViewport({ scale: 0.5 }); // Low scale for thumbnail speed
+      const viewport = page.getViewport({ scale: 0.5 }); // Low scale for fast thumbnail rendering
       
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -110,7 +99,7 @@ export default function PdfToWord() {
         sourceFileName: file.name,
         pageNumber: i,
         thumbnail: thumbnailUrl, 
-        rawBuffer: uint8Array
+        file: file // 🔥 IMPORTANT: Save original File object for fresh buffer reading later
       });
     }
     return newPages;
@@ -191,7 +180,9 @@ export default function PdfToWord() {
       for (const page of pages) {
         let sourcePdf = loadedPdfs[page.sourceId];
         if (!sourcePdf) {
-          sourcePdf = await PDFDocument.load(page.rawBuffer, { ignoreEncryption: true });
+          // 🔥 NAYA CODE: Convert karte time file se fresh buffer read karo
+          const freshBuffer = await page.file.arrayBuffer();
+          sourcePdf = await PDFDocument.load(freshBuffer, { ignoreEncryption: true });
           loadedPdfs[page.sourceId] = sourcePdf;
         }
         const [copiedPage] = await newPdf.copyPages(sourcePdf, [page.pageNumber - 1]);
