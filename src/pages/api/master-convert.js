@@ -194,16 +194,15 @@ let fileUrls = req.body.fileUrls;
     return res.status(500).json({ error: "Failed to apply redaction to the PDF." });
   }
 }
-   else if (action === 'pdf-to-word') {
+  else if (action === 'pdf-to-word') {
       try {
-        // 🔥 FIX: Strict check for fileUrl
         let sourceUrl = req.body.fileUrl;
         if (!sourceUrl && req.body.fileUrls && req.body.fileUrls.length > 0) {
             sourceUrl = req.body.fileUrls[0];
         }
         
-        if (!sourceUrl || sourceUrl === 'null' || sourceUrl === 'undefined') {
-          throw new Error("File URL is null. Backend did not receive a valid file to process.");
+        if (!sourceUrl || sourceUrl === 'null') {
+          throw new Error("File upload failed on frontend. Please try again.");
         }
 
         const clientId = process.env.ADOBE_CLIENT_ID;
@@ -213,18 +212,20 @@ let fileUrls = req.body.fileUrls;
           throw new Error("Adobe API keys are missing in environment variables.");
         }
 
-        // 1. ADOBE OAUTH TOKEN GENERATE KAREIN
-        const tokenRes = await fetch('https://pdf-services.adobe.io/token', {
+        // 1. ADOBE OAUTH TOKEN (Latest Endpoint)
+        const tokenRes = await fetch('https://pdf-services-ue1.adobe.io/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret })
         });
         const tokenData = await tokenRes.json();
-        if (!tokenData.access_token) throw new Error('Adobe Token Failed: Invalid Keys');
+        if (!tokenRes.ok || !tokenData.access_token) {
+          throw new Error(`Adobe Token Error: ${JSON.stringify(tokenData)}`);
+        }
         const accessToken = tokenData.access_token;
 
         // 2. ASSET SLOT RESERVE KAREIN
-        const assetRes = await fetch('https://pdf-services.adobe.io/assets', {
+        const assetRes = await fetch('https://pdf-services-ue1.adobe.io/assets', {
           method: 'POST',
           headers: {
             'X-API-Key': clientId,
@@ -234,6 +235,12 @@ let fileUrls = req.body.fileUrls;
           body: JSON.stringify({ mediaType: 'application/pdf' })
         });
         const assetData = await assetRes.json();
+        
+        // 🔥 CRASH PREVENTER: Agar uploadUri null aaya, yahi error throw karo
+        if (!assetRes.ok || !assetData.uploadUri) {
+          throw new Error(`Adobe Asset Error: API did not return Upload URL. Response: ${JSON.stringify(assetData)}`);
+        }
+        
         const uploadUri = assetData.uploadUri;
         const assetID = assetData.assetID;
 
@@ -246,17 +253,11 @@ let fileUrls = req.body.fileUrls;
         });
 
         // 4. LANGUAGE MAPPER FOR ADOBE
-        const langMap = {
-          'en': 'en-US',
-          'es': 'es-ES',
-          'fr': 'fr-FR',
-          'de': 'de-DE',
-          'auto': 'en-US' // Default Adobe fallback
-        };
+        const langMap = { 'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR', 'de': 'de-DE', 'auto': 'en-US' };
         const adobeLang = langMap[req.body.options?.ocrLanguage] || 'en-US';
 
         // 5. EXPORT JOB START KAREIN (PDF to DOCX)
-        const jobRes = await fetch('https://pdf-services.adobe.io/operation/exportpdf', {
+        const jobRes = await fetch('https://pdf-services-ue1.adobe.io/operation/exportpdf', {
           method: 'POST',
           headers: {
             'X-API-Key': clientId,
@@ -270,18 +271,19 @@ let fileUrls = req.body.fileUrls;
           })
         });
         
+        if (!jobRes.ok) {
+           const jobErr = await jobRes.text();
+           throw new Error(`Adobe Export Error: ${jobErr}`);
+        }
         const jobLocation = jobRes.headers.get('location');
 
-        // 6. RESULT KA WAIT KAREIN (Polling Mechanism)
+        // 6. RESULT KA WAIT KAREIN
         let downloadUri = null;
         let attempts = 0;
-        while (!downloadUri && attempts < 25) { // Wait maximum ~50 seconds
+        while (!downloadUri && attempts < 25) { 
           await new Promise(res => setTimeout(res, 2000));
           const statusRes = await fetch(jobLocation, {
-            headers: {
-              'X-API-Key': clientId,
-              'Authorization': `Bearer ${accessToken}`
-            }
+            headers: { 'X-API-Key': clientId, 'Authorization': `Bearer ${accessToken}` }
           });
           const statusData = await statusRes.json();
 
@@ -293,9 +295,9 @@ let fileUrls = req.body.fileUrls;
           attempts++;
         }
 
-        if (!downloadUri) throw new Error("Conversion timed out (Took too long).");
+        if (!downloadUri) throw new Error("Conversion timed out.");
 
-        // 7. FILE DOWNLOAD AND SAVE TO VERCEL
+        // 7. FILE DOWNLOAD AND SAVE
         const docxBuffer = await fetch(downloadUri).then(res => res.arrayBuffer());
         const finalBlob = await put(`masterpdf_pro_word_${Date.now()}.docx`, docxBuffer, {
           access: 'public',
