@@ -195,29 +195,47 @@ let fileUrls = req.body.fileUrls;
   }
 }
     else if (action === 'pdf-to-word') {
-      // Frontend se aaye options
-      const ocrEnabled = req.body.ocrEnabled === true;
-      const highQuality = req.body.highQuality === true;
-      const preserveLayout = req.body.preserveLayout === true;
+      try {
+        // 🔥 FIX: Frontend se aane wale naye 'options' object ko sahi se read karna
+        const options = req.body.options || {};
+        const fileUrls = req.body.fileUrls || [req.body.fileUrl];
+        const convertedUrls = [];
 
-      const options = { File: fileUrl };
+        for (const url of fileUrls) {
+          const convertOptions = { File: url };
 
-      // 🔥 HIGH QUALITY / BLUR FIX: High Resolution set karo (300 DPI)
-      if (highQuality) {
-        options.ImageResolution = '300';
+          // 1. ADVANCED LAYOUT ENGINE
+          // Isko 'true' rakhne se paragraphs aur tables nahi bigadte hain
+          convertOptions.PreserveLayout = options.preserveLayout === false ? 'false' : 'true';
+
+          // 2. SMART MULTI-LANGUAGE OCR
+          if (options.ocrEnabled) {
+            convertOptions.Ocr = 'true';
+            // Frontend se aayi hui language set karega (eng, hin, spa, etc.)
+            convertOptions.OcrLanguage = options.ocrLanguage || 'eng'; 
+          }
+
+          // 3. HIGH QUALITY SCANS (Blur hatane ke liye 300 DPI)
+          if (options.highQuality || options.ocrEnabled) {
+            convertOptions.ImageResolution = '300';
+          }
+
+          // ConvertAPI call for DOCX
+          const result = await convertapi.convert('docx', convertOptions, 'pdf');
+          convertedUrls.push(result.response.Files[0].Url);
+        }
+
+        // Return logic
+        if (convertedUrls.length > 1 && !options.merge) {
+          return res.status(200).json({ success: true, downloadUrls: convertedUrls });
+        } else {
+          return res.status(200).json({ success: true, downloadUrl: convertedUrls[0] });
+        }
+
+      } catch (err) {
+        console.error("PDF-to-Word error:", err);
+        return res.status(500).json({ error: "Advanced PDF to Word conversion failed." });
       }
-
-      // 🔥 OCR FIX: Scanned PDFs ke liye
-      if (ocrEnabled) {
-        options.Ocr = 'true';
-      }
-
-      // 🔥 LAYOUT FIX: Layout preserve karo
-      if (preserveLayout) {
-        options.PreserveLayout = 'true';
-      }
-
-      result = await convertapi.convert('docx', options, 'pdf');
     }
    else if (action === 'pdf-to-excel') {
   try {
