@@ -20,25 +20,18 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
 }
 
-// 🔥 HELPER FUNCTION: Convert File to Base64 (Bypasses Worker CORS issues completely)
-const blobToDataURL = (blob) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (_e) => resolve(reader.result);
-    reader.onerror = (_e) => reject(new Error('Failed to read blob'));
-    reader.readAsDataURL(blob);
-  });
-};
-
+// ==========================================
+// POSITION 1: PageThumbnail Component
+// ==========================================
 const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }} className="bg-gray-50 flex items-center justify-center rounded">
-        {/* 🔥 FIX: Used Base64 dataUrl so rendering never fails */}
+        {/* 🔥 FIX: fileData pass kiya gaya hai (Uint8Array) jisse loading fail na ho */}
         <Document 
-          file={page.dataUrl} 
+          file={page.fileData} 
           loading={<Loader2 size={16} className="animate-spin text-gray-400" />}
-          error={<span className="text-[10px] text-red-500 font-bold">Failed</span>}
+          error={(error) => <div className="text-[10px] text-red-500 font-bold text-center">Failed<br/>{error?.message?.substring(0, 15)}</div>}
         >
           <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
         </Document>
@@ -80,6 +73,9 @@ export default function PdfToWord() {
     return () => clearInterval(progressInterval.current);
   }, []);
 
+  // ==========================================
+  // POSITION 2: extractPagesFromPDF Function
+  // ==========================================
   const extractPagesFromPDF = async (file, sourceId) => {
     let buffer;
     if (file.arrayBuffer) {
@@ -97,8 +93,6 @@ export default function PdfToWord() {
     const pdf = await PDFDocument.load(uint8Array, { ignoreEncryption: true }); 
     const totalPages = pdf.getPageCount();
     
-    // 🔥 Convert to Base64 to bypass all rendering issues
-    const dataUrl = await blobToDataURL(file);
     const newPages = [];
     
     for (let i = 0; i < totalPages; i++) {
@@ -107,7 +101,8 @@ export default function PdfToWord() {
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        dataUrl: dataUrl, 
+        // 🔥 FIX: Direct memory pass (No URL, No Blob, No CORS error)
+        fileData: uint8Array, 
         rawBuffer: uint8Array 
       });
     }
@@ -297,7 +292,6 @@ export default function PdfToWord() {
                     </div>
                   </label>
 
-                  {/* 🔥 FIX: Only 2-letter exact API supported codes are here */}
                   {ocrEnabled && (
                     <div className="pl-2 pr-2">
                       <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1"><Globe size={14}/> Document Language</label>
