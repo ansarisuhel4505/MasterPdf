@@ -208,27 +208,22 @@ let fileUrls = req.body.fileUrls;
         const options = req.body.options || {};
         const convertOptions = { File: sourceUrl };
 
-        // 1. LAYOUT PRESERVATION
         if (options.preserveLayout) {
           convertOptions.PreserveLayout = 'true';
         }
 
-        // 2. OCR (ConvertAPI uses 3-letter codes like 'eng', 'hin')
-       // PDF-to-Word action block ke andar
-        // 2. OCR 
+        // 🔥 FIX: Safe OCR Language Assignment
         if (options.ocrEnabled) {
           convertOptions.Ocr = 'true';
           let lang = options.ocrLanguage || 'en';
-          if (lang === 'eng') lang = 'en'; // 🔥 Ye fallback laga do
+          if (lang === 'eng') lang = 'en'; 
           convertOptions.OcrLanguage = lang;
         }
 
-        // 3. HIGH QUALITY
         if (options.highQuality || options.ocrEnabled) {
           convertOptions.ImageResolution = '300';
         }
 
-        // DIRECT CONVERTAPI CALL
         const result = await convertapi.convert('docx', convertOptions, 'pdf');
         
         return res.status(200).json({ success: true, downloadUrl: result.response.Files[0].Url });
