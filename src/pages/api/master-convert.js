@@ -201,116 +201,37 @@ let fileUrls = req.body.fileUrls;
             sourceUrl = req.body.fileUrls[0];
         }
         
-        if (!sourceUrl || sourceUrl === 'null' || sourceUrl === 'undefined') {
-          throw new Error("File URL is missing. Upload failed on frontend.");
+        if (!sourceUrl || sourceUrl === 'null') {
+          return res.status(400).json({ error: "File URL is missing. Upload failed on frontend." });
         }
 
-        const clientId = process.env.ADOBE_CLIENT_ID;
-        const clientSecret = process.env.ADOBE_CLIENT_SECRET;
+        const options = req.body.options || {};
+        const convertOptions = { File: sourceUrl };
 
-        if (!clientId || !clientSecret) {
-          throw new Error("Adobe API keys are missing in Vercel environment variables.");
+        // 1. LAYOUT PRESERVATION
+        if (options.preserveLayout) {
+          convertOptions.PreserveLayout = 'true';
         }
 
-        // 1. ADOBE OAUTH TOKEN GENERATE
-        const tokenRes = await fetch('https://pdf-services-ue1.adobe.io/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret })
-        });
-        const tokenData = await tokenRes.json();
-        if (!tokenRes.ok || !tokenData.access_token) {
-          throw new Error(`Adobe Token Error: ${JSON.stringify(tokenData)}`);
+        // 2. OCR (ConvertAPI uses 3-letter codes like 'eng', 'hin')
+        if (options.ocrEnabled) {
+          convertOptions.Ocr = 'true';
+          convertOptions.OcrLanguage = options.ocrLanguage || 'eng'; 
         }
-        const accessToken = tokenData.access_token;
 
-        // 2. ASSET SLOT RESERVE
-        const assetRes = await fetch('https://pdf-services-ue1.adobe.io/assets', {
-          method: 'POST',
-          headers: {
-            'X-API-Key': clientId,
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ mediaType: 'application/pdf' })
-        });
-        const assetData = await assetRes.json();
+        // 3. HIGH QUALITY
+        if (options.highQuality || options.ocrEnabled) {
+          convertOptions.ImageResolution = '300';
+        }
+
+        // DIRECT CONVERTAPI CALL
+        const result = await convertapi.convert('docx', convertOptions, 'pdf');
         
-        if (!assetRes.ok || !assetData.uploadUri) {
-          throw new Error(`Adobe Asset Error: ${JSON.stringify(assetData)}`);
-        }
-
-        // 3. FILE UPLOAD TO ADOBE
-        const pdfBuffer = await fetch(sourceUrl).then(res => res.arrayBuffer());
-        await fetch(assetData.uploadUri, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/pdf' },
-          body: pdfBuffer
-        });
-
-        // 4. LANGUAGE MAPPER FOR ADOBE
-        const langMap = { 'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR', 'de': 'de-DE', 'auto': 'en-US' };
-        const adobeLang = langMap[req.body.options?.ocrLanguage] || 'en-US';
-
-        // 5. EXPORT JOB START (CRASH FIX: Used 'ocrLang' instead of 'ocrLanguage')
-        const payload = {
-          assetID: assetData.assetID,
-          targetFormat: 'docx'
-        };
-        // Adobe rejects the request if ocrLang is passed when OCR is not explicitly required or if key is wrong
-        if (req.body.options?.ocrEnabled) {
-          payload.ocrLang = adobeLang; 
-        }
-
-        const jobRes = await fetch('https://pdf-services-ue1.adobe.io/operation/exportpdf', {
-          method: 'POST',
-          headers: {
-            'X-API-Key': clientId,
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        });
-        
-        const jobLocation = jobRes.headers.get('location') || jobRes.headers.get('Location');
-        
-        if (!jobLocation) {
-          const errDetails = await jobRes.text();
-          throw new Error(`Adobe Export Job Failed. Details: ${errDetails}`);
-        }
-
-        // 6. RESULT KA WAIT KAREIN
-        let downloadUri = null;
-        let attempts = 0;
-        while (!downloadUri && attempts < 30) { 
-          await new Promise(res => setTimeout(res, 2000));
-          const statusRes = await fetch(jobLocation, {
-            headers: { 'X-API-Key': clientId, 'Authorization': `Bearer ${accessToken}` }
-          });
-          const statusData = await statusRes.json();
-
-          if (statusData.status === 'done') {
-            downloadUri = statusData.asset.downloadUri;
-          } else if (statusData.status === 'failed') {
-            throw new Error(`Adobe AI processing failed for this specific document layout.`);
-          }
-          attempts++;
-        }
-
-        if (!downloadUri) throw new Error("Conversion Timed Out.");
-
-        // 7. FILE DOWNLOAD AND SAVE
-        const docxBuffer = await fetch(downloadUri).then(res => res.arrayBuffer());
-        const finalBlob = await put(`masterpdf_pro_word_${Date.now()}.docx`, docxBuffer, {
-          access: 'public',
-          contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        });
-
-        return res.status(200).json({ success: true, downloadUrl: finalBlob.url });
+        return res.status(200).json({ success: true, downloadUrl: result.response.Files[0].Url });
 
       } catch (err) {
-        console.error("Adobe PDF-to-Word Error:", err);
-        return res.status(500).json({ error: err.message || "Adobe Pro conversion failed." });
+        console.error("PDF-to-Word error:", err);
+        return res.status(500).json({ error: err.message || "ConvertAPI conversion failed." });
       }
     }
    else if (action === 'pdf-to-excel') {
