@@ -7,7 +7,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { motion, AnimatePresence } from 'framer-motion'; 
 import { 
   UploadCloud, Download, FileText, Settings, CheckCircle, 
-  AlertTriangle, Loader2, Lock, Eye, Shield, Trash2, Cpu, Wrench, Sliders // <-- Sliders yahan add ho gaya hai
+  AlertTriangle, Loader2, Lock, Eye, Shield, Trash2, Cpu, Wrench, Sliders
 } from 'lucide-react';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
@@ -17,17 +17,24 @@ if (typeof window !== 'undefined') {
 }
 
 export default function RepairPDF() {
-  const [files, setFiles] = useState([]); // Multi-file array
+  const [files, setFiles] = useState([]); 
   const [activeFileId, setActiveFileId] = useState(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   
-  // Enterprise Options
+  // 🔥 ADVANCED OPTIONS WITH DYNAMIC WATERMARK
   const [options, setOptions] = useState({
-    recoveryLevel: 'auto', // auto, quick, balanced, deep
+    recoveryLevel: 'auto', 
     aiCleanup: false,
     compress: false,
-    watermark: { enabled: false, text: 'CONFIDENTIAL' },
+    watermark: { 
+      enabled: false, 
+      text: 'CONFIDENTIAL', 
+      color: '#ff0000', 
+      opacity: 30, 
+      fontSize: 60, 
+      rotation: -45 
+    },
     encrypt: { enabled: false, password: '' },
     includeReport: true
   });
@@ -41,7 +48,6 @@ export default function RepairPDF() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // --- MULTI-FILE UPLOAD & INSTANT PREVIEW ---
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files).filter(f => f.type === 'application/pdf');
     if (selectedFiles.length === 0) return showToast("Please select valid PDF files.", "error");
@@ -52,9 +58,9 @@ export default function RepairPDF() {
         id,
         file,
         name: file.name,
-        localUrl: URL.createObjectURL(file), // Instant load
+        localUrl: URL.createObjectURL(file), 
         size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
-        status: 'pending', // pending, processing, success, error
+        status: 'pending', 
         progress: 0,
         resultUrl: null,
         report: null
@@ -76,7 +82,6 @@ export default function RepairPDF() {
 
   const activeFile = files.find(f => f.id === activeFileId);
 
-  // --- MASTER REPAIR ENGINE (Multi-File Processing) ---
   const handleRepairAll = async () => {
     const pendingFiles = files.filter(f => f.status !== 'success');
     if (pendingFiles.length === 0) return showToast("No files to repair.", "error");
@@ -84,11 +89,9 @@ export default function RepairPDF() {
     setGlobalLoading(true);
 
     for (const fileObj of pendingFiles) {
-      // Update status to processing
       setFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'processing', progress: 10 } : f));
 
       try {
-        // 1. Upload to Vercel Blob
         const uploadedBlob = await upload(`repair_${Date.now()}_${fileObj.name}`, fileObj.file, {
           access: 'public',
           handleUploadUrl: '/api/upload',
@@ -96,7 +99,6 @@ export default function RepairPDF() {
         
         setFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, progress: 40 } : f));
 
-        // 2. API Call to master-convert
         const payload = {
           action: 'repair-pdf',
           fileUrl: uploadedBlob.url,
@@ -160,7 +162,6 @@ export default function RepairPDF() {
           {/* LEFT: SETTINGS & FILE LIST */}
           <div className="w-full lg:w-1/3 flex flex-col gap-6">
             
-            {/* File Uploader & List */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
               <button 
                 onClick={() => fileInputRef.current.click()} 
@@ -195,7 +196,6 @@ export default function RepairPDF() {
               )}
             </div>
 
-            {/* Enterprise Repair Options */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Settings size={18}/> Recovery Settings</h3>
               
@@ -223,14 +223,39 @@ export default function RepairPDF() {
                   Compress Output Size
                 </label>
 
-                <div className="p-3 bg-gray-50 border rounded-lg">
-                  <label className="flex items-center gap-2 cursor-pointer font-semibold mb-2">
+                {/* 🔥 LIVE DYNAMIC WATERMARK SETTINGS */}
+                <div className="p-3 bg-gray-50 border rounded-lg transition-all duration-300">
+                  <label className="flex items-center gap-2 cursor-pointer font-semibold mb-2 text-blue-600">
                     <input type="checkbox" checked={options.watermark.enabled} onChange={(e) => setOptions({...options, watermark: {...options.watermark, enabled: e.target.checked}})} className="w-4 h-4" />
                     Apply Watermark
                   </label>
-                  {options.watermark.enabled && (
-                    <input type="text" value={options.watermark.text} onChange={(e) => setOptions({...options, watermark: {...options.watermark, text: e.target.value}})} className="w-full p-2 border rounded" placeholder="Watermark Text" />
-                  )}
+                  
+                  <AnimatePresence>
+                    {options.watermark.enabled && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="space-y-3 mt-3 overflow-hidden">
+                        <input type="text" value={options.watermark.text} onChange={(e) => setOptions({...options, watermark: {...options.watermark, text: e.target.value}})} className="w-full p-2 border rounded font-semibold" placeholder="Watermark Text" />
+                        
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <label className="block text-gray-500 mb-1">Color</label>
+                            <input type="color" value={options.watermark.color} onChange={(e) => setOptions({...options, watermark: {...options.watermark, color: e.target.value}})} className="w-full h-8 cursor-pointer rounded" />
+                          </div>
+                          <div>
+                            <label className="block text-gray-500 mb-1">Opacity: {options.watermark.opacity}%</label>
+                            <input type="range" min="10" max="100" value={options.watermark.opacity} onChange={(e) => setOptions({...options, watermark: {...options.watermark, opacity: Number(e.target.value)}})} className="w-full accent-blue-500" />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-gray-500 mb-1">Text Size: {options.watermark.fontSize}px</label>
+                            <input type="range" min="20" max="150" value={options.watermark.fontSize} onChange={(e) => setOptions({...options, watermark: {...options.watermark, fontSize: Number(e.target.value)}})} className="w-full accent-blue-500" />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-gray-500 mb-1">Rotation Angle: {options.watermark.rotation}°</label>
+                            <input type="range" min="-180" max="180" value={options.watermark.rotation} onChange={(e) => setOptions({...options, watermark: {...options.watermark, rotation: Number(e.target.value)}})} className="w-full accent-blue-500" />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <div className="p-3 bg-gray-50 border rounded-lg">
@@ -252,7 +277,7 @@ export default function RepairPDF() {
               <button 
                 onClick={handleRepairAll} 
                 disabled={globalLoading || files.length === 0}
-                className="w-full mt-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:bg-gray-400 transition"
+                className="w-full mt-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:bg-gray-400 transition shadow-lg"
               >
                 {globalLoading ? <><Loader2 size={18} className="animate-spin"/> Processing...</> : <><Shield size={18}/> Start Repair Engine</>}
               </button>
@@ -274,19 +299,27 @@ export default function RepairPDF() {
                   <div className="flex justify-between items-center bg-gray-100 p-2 rounded-lg mb-4">
                     <span className="font-bold text-sm truncate px-2">{activeFile.name}</span>
                     <div className="flex gap-2">
-                      <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-2 py-1 bg-white border rounded text-xs">Prev</button>
+                      <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-2 py-1 bg-white border rounded text-xs hover:bg-gray-50">Prev</button>
                       <span className="text-xs font-bold self-center">{currentPage} / {numPages}</span>
-                      <button onClick={() => setCurrentPage(Math.min(numPages, currentPage + 1))} disabled={currentPage === numPages} className="px-2 py-1 bg-white border rounded text-xs">Next</button>
+                      <button onClick={() => setCurrentPage(Math.min(numPages, currentPage + 1))} disabled={currentPage === numPages} className="px-2 py-1 bg-white border rounded text-xs hover:bg-gray-50">Next</button>
                     </div>
                   </div>
 
-                  {/* LIVE PDF RENDERER */}
-                  <div className="flex-1 bg-gray-200 rounded-xl overflow-auto flex justify-center items-center p-4 relative border shadow-inner">
+                  {/* LIVE PDF RENDERER WITH DYNAMIC WATERMARK */}
+                  <div className="flex-1 bg-gray-200 rounded-xl overflow-auto flex justify-center items-center p-4 relative border shadow-inner min-h-[450px]">
                     
-                    {/* LIVE WATERMARK OVERLAY */}
+                    {/* 🔥 LIVE DYNAMIC WATERMARK OVERLAY */}
                     {options.watermark.enabled && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20 overflow-hidden">
-                        <span className="text-red-500 font-bold text-6xl opacity-30 -rotate-45 select-none text-center leading-none">
+                        <span 
+                          className="font-bold select-none text-center leading-none whitespace-nowrap transition-all duration-75"
+                          style={{
+                            color: options.watermark.color,
+                            opacity: options.watermark.opacity / 100,
+                            fontSize: `${options.watermark.fontSize}px`,
+                            transform: `rotate(${options.watermark.rotation}deg)`
+                          }}
+                        >
                           {options.watermark.text}
                         </span>
                       </div>
@@ -294,7 +327,7 @@ export default function RepairPDF() {
 
                     {/* LIVE ENCRYPTION OVERLAY */}
                     {options.encrypt.enabled && (
-                      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none z-30 rounded-xl">
+                      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none z-30 rounded-xl transition-all duration-300">
                         <Lock size={64} className="text-white opacity-80 mb-2" />
                         <span className="text-white font-bold tracking-widest opacity-80">ENCRYPTION ENABLED</span>
                       </div>
@@ -325,7 +358,7 @@ export default function RepairPDF() {
                             )}
                           </div>
                           <div className="flex flex-col gap-2">
-                            <a href={activeFile.resultUrl} download className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2">
+                            <a href={activeFile.resultUrl} download className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow-md">
                               <Download size={14}/> Download PDF
                             </a>
                             {activeFile.report && options.includeReport && (
@@ -334,7 +367,7 @@ export default function RepairPDF() {
                                 const url = URL.createObjectURL(blob);
                                 const a = document.createElement('a');
                                 a.href = url; a.download = `${activeFile.name}_Report.json`; a.click();
-                              }} className="px-4 py-2 bg-gray-200 text-gray-800 text-xs font-bold rounded-lg flex items-center justify-center gap-2">
+                              }} className="px-4 py-2 bg-gray-200 text-gray-800 text-xs font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-gray-300">
                                 <FileText size={14}/> Save Log
                               </button>
                             )}
