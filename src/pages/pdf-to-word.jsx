@@ -61,7 +61,7 @@ export default function PdfToWord() {
   const [zoomLevel, setZoomLevel] = useState(120);
   
   const [ocrEnabled, setOcrEnabled] = useState(true);
-  const [ocrLanguage, setOcrLanguage] = useState('eng');
+  const [ocrLanguage, setOcrLanguage] = useState('en');
   const [highQuality, setHighQuality] = useState(true);
   const [preserveLayout, setPreserveLayout] = useState(true);
   
@@ -94,8 +94,8 @@ const extractPagesFromPDF = async (file, sourceId) => {
   
   const newPages = [];
   
-  // 🔥 FIX: File object ko Blob URL mein convert karo (react-pdf ke liye)
- 
+  // 🔥 Ek hi Blob URL banayenge saare pages ke liye
+  const fileUrl = URL.createObjectURL(file); 
   
   for (let i = 0; i < totalPages; i++) {
     newPages.push({
@@ -103,8 +103,8 @@ const extractPagesFromPDF = async (file, sourceId) => {
       sourceId,
       sourceFileName: file.name,
       pageNumber: i + 1,
-      file: file,       // <-- YEH BLOB URL hai (react-pdf ise render karega)
-      rawBuffer: uint8Array // <-- Yeh buffer merge ke liye use hoga
+      file: fileUrl,        // <-- Blob URL wapas use karo (ye crash nahi hoga)
+      rawBuffer: uint8Array 
     });
   }
   return newPages;
@@ -155,15 +155,16 @@ const extractPagesFromPDF = async (file, sourceId) => {
     }
   };
 const removePage = (pageId) => {
-  // Revoke karne ka logic pura hata do
+  // 🔥 Yahan par URL revoke NAHI karna hai (isiliye crash ho raha tha)
   setPages(prev => prev.filter(p => p.id !== pageId));
 };
 
 const clearAll = () => {
-  // Revoke karne ka logic pura hata do
+  // 🔥 Yahan safely saare URLs memory se hatao aur list khali karo
+  const uniqueUrls = [...new Set(pages.map(p => p.file))];
+  uniqueUrls.forEach(url => URL.revokeObjectURL(url));
   setPages([]);
 };
-
   const startProgressSimulation = () => {
     setProgress(0);
     progressInterval.current = setInterval(() => {
