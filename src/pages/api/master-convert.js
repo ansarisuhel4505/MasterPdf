@@ -887,178 +887,200 @@ let fileUrls = req.body.fileUrls;
     }
    else if (action === 'compress-pdf') result = await convertapi.convert('compress', { File: fileUrl }, 'pdf');
 else if (action === 'repair-pdf') {
-  try {
-    const { fileUrl, options } = req.body;
-    const recoveryLevel = options?.recoveryLevel || 'auto';
-    const applyTransform = options?.applyTransform || {};
-    const aiCleanup = options?.aiCleanup || false;
-    const includeReport = options?.includeReport !== false;
-
-    // Fetch file bytes
-    const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
-    const originalSize = pdfBytes.byteLength;
-
-    // Damage Analysis
-    let damageReport = {
-      isEncrypted: false,
-      hasMissingFonts: false,
-      hasCorruptImages: false,
-      brokenPageCount: 0,
-      note: ''
-    };
-
     try {
-      await PDFDocument.load(pdfBytes, { ignoreEncryption: false });
-    } catch (e) {
-      damageReport.note = e.message;
-    }
+      const { fileUrl, options } = req.body;
+      const recoveryLevel = options?.recoveryLevel || 'auto';
+      const applyTransform = options?.applyTransform || {};
+      const aiCleanup = options?.aiCleanup || false;
+      const includeReport = options?.includeReport !== false;
 
-    try {
-      await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    } catch (e) {
-      damageReport.isEncrypted = true;
-      damageReport.note = "File is password-protected.";
-    }
+      // Fetch file bytes
+      const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
+      const originalSize = pdfBytes.byteLength;
 
-    // TIER 1
-    let tier1Success = false;
-    let recoveredBytes = null;
-    let recoveryTier = 'Tier 1';
+      // Damage Analysis
+      let damageReport = {
+        isEncrypted: false,
+        hasMissingFonts: false,
+        hasCorruptImages: false,
+        brokenPageCount: 0,
+        note: ''
+      };
 
-    try {
-      const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true, updateMetadata: false });
-      recoveredBytes = await pdfDoc.save({ useObjectStreams: false });
-      tier1Success = true;
-    } catch (tier1Err) {
-      console.log("Tier 1 failed:", tier1Err.message);
-    }
-
-    // TIER 2
-    if (!tier1Success) {
-      recoveryTier = 'Tier 2';
       try {
-        const repairResult = await convertapi.convert('repair', { File: fileUrl }, 'pdf');
-        const repairUrl = repairResult.response.Files[0].Url;
-        const repairedPdf = await fetch(repairUrl).then(r => r.arrayBuffer());
-        recoveredBytes = repairedPdf;
+        await PDFDocument.load(pdfBytes, { ignoreEncryption: false });
+      } catch (e) {
+        damageReport.note = e.message;
+      }
+
+      try {
+        await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+      } catch (e) {
+        damageReport.isEncrypted = true;
+        damageReport.note = "File is password-protected.";
+      }
+
+      // TIER 1 (Fast Rebuild)
+      let tier1Success = false;
+      let recoveredBytes = null;
+      let recoveryTier = 'Tier 1';
+
+      try {
+        const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true, updateMetadata: false });
+        recoveredBytes = await pdfDoc.save({ useObjectStreams: false });
         tier1Success = true;
-      } catch (tier2Err) {
-        console.log("Tier 2 failed:", tier2Err.message);
+      } catch (tier1Err) {
+        console.log("Tier 1 failed:", tier1Err.message);
       }
-    }
 
-    // TIER 3
-    if (!tier1Success) {
-      recoveryTier = 'Tier 3';
-      try {
-        const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-        const textContent = await (await fetch(txtResult.response.Files[0].Url)).text();
-        const newDoc = await PDFDocument.create();
-        const page = newDoc.addPage([600, 800]);
-        const font = await newDoc.embedFont(StandardFonts.Helvetica);
-        const lines = textContent.split('\n').slice(0, 60);
-        lines.forEach((line, i) => {
-          page.drawText(line, { x: 50, y: 750 - i * 12, size: 10, font });
-        });
-        recoveredBytes = await newDoc.save();
-        recoveryTier = 'Tier 3 – Text-Only (no images)';
-      } catch (tier3Err) {
-        return res.status(500).json({ error: "File is mathematically destroyed beyond recovery." });
+      // TIER 2 (ConvertAPI Structural Repair)
+      if (!tier1Success || recoveryLevel === 'balanced') {
+        recoveryTier = 'Tier 2';
+        try {
+          const repairResult = await convertapi.convert('repair', { File: fileUrl }, 'pdf');
+          const repairUrl = repairResult.response.Files[0].Url;
+          recoveredBytes = await fetch(repairUrl).then(r => r.arrayBuffer());
+          tier1Success = true;
+        } catch (tier2Err) {
+          console.log("Tier 2 failed:", tier2Err.message);
+        }
       }
-    }
 
-    // AI Cleanup
-    if (aiCleanup && process.env.GROQ_API_KEY) {
-      try {
-        const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-        const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
-        const aiPrompt = `Clean up the metadata of a PDF. Suggest a title, author, and keywords based on the following content.\nContent:\n${extractedText.substring(0, 3000)}`;
-        const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: process.env.CURRENT_GROQ_MODEL || "llama3-8b-8192",
-            messages: [{ role: "user", content: aiPrompt }],
-            temperature: 0.2
-          })
-        });
-        const aiData = await aiResponse.json();
-        const aiText = aiData.choices?.[0]?.message?.content || '';
-        const meta = JSON.parse(aiText);
-        const pdfDoc = await PDFDocument.load(recoveredBytes);
-        if (meta.title) pdfDoc.setTitle(meta.title);
-        if (meta.author) pdfDoc.setAuthor(meta.author);
-        if (meta.keywords) pdfDoc.setKeywords(meta.keywords);
-        recoveredBytes = await pdfDoc.save();
-      } catch (aiErr) {
-        console.log("AI cleanup failed:", aiErr.message);
+      // TIER 3 (Raw Scavenge)
+      if (!tier1Success || recoveryLevel === 'deep') {
+        recoveryTier = 'Tier 3';
+        try {
+          const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+          const textContent = await (await fetch(txtResult.response.Files[0].Url)).text();
+          const newDoc = await PDFDocument.create();
+          const page = newDoc.addPage([600, 800]);
+          
+          // Must import StandardFonts at top: import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+          const font = await newDoc.embedFont(StandardFonts.Helvetica);
+          const lines = textContent.split('\n').slice(0, 60);
+          lines.forEach((line, i) => {
+            page.drawText(line, { x: 50, y: 750 - i * 12, size: 10, font });
+          });
+          recoveredBytes = await newDoc.save();
+          recoveryTier = 'Tier 3 (Raw Text Recovered)';
+        } catch (tier3Err) {
+          return res.status(500).json({ error: "File is mathematically destroyed beyond recovery." });
+        }
       }
-    }
 
-    // Post-Repair Transformations
-    let finalBytes = recoveredBytes;
-    let finalUrl = null;
+      // AI Metadata Cleanup
+      if (aiCleanup && process.env.GROQ_API_KEY) {
+        try {
+          const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
+          const extractedText = await (await fetch(txtResult.response.Files[0].Url)).text();
+          const aiPrompt = `Analyze the following document content and suggest a clean Title, Author, and Keywords in JSON format ONLY: {"title": "", "author": "", "keywords": [""]}. Do not add any markdown.\n\nContent:\n${extractedText.substring(0, 3000)}`;
+          
+          const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: process.env.CURRENT_GROQ_MODEL || "openai/gpt-oss-20b", // Reliable Model
+              messages: [{ role: "user", content: aiPrompt }],
+              temperature: 0.2
+            })
+          });
+          const aiData = await aiResponse.json();
+          const aiText = aiData.choices?.[0]?.message?.content || '{}';
+          const cleanJson = aiText.replace(/```json/g, '').replace(/```/g, '').trim();
+          const meta = JSON.parse(cleanJson);
+          
+          const pdfDoc = await PDFDocument.load(recoveredBytes);
+          if (meta.title) pdfDoc.setTitle(meta.title);
+          if (meta.author) pdfDoc.setAuthor(meta.author);
+          if (meta.keywords) pdfDoc.setKeywords(meta.keywords);
+          recoveredBytes = await pdfDoc.save();
+        } catch (aiErr) {
+          console.log("AI cleanup failed:", aiErr.message);
+        }
+      }
 
-    if (applyTransform.compress) {
-      try {
+      // Post-Repair Transformations (Compress, Watermark, Encrypt)
+      let finalBytes = recoveredBytes;
+      let finalUrl = null;
+
+      // Ensure we have a working URL for ConvertAPI processing
+      let workingBlobUrl = fileUrl; 
+      if (recoveryTier !== 'Tier 1' || aiCleanup) {
+        // If we modified bytes, re-upload to a temp blob for ConvertAPI
         const tmpBlob = await put(`temp-repaired-${Date.now()}.pdf`, finalBytes, { access: 'public', contentType: 'application/pdf' });
-        const compressResult = await convertapi.convert('compress', { File: tmpBlob.url }, 'pdf');
-        finalBytes = await fetch(compressResult.response.Files[0].Url).then(r => r.arrayBuffer());
-      } catch (e) { console.log("Compress failed:", e.message); }
+        workingBlobUrl = tmpBlob.url;
+      }
+
+      if (applyTransform.compress) {
+        try {
+          const compressResult = await convertapi.convert('compress', { File: workingBlobUrl }, 'pdf');
+          workingBlobUrl = compressResult.response.Files[0].Url;
+        } catch (e) { console.log("Compress failed:", e.message); }
+      }
+
+      if (applyTransform.watermark) {
+        try {
+          const wmResult = await convertapi.convert('watermark', {
+            File: workingBlobUrl,
+            Text: applyTransform.watermark.text || 'CONFIDENTIAL',
+            FontSize: '24', Opacity: '30', Rotation: '45',
+            HorizontalAlignment: 'center', VerticalAlignment: 'center'
+          }, 'pdf');
+          workingBlobUrl = wmResult.response.Files[0].Url;
+        } catch (e) { console.log("Watermark failed:", e.message); }
+      }
+
+      if (applyTransform.encrypt && applyTransform.encrypt.password) {
+        try {
+          const encResult = await convertapi.convert('encrypt', {
+            File: workingBlobUrl,
+            UserPassword: applyTransform.encrypt.password,
+            OwnerPassword: applyTransform.encrypt.password,
+            Permissions: 'Print'
+          }, 'pdf');
+          workingBlobUrl = encResult.response.Files[0].Url;
+        } catch (e) { console.log("Encrypt failed:", e.message); }
+      }
+
+      // Read the final processed file
+      finalBytes = await fetch(workingBlobUrl).then(r => r.arrayBuffer());
+
+      // Final secure save
+      const blob = await put(`repaired-${Date.now()}.pdf`, finalBytes, {
+        access: 'public',
+        contentType: 'application/pdf'
+      });
+      finalUrl = blob.url;
+
+      const calculateRecoveryScore = (damage, tier) => {
+        let score = 100;
+        if (damage.isEncrypted) score -= 20;
+        if (tier === 'Tier 2') score -= 15;
+        if (tier.includes('Tier 3')) score -= 60;
+        return Math.max(0, score);
+      };
+
+      const recoveryReport = {
+        originalSize,
+        finalSize: finalBytes.byteLength,
+        recoveryTier,
+        recoveryScore: calculateRecoveryScore(damageReport, recoveryTier),
+        damageReport,
+        appliedTransforms: Object.keys(applyTransform).filter(k => applyTransform[k]),
+        aiCleanupApplied: aiCleanup,
+        timestamp: new Date().toISOString()
+      };
+
+      const responseData = { success: true, downloadUrl: finalUrl };
+      if (includeReport) responseData.report = recoveryReport;
+
+      return res.status(200).json(responseData);
+
+    } catch (err) {
+      console.error("Repair-PDF error:", err);
+      return res.status(500).json({ error: "Repair process failed." });
     }
-
-    if (applyTransform.watermark) {
-      try {
-        const tmpBlob = await put(`temp-repaired-${Date.now()}.pdf`, finalBytes, { access: 'public', contentType: 'application/pdf' });
-        const wmResult = await convertapi.convert('watermark', {
-          File: tmpBlob.url,
-          Text: applyTransform.watermark.text || 'CONFIDENTIAL',
-          FontSize: '24', Opacity: '30', Rotation: '45',
-          HorizontalAlignment: 'center', VerticalAlignment: 'center'
-        }, 'pdf');
-        finalBytes = await fetch(wmResult.response.Files[0].Url).then(r => r.arrayBuffer());
-      } catch (e) { console.log("Watermark failed:", e.message); }
-    }
-
-    if (applyTransform.encrypt && applyTransform.encrypt.password) {
-      const tmpBlob = await put(`temp-repaired-${Date.now()}.pdf`, finalBytes, { access: 'public', contentType: 'application/pdf' });
-      const encResult = await convertapi.convert('encrypt', {
-        File: tmpBlob.url,
-        UserPassword: applyTransform.encrypt.password,
-        OwnerPassword: applyTransform.encrypt.password,
-        Permissions: applyTransform.encrypt.permissions?.join(',') || 'Print'
-      }, 'pdf');
-      finalBytes = await fetch(encResult.response.Files[0].Url).then(r => r.arrayBuffer());
-    }
-
-    const blob = await put(`repaired-${Date.now()}.pdf`, finalBytes, {
-      access: 'public',
-      contentType: 'application/pdf'
-    });
-    finalUrl = blob.url;
-
-    const recoveryReport = {
-      originalSize,
-      finalSize: finalBytes.byteLength,
-      recoveryTier,
-      recoveryScore: calculateRecoveryScore(damageReport, recoveryTier),
-      damageReport,
-      appliedTransforms: Object.keys(applyTransform).filter(k => applyTransform[k]),
-      aiCleanupApplied: aiCleanup,
-      timestamp: new Date().toISOString()
-    };
-
-    const responseData = { success: true, downloadUrl: finalUrl };
-    if (includeReport) responseData.report = recoveryReport;
-
-    return res.status(200).json(responseData);
-
-  } catch (err) {
-    console.error("Repair-PDF error:", err);
-    return res.status(500).json({ error: "Repair process failed." });
   }
-}
-
     
   else if (action === 'pdf-to-markdown') {
   if (!process.env.GROQ_API_KEY) {
