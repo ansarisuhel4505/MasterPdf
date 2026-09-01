@@ -24,11 +24,16 @@ const PageThumbnail = ({ page, zoomLevel, removePage }) => {
   return (
     <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md p-2 transition-all">
       <div style={{ width: zoomLevel, height: zoomLevel * 1.3, overflow: 'hidden', position: 'relative' }} className="bg-gray-50 flex items-center justify-center rounded">
-        {/* 🔥 FIX: MergePdf ki tarah direct page.file use kar rahe hain */}
+        {/* 🔥 FIX: Exact same as MergePdf - Direct page.file implementation */}
         <Document 
           file={page.file} 
           loading={<Loader2 size={16} className="animate-spin text-gray-400" />}
-          error={(error) => <div className="text-[10px] text-red-500 font-bold text-center">Failed<br/>{error?.message?.substring(0, 15)}</div>}
+          error={(error) => (
+            <div className="flex flex-col items-center justify-center h-full text-[10px] text-red-500 font-bold p-1 text-center overflow-hidden">
+              <span>Failed</span>
+              <span className="font-normal text-gray-400 mt-1" title={error?.message}>{error?.message?.substring(0,35)}</span>
+            </div>
+          )}
         >
           <Page pageNumber={page.pageNumber} width={zoomLevel} renderTextLayer={false} renderAnnotationLayer={false} />
         </Document>
@@ -95,7 +100,7 @@ export default function PdfToWord() {
         sourceId,
         sourceFileName: file.name,
         pageNumber: i + 1,
-        file: file, // 🔥 FIX: Direct Native File Object (Like MergePdf)
+        file: file, // 🔥 Exactly identical to MergePdf implementation
         rawBuffer: uint8Array 
       });
     }
@@ -183,7 +188,6 @@ export default function PdfToWord() {
       const finalBlob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const mainFilename = pages[0].sourceFileName.replace('.pdf', '');
 
-      // 🔥 FIX: Strict check for Vercel Blob URL to prevent "null" error
       const uploadedBlob = await upload(`to_word_${Date.now()}.pdf`, finalBlob, {
         access: 'public',
         handleUploadUrl: '/api/upload',
@@ -198,7 +202,7 @@ export default function PdfToWord() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'pdf-to-word', 
-          fileUrl: uploadedBlob.url, // Ensure this is not null
+          fileUrl: uploadedBlob.url,
           options: {
             ocrEnabled: ocrEnabled,
             ocrLanguage: ocrLanguage,
