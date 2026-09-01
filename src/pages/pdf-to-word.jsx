@@ -95,7 +95,7 @@ const extractPagesFromPDF = async (file, sourceId) => {
   const newPages = [];
   
   // 🔥 FIX: File object ko Blob URL mein convert karo (react-pdf ke liye)
-  const fileUrl = URL.createObjectURL(file);
+ 
   
   for (let i = 0; i < totalPages; i++) {
     newPages.push({
@@ -103,7 +103,7 @@ const extractPagesFromPDF = async (file, sourceId) => {
       sourceId,
       sourceFileName: file.name,
       pageNumber: i + 1,
-      file: fileUrl,       // <-- YEH BLOB URL hai (react-pdf ise render karega)
+      file: file,       // <-- YEH BLOB URL hai (react-pdf ise render karega)
       rawBuffer: uint8Array // <-- Yeh buffer merge ke liye use hoga
     });
   }
@@ -154,19 +154,13 @@ const extractPagesFromPDF = async (file, sourceId) => {
       setPages(prev => [...prev, ...newPages]);
     }
   };
-
- const removePage = (pageId) => {
-  setPages(prev => {
-    const pageToRemove = prev.find(p => p.id === pageId);
-    if (pageToRemove) {
-      URL.revokeObjectURL(pageToRemove.file); // <-- BLOB URL REVOKE
-    }
-    return prev.filter(p => p.id !== pageId);
-  });
+const removePage = (pageId) => {
+  // Revoke karne ka logic pura hata do
+  setPages(prev => prev.filter(p => p.id !== pageId));
 };
 
 const clearAll = () => {
-  pages.forEach(page => URL.revokeObjectURL(page.file)); // <-- SAB REVOKE
+  // Revoke karne ka logic pura hata do
   setPages([]);
 };
 
@@ -312,13 +306,12 @@ const clearAll = () => {
                   {ocrEnabled && (
                     <div className="pl-2 pr-2">
                       <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1"><Globe size={14}/> Document Language</label>
-                      <select value={ocrLanguage} onChange={(e) => setOcrLanguage(e.target.value)} className="w-full p-2 border rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="eng">English</option>
-                        <option value="hin">Hindi</option>
-                        <option value="spa">Spanish</option>
-                        <option value="fra">French</option>
-                        <option value="deu">German</option>
-                      </select>
+                     <select value={ocrLanguage} onChange={(e) => setOcrLanguage(e.target.value)} className="w-full p-2 border rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                      <option value="en">English</option>
+                      <option value="es">Spanish</option>
+                      <option value="fr">French</option>
+                      <option value="de">German</option>
+                    </select>
                     </div>
                   )}
 
