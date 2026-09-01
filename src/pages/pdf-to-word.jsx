@@ -75,40 +75,40 @@ export default function PdfToWord() {
     return () => clearInterval(progressInterval.current);
   }, []);
 
-  const extractPagesFromPDF = async (file, sourceId) => {
-    let buffer;
-    if (file.arrayBuffer) {
-      buffer = await file.arrayBuffer();
-    } else {
-      buffer = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
-      });
-    }
+const extractPagesFromPDF = async (file, sourceId) => {
+  let buffer;
+  if (file.arrayBuffer) {
+    buffer = await file.arrayBuffer();
+  } else {
+    buffer = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
 
-    const uint8Array = new Uint8Array(buffer);
-    const pdf = await PDFDocument.load(uint8Array, { ignoreEncryption: true }); 
-    const totalPages = pdf.getPageCount();
-    
-    const newPages = [];
-    
-    // 🔥 FIX: Har page ke liye blob URL banao (File object pass karne se "Failed" aata tha)
-    const fileUrl = URL.createObjectURL(file);
-    
-    for (let i = 0; i < totalPages; i++) {
-      newPages.push({
-        id: `page-${sourceId}-${i}`,
-        sourceId,
-        sourceFileName: file.name,
-        pageNumber: i + 1,
-        file: fileUrl, // <-- Blob URL (stable)
-        rawBuffer: uint8Array 
-      });
-    }
-    return newPages;
-  };
+  const uint8Array = new Uint8Array(buffer);
+  const pdf = await PDFDocument.load(uint8Array, { ignoreEncryption: true }); 
+  const totalPages = pdf.getPageCount();
+  
+  const newPages = [];
+  
+  // 🔥 FIX: File object ko Blob URL mein convert karo (react-pdf ke liye)
+  const fileUrl = URL.createObjectURL(file);
+  
+  for (let i = 0; i < totalPages; i++) {
+    newPages.push({
+      id: `page-${sourceId}-${i}`,
+      sourceId,
+      sourceFileName: file.name,
+      pageNumber: i + 1,
+      file: fileUrl,       // <-- YEH BLOB URL hai (react-pdf ise render karega)
+      rawBuffer: uint8Array // <-- Yeh buffer merge ke liye use hoga
+    });
+  }
+  return newPages;
+};
 
   const handleFileChange = async (e) => {
     if (!e.target.files) return;
@@ -155,20 +155,20 @@ export default function PdfToWord() {
     }
   };
 
-  const removePage = (pageId) => {
-    setPages(prev => {
-      const pageToRemove = prev.find(p => p.id === pageId);
-      if (pageToRemove) {
-        URL.revokeObjectURL(pageToRemove.file); // <-- BLOB URL REVOKE KARO
-      }
-      return prev.filter(p => p.id !== pageId);
-    });
-  };
+ const removePage = (pageId) => {
+  setPages(prev => {
+    const pageToRemove = prev.find(p => p.id === pageId);
+    if (pageToRemove) {
+      URL.revokeObjectURL(pageToRemove.file); // <-- BLOB URL REVOKE
+    }
+    return prev.filter(p => p.id !== pageId);
+  });
+};
 
-  const clearAll = () => {
-    pages.forEach(page => URL.revokeObjectURL(page.file)); // <-- SAB REVOKE KARO
-    setPages([]);
-  };
+const clearAll = () => {
+  pages.forEach(page => URL.revokeObjectURL(page.file)); // <-- SAB REVOKE
+  setPages([]);
+};
 
   const startProgressSimulation = () => {
     setProgress(0);
