@@ -12,17 +12,16 @@ import {
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// 🔥 FIX 1: Safe Worker URL (Matches your pdf-to-word file to prevent version crash)
 if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.mjs`;
 }
 
 const ACCEPTED_FORMATS = '.pdf';
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+const MAX_FILE_SIZE = 100 * 1024 * 1024; 
 
 export default function RedactPdf() {
   const [file, setFile] = useState(null);
-  const [fileUrl, setFileUrl] = useState(''); // Local preview URL
+  const [fileUrl, setFileUrl] = useState(''); 
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [boxes, setBoxes] = useState([]); 
@@ -35,7 +34,11 @@ export default function RedactPdf() {
   const [searchText, setSearchText] = useState('');
   const [drawMode, setDrawMode] = useState(true);
   
+  // PDF Document Reference for exact text math
   const [pdfDocProxy, setPdfDocProxy] = useState(null);
+  
+  // 🔥 NEW STATE: For Resizing Boxes
+  const [resizingBox, setResizingBox] = useState(null);
 
   const [options, setOptions] = useState({
     fillColor: '#000000',
@@ -76,7 +79,6 @@ export default function RedactPdf() {
     return true;
   };
 
-  // 🔥 FIX 2: Instant Local Preview (Prevents "Failed to load PDF file")
   const handleFileChange = (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile || !validateFile(selectedFile)) return;
@@ -86,8 +88,6 @@ export default function RedactPdf() {
     setCurrentPage(1);
     setSearchText('');
     setPdfDocProxy(null);
-    
-    // Create instant local URL for viewer, avoid network CORS errors
     setFileUrl(URL.createObjectURL(selectedFile));
     e.target.value = '';
   };
@@ -102,7 +102,6 @@ export default function RedactPdf() {
     setCurrentPage(1);
     setSearchText('');
     setPdfDocProxy(null);
-    
     setFileUrl(URL.createObjectURL(droppedFile));
   };
 
@@ -120,9 +119,9 @@ export default function RedactPdf() {
     setPdfDocProxy(pdfDoc);
   };
 
-  // --- MANUAL MOUSE DRAWING (100% REAL) ---
+  // --- MOUSE DRAWING & RESIZING LOGIC ---
   const handleMouseDown = (e) => {
-    if (!drawMode) return;
+    if (!drawMode || resizingBox !== null) return;
     const rect = pdfContainerRef.current.getBoundingClientRect();
     const startX = ((e.clientX - rect.left) / rect.width) * 100;
     const startY = ((e.clientY - rect.top) / rect.height) * 100;
@@ -140,11 +139,28 @@ export default function RedactPdf() {
   };
 
   const handleMouseMove = (e) => {
+    const rect = pdfContainerRef.current.getBoundingClientRect();
+    
+    // 🔥 If User is Resizing an existing box
+    if (resizingBox !== null) {
+      const deltaXPct = ((e.clientX - resizingBox.startX) / rect.width) * 100;
+      const deltaYPct = ((e.clientY - resizingBox.startY) / rect.height) * 100;
+
+      setBoxes(prev => {
+        const newBoxes = [...prev];
+        const box = newBoxes[resizingBox.index];
+        box.width = Math.max(0.5, resizingBox.startWidth + deltaXPct); // Minimum size 0.5%
+        box.height = Math.max(0.5, resizingBox.startHeight + deltaYPct);
+        return newBoxes;
+      });
+      return;
+    }
+
+    // Normal Drawing Logic
     if (!drawMode || boxes.length === 0) return;
     const lastBox = boxes[boxes.length - 1];
     if (!lastBox.isDrawing) return;
     
-    const rect = pdfContainerRef.current.getBoundingClientRect();
     const currentX = ((e.clientX - rect.left) / rect.width) * 100;
     const currentY = ((e.clientY - rect.top) / rect.height) * 100;
     
@@ -160,21 +176,25 @@ export default function RedactPdf() {
   };
 
   const handleMouseUp = () => {
-    setBoxes(prev => prev.map(box => ({ ...box, isDrawing: false })));
+    if (resizingBox !== null) {
+      setResizingBox(null);
+    } else {
+      setBoxes(prev => prev.map(box => ({ ...box, isDrawing: false })));
+    }
   };
 
   const removeBox = (index) => {
     setBoxes(prev => prev.filter((_, i) => i !== index));
   };
 
-  // --- 🔥 REAL TEXT FINDER & MARKER (Extracts exact PDF coordinates) ---
+  // --- 🔥 EXACT WORD MARKER (100% PERFECT FIT MATH) ---
   const performSearchAndMark = async (searchTerms) => {
     if (!pdfDocProxy || searchTerms.length === 0) return;
     setIsProcessing(true);
     
     try {
       const newBoxes = [];
-      const terms = searchTerms.map(t => t.toLowerCase().trim()).filter(t => t.length > 1);
+      const terms = searchTerms.map(t => t.toLowerCase().trim()).filter(t => t.length > 0);
 
       for (let i = 1; i <= numPages; i++) {
         const page = await pdfDocProxy.getPage(i);
@@ -183,38 +203,50 @@ export default function RedactPdf() {
 
         textContent.items.forEach(item => {
           const str = item.str.toLowerCase();
-          const isMatch = terms.some(term => str.includes(term));
           
-          if (isMatch && item.str.trim() !== "") {
-            const tx = item.transform[4];
-            const ty = item.transform[5];
-            const fontHeight = item.transform[3] || item.height || 10;
-            const width = item.width;
+          terms.forEach(term => {
+            let startIndex = 0;
+            let matchIndex;
+            
+            // Ek hi line me agar multiple times same word ho toh sabko pakdega
+            while ((matchIndex = str.indexOf(term, startIndex)) !== -1) {
+              const textLength = item.str.length || 1;
+              const charWidth = item.width / textLength; // Average char width
+              
+              // Exactly utne hi letters ka width aur x offset calculate karo
+              const exactXOffset = matchIndex * charWidth;
+              const exactWidth = term.length * charWidth;
 
-            // Map native PDF coordinates to frontend percentage
-            const xPct = (tx / viewport.width) * 100;
-            const yPct = ((viewport.height - ty - fontHeight) / viewport.height) * 100;
-            const wPct = (width / viewport.width) * 100;
-            const hPct = (fontHeight / viewport.height) * 100;
+              const tx = item.transform[4] + exactXOffset;
+              const ty = item.transform[5];
+              const fontHeight = item.transform[3] || item.height || 10;
 
-            newBoxes.push({
-              pageIndex: i - 1,
-              x: Math.max(0, xPct), 
-              y: Math.max(0, yPct - 1), 
-              width: wPct + 1, 
-              height: hPct + 2,
-              isDrawing: false,
-              color: options.fillColor,
-              text: options.overlayText,
-              opacity: options.overlayOpacity
-            });
-          }
+              const xPct = (tx / viewport.width) * 100;
+              const yPct = ((viewport.height - ty - fontHeight) / viewport.height) * 100;
+              const wPct = (exactWidth / viewport.width) * 100;
+              const hPct = (fontHeight / viewport.height) * 100;
+
+              newBoxes.push({
+                pageIndex: i - 1,
+                x: Math.max(0, xPct - 0.2), // Tiny left padding
+                y: Math.max(0, yPct - 1), 
+                width: wPct + 0.5, // Tiny width padding
+                height: hPct + 2,
+                isDrawing: false,
+                color: options.fillColor,
+                text: options.overlayText,
+                opacity: options.overlayOpacity
+              });
+
+              startIndex = matchIndex + term.length;
+            }
+          });
         });
       }
 
       if (newBoxes.length > 0) {
         setBoxes(prev => [...prev, ...newBoxes]);
-        showToast(`Marked ${newBoxes.length} elements instantly!`);
+        showToast(`Marked ${newBoxes.length} exact matches!`);
       } else {
         showToast("No matches found in the document.", "error");
       }
@@ -231,7 +263,6 @@ export default function RedactPdf() {
     performSearchAndMark([searchText]);
   };
 
-  // --- 🔥 AI SMART DETECTION (REAL Groq API CALL) ---
   const runAiDetection = async () => {
     if (!pdfDocProxy) return showToast("Upload a PDF first", "error");
     setIsProcessing(true);
@@ -255,7 +286,7 @@ export default function RedactPdf() {
       const data = await response.json();
 
       if (response.ok && data.entities && data.entities.length > 0) {
-        await performSearchAndMark(data.entities); // Auto mark all AI found entities
+        await performSearchAndMark(data.entities); 
       } else {
         showToast("AI couldn't find any sensitive data.", "success");
       }
@@ -267,7 +298,6 @@ export default function RedactPdf() {
     }
   };
 
-  // --- 🔥 APPLY REDACTION ---
   const processRedaction = async () => {
     if (!file) return showToast('No file found', 'error');
     if (boxes.length === 0) return showToast('No redaction boxes to apply.', 'error');
@@ -281,7 +311,6 @@ export default function RedactPdf() {
         setProgress(prev => prev >= 85 ? prev : prev + 15);
       }, 300);
 
-      // Upload file to Vercel Blob ONLY when processing starts
       const uploadedBlob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/upload' });
       const finalFileUrl = uploadedBlob.url;
 
@@ -344,7 +373,7 @@ export default function RedactPdf() {
       <main className="flex-grow flex flex-col p-4 sm:p-6 mt-16 mb-10">
         <div className="text-center mb-6">
           <h1 className="text-3xl sm:text-4xl font-bold mb-2">Redact PDF</h1>
-          <p className="opacity-80">Find and hide sensitive text automatically or manually.</p>
+          <p className="opacity-80">Find and hide sensitive text accurately or draw manually.</p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-6 w-full max-w-7xl mx-auto">
@@ -362,7 +391,6 @@ export default function RedactPdf() {
                 <input type="text" value={options.overlayText} onChange={(e) => setOptions({ ...options, overlayText: e.target.value })} placeholder="e.g. HIDDEN" className="w-full p-2 border rounded bg-white dark:bg-gray-900" />
               </div>
 
-              {/* Smart AI Detection Button */}
               <button onClick={runAiDetection} disabled={isProcessing || !fileUrl} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex justify-center items-center gap-2 disabled:opacity-50 transition shadow-md">
                 <Sparkles size={18} /> AI Smart Redact
               </button>
@@ -416,7 +444,7 @@ export default function RedactPdf() {
                       <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()} placeholder="Type word and hit Mark All..." className="w-full pl-10 p-2.5 font-medium border rounded-lg bg-white dark:bg-gray-900 outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <button onClick={handleManualSearch} disabled={isProcessing} className="px-6 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-bold shadow-md transition disabled:opacity-50">
-                      Mark All
+                      Mark Exact Words
                     </button>
                   </div>
 
@@ -428,37 +456,62 @@ export default function RedactPdf() {
                       onMouseMove={handleMouseMove}
                       onMouseUp={handleMouseUp}
                       onMouseLeave={handleMouseUp}
-                      className={`relative shadow-xl inline-block select-none ${drawMode ? 'cursor-crosshair' : 'cursor-default'}`}
+                      className={`relative shadow-xl inline-block select-none ${drawMode && resizingBox === null ? 'cursor-crosshair' : 'cursor-default'}`}
                       style={{ width: 'max-content', height: 'max-content' }}
                     >
                       <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess}>
                         <Page pageNumber={currentPage} renderTextLayer={false} renderAnnotationLayer={false} width={700} />
                       </Document>
 
-                      {/* Display Coordinates Boxes */}
-                      {boxes.filter(b => b.pageIndex === currentPage - 1).map((box, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            position: 'absolute',
-                            left: `${box.x}%`,
-                            top: `${box.y}%`,
-                            width: `${box.width}%`,
-                            height: `${box.height}%`,
-                            backgroundColor: box.color,
-                            opacity: box.opacity / 100,
-                            border: '1.5px solid red',
-                            boxShadow: '0 0 4px rgba(255,0,0,0.5)',
-                            cursor: box.isDrawing ? 'crosshair' : 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          onClick={(e) => { e.stopPropagation(); if (!box.isDrawing && !drawMode) removeBox(idx); }}
-                        >
-                          {box.text && <span className="text-white text-[10px] font-bold overflow-hidden">{box.text}</span>}
-                        </div>
-                      ))}
+                      {/* Display Coordinates Boxes (NOW WITH CUT & RESIZE HOVER OPTIONS) */}
+                      {boxes.map((box, idx) => {
+                        if (box.pageIndex !== currentPage - 1) return null;
+                        return (
+                          <div
+                            key={idx}
+                            className="group absolute flex items-center justify-center"
+                            style={{
+                              left: `${box.x}%`,
+                              top: `${box.y}%`,
+                              width: `${box.width}%`,
+                              height: `${box.height}%`,
+                              backgroundColor: box.color,
+                              opacity: box.opacity / 100,
+                              border: '1.5px solid red',
+                              boxShadow: '0 0 4px rgba(255,0,0,0.5)',
+                              cursor: resizingBox !== null ? 'se-resize' : 'default'
+                            }}
+                          >
+                            {/* Overlay Text */}
+                            {box.text && <span className="text-white text-[10px] font-bold overflow-hidden pointer-events-none select-none">{box.text}</span>}
+                            
+                            {/* 🔥 CUT (DELETE) BUTTON on Hover */}
+                            <button
+                              onMouseDown={(e) => { e.stopPropagation(); removeBox(idx); }}
+                              className="absolute -top-3 -right-3 w-6 h-6 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-20 cursor-pointer"
+                              title="Cut / Remove Box"
+                            >
+                              <X size={14} />
+                            </button>
+
+                            {/* 🔥 RESIZE (BADA/CHHOTA) HANDLE on Hover */}
+                            <div
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                setResizingBox({
+                                  index: idx,
+                                  startX: e.clientX,
+                                  startY: e.clientY,
+                                  startWidth: box.width,
+                                  startHeight: box.height
+                                });
+                              }}
+                              className="absolute -bottom-2 -right-2 w-4 h-4 bg-blue-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-20 cursor-se-resize border-2 border-white"
+                              title="Drag to resize"
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -468,28 +521,6 @@ export default function RedactPdf() {
                 </div>
               )}
             </div>
-
-            {/* History Footer */}
-            {history.length > 0 && (
-              <div className="mt-6 border-t pt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-bold flex items-center gap-2">
-                    <History size={18} /> History
-                  </h4>
-                  <button onClick={() => setHistory([])} className="text-red-500 text-sm hover:underline font-bold">
-                    Clear History
-                  </button>
-                </div>
-                <ul className="space-y-2 max-h-40 overflow-y-auto">
-                  {history.map((item, idx) => (
-                    <li key={idx} className="flex justify-between items-center text-sm bg-white dark:bg-gray-800 border p-3 rounded-lg shadow-sm">
-                      <span className="font-medium">{item.file}</span>
-                      <span className="opacity-50 text-xs">{item.time}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
         </div>
       </main>
