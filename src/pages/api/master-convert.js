@@ -93,41 +93,115 @@ let fileUrls = req.body.fileUrls;
       }
     }
 
-  else if (action === 'ai-detect-pii') {
-      if (!process.env.GROQ_API_KEY) return res.status(200).json({ error: "Groq API Key missing." });
+  // 🔥 NEW BLOCK: AI PII DETECTION
+    else if (action === 'ai-redact-detect') {
+      if (!process.env.GROQ_API_KEY) return res.status(200).json({ entities: [] });
       try {
-        const txtResult = await convertapi.convert('txt', { File: fileUrl }, 'pdf');
-        const text = await (await fetch(txtResult.response.Files[0].Url)).text();
-        const shortText = text.substring(0, 15000); // Prevent token limit error
+        const text = req.body.text || "";
+        const prompt = `You are a Data Privacy AI. Analyze the following text and extract all sensitive information (PII) including Person Names, Phone Numbers, Email Addresses, and Bank Account/Credit Card numbers.
+        Rules:
+        1. Return ONLY a valid JSON array of strings. Do not add any markdown, explanation, or code blocks.
+        2. Example format: ["John Doe", "+1-987654321", "johndoe@email.com"]
+        Text to analyze:
+        ${text}`;
 
-        const prompt = `Extract all sensitive PII (Names, Phone Numbers, Emails, Social Security Numbers, Bank Accounts, Passwords) from the following text. Return ONLY a valid JSON array of exact matching strings. Do not include markdown, explanations, or any other text. Example format: ["John Doe", "+1234567890", "test@email.com"]
-
-Text:
-${shortText}`;
-        
-        const groqUrl = "https://api.groq.com/openai/v1/chat/completions";
-        const aiResponse = await fetch(groqUrl, {
+        const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: "mixtral-8x7b-32768",
+            model: process.env.CURRENT_GROQ_MODEL || "llama3-8b-8192", // Fast model for JSON parsing
             messages: [{ role: "user", content: prompt }],
             temperature: 0.1
           })
         });
-        
-        const data = await aiResponse.json();
-        let content = data.choices[0].message.content.trim();
-        
-        // Clean markdown wrapper if AI adds it
-        if (content.startsWith('```json')) content = content.replace(/```json/g, '').replace(/```/g, '').trim();
-        else if (content.startsWith('```')) content = content.replace(/```/g, '').trim();
 
-        const piiList = JSON.parse(content);
-        return res.status(200).json({ success: true, piiList });
+        const data = await aiResponse.json();
+        const content = data.choices?.[0]?.message?.content || "[]";
+        
+        // Clean JSON from markdown if AI adds it
+        const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
+        const entities = JSON.parse(cleanJson);
+
+        return res.status(200).json({ success: true, entities: Array.isArray(entities) ? entities : [] });
       } catch (err) {
-        console.error("AI Detect Error:", err);
-        return res.status(500).json({ error: "AI Detection failed" });
+        console.error("AI Detection Error:", err);
+        return res.status(500).json({ error: "AI failed to parse text." });
+      }
+    }
+
+    // 🔥 REDACT PDF PROCESSOR
+    else if (action === 'redact-pdf') {
+      try {
+        const { boxes } = req.body;
+        const options = req.body.options || {};
+        
+        const pdfBytes = await fetch(fileUrl).then(res => res.arrayBuffer());
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const pages = pdfDoc.getPages();
+
+        if (options.sanitizeMetadata) {
+          pdfDoc.setTitle('');
+          pdfDoc.setAuthor('');
+          pdfDoc.setSubject('');
+          pdfDoc.setKeywords([]);
+          pdfDoc.setProducer('');
+          pdfDoc.setCreator('');
+        }
+
+        const hexToRgb = (hex) => {
+          if (!hex) return rgb(0, 0, 0);
+          hex = hex.replace(/^#/, '');
+          if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+          const r = parseInt(hex.substring(0, 2), 16) / 255;
+          const g = parseInt(hex.substring(2, 4), 16) / 255;
+          const b = parseInt(hex.substring(4, 6), 16) / 255;
+          return rgb(r, g, b);
+        };
+
+        if (boxes && boxes.length > 0) {
+          boxes.forEach((box) => {
+            const page = pages[box.pageIndex || 0];
+            const { width: actualWidth, height: actualHeight } = page.getSize();
+            const scale = actualWidth / 700; // Match frontend visual scale
+
+            const scaledX = box.x * scale;
+            const scaledY = box.y * scale;
+            const scaledWidth = box.width * scale;
+            const scaledHeight = box.height * scale;
+
+            const boxColor = hexToRgb(box.color);
+            const boxOpacity = box.opacity !== undefined ? Number(box.opacity) / 100 : 1;
+
+            page.drawRectangle({
+              x: scaledX,
+              y: actualHeight - scaledY - scaledHeight, 
+              width: scaledWidth,
+              height: scaledHeight,
+              color: boxColor,
+              opacity: boxOpacity
+            });
+
+            if (box.text) {
+              page.drawText(box.text, {
+                x: scaledX + 5,
+                y: actualHeight - scaledY - (scaledHeight / 2) - 4,
+                size: Math.min(12, scaledHeight * 0.7), 
+                color: rgb(1, 1, 1)
+              });
+            }
+          });
+        }
+
+        const modifiedPdfBytes = await pdfDoc.save();
+        const blob = await put(`redacted-document-${Date.now()}.pdf`, modifiedPdfBytes, {
+          access: 'public',
+          contentType: 'application/pdf'
+        });
+
+        return res.status(200).json({ success: true, downloadUrl: blob.url });
+      } catch (err) {
+        console.error("Redaction Error:", err);
+        return res.status(500).json({ error: "Failed to apply redaction to the PDF." });
       }
     }
 
