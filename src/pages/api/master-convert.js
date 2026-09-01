@@ -196,7 +196,6 @@ let fileUrls = req.body.fileUrls;
 }
     else if (action === 'pdf-to-word') {
       try {
-        // 🔥 FIX: Frontend se aane wale naye 'options' object ko sahi se read karna
         const options = req.body.options || {};
         const fileUrls = req.body.fileUrls || [req.body.fileUrl];
         const convertedUrls = [];
@@ -204,23 +203,30 @@ let fileUrls = req.body.fileUrls;
         for (const url of fileUrls) {
           const convertOptions = { File: url };
 
-          // 1. ADVANCED LAYOUT ENGINE
-          // Isko 'true' rakhne se paragraphs aur tables nahi bigadte hain
+          // 🔥 1. LAYOUT PRESERVATION
           convertOptions.PreserveLayout = options.preserveLayout === false ? 'false' : 'true';
 
-          // 2. SMART MULTI-LANGUAGE OCR
+          // 🔥 2. STRICT LANGUAGE FIX (CRASH PREVENTER)
           if (options.ocrEnabled) {
             convertOptions.Ocr = 'true';
-            // Frontend se aayi hui language set karega (eng, hin, spa, etc.)
-            convertOptions.OcrLanguage = options.ocrLanguage || 'eng'; 
+            let rawLang = options.ocrLanguage || 'en';
+            
+            // API Supported Exact Codes
+            const validLangs = ['auto', 'ar', 'ca', 'zh', 'da', 'nl', 'en', 'fi', 'fr', 'de', 'el', 'ko', 'it', 'ja', 'no', 'pl', 'pt', 'ro', 'ru', 'sl', 'es', 'sv', 'tr', 'ua', 'th'];
+            
+            // Agar language supported list me hai toh wo use karo, warna 'auto' kardo taki crash na ho
+            if (validLangs.includes(rawLang)) {
+              convertOptions.OcrLanguage = rawLang;
+            } else {
+              convertOptions.OcrLanguage = 'auto'; 
+            }
           }
 
-          // 3. HIGH QUALITY SCANS (Blur hatane ke liye 300 DPI)
+          // 🔥 3. HIGH QUALITY SCANS (300 DPI)
           if (options.highQuality || options.ocrEnabled) {
             convertOptions.ImageResolution = '300';
           }
 
-          // ConvertAPI call for DOCX
           const result = await convertapi.convert('docx', convertOptions, 'pdf');
           convertedUrls.push(result.response.Files[0].Url);
         }
