@@ -7,7 +7,6 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// 🔥 FIX: Added 'Stamp' and 'Loader2' to the imports
 import { 
   UploadCloud, X, Type, Image as ImageIcon, Layers, 
   ChevronLeft, ChevronRight, Download, Sliders, Shield, LayoutGrid, Stamp, Loader2
@@ -25,7 +24,7 @@ export default function AdvancedWatermark() {
   const [currentPage, setCurrentPage] = useState(1);
 
   // --- 🔥 ADVANCED WATERMARK STATES ---
-  const [watermarkType, setWatermarkType] = useState('text'); // text, image
+  const [watermarkType, setWatermarkType] = useState('text'); 
   
   // Text Options
   const [textOptions, setTextOptions] = useState({
@@ -35,8 +34,8 @@ export default function AdvancedWatermark() {
     fontSize: 60,
     opacity: 30,
     rotation: -45,
-    isMosaic: false, // Repeat pattern
-    zIndex: 'overlay' // background, overlay
+    isMosaic: false, 
+    zIndex: 'overlay' 
   });
 
   // Image Options
@@ -50,11 +49,9 @@ export default function AdvancedWatermark() {
     zIndex: 'overlay'
   });
 
-  // Page Targeting
+  // Page Targeting & Security
   const [pageRange, setPageRange] = useState('all'); 
   const [customPages, setCustomPages] = useState('');
-  
-  // Security
   const [flattenPdf, setFlattenPdf] = useState(false);
 
   // File Handlers
@@ -113,7 +110,7 @@ export default function AdvancedWatermark() {
     return Array.from(pages).filter(p => p > 0 && p <= totalPages);
   };
 
-  // --- 🔥 CORE PDF PROCESSING ENGINE (NO DUMMY) ---
+  // --- 🔥 CORE PDF PROCESSING ENGINE ---
   const applyWatermark = async (downloadMode) => {
     if (!file) return;
     if (watermarkType === 'text' && !textOptions.text.trim()) return alert("Enter text.");
@@ -170,7 +167,6 @@ export default function AdvancedWatermark() {
           const textWidth = customFont.widthOfTextAtSize(textOptions.text, textSize);
           
           if (textOptions.isMosaic) {
-            // Tile Pattern
             const stepX = textWidth + 100;
             const stepY = textSize + 100;
             for (let x = -width; x < width * 2; x += stepX) {
@@ -184,9 +180,10 @@ export default function AdvancedWatermark() {
               }
             }
           } else {
-            // Single Center Placement
-            const cx = (width / 2) - (textWidth / 2) * Math.cos(angleRad) + (textSize / 2) * Math.sin(angleRad);
-            const cy = (height / 2) - (textWidth / 2) * Math.sin(angleRad) - (textSize / 2) * Math.cos(angleRad);
+            // 🔥 FIXED EXACT CENTERING MATH
+            const baselineOffset = textSize * 0.35; 
+            const cx = (width / 2) - (textWidth / 2) * Math.cos(angleRad) + baselineOffset * Math.sin(angleRad);
+            const cy = (height / 2) - (textWidth / 2) * Math.sin(angleRad) - baselineOffset * Math.cos(angleRad);
             page.drawText(textOptions.text, {
               x: cx, y: cy, size: textSize, font: customFont,
               color: hexToPdfRgb(textOptions.color),
@@ -253,7 +250,7 @@ export default function AdvancedWatermark() {
     setIsWatermarking(false);
   };
 
-  // --- LIVE CSS STYLE GENERATOR FOR FRONTEND OVERLAY PREVIEW ---
+  // --- LIVE CSS STYLE GENERATOR FOR FRONTEND PREVIEW ---
   const generateOverlayStyle = () => {
     if (watermarkType === 'text') {
       return {
@@ -261,6 +258,7 @@ export default function AdvancedWatermark() {
         opacity: textOptions.opacity / 100,
         fontSize: `${textOptions.fontSize}px`,
         transform: `rotate(${textOptions.rotation}deg)`,
+        transformOrigin: 'center center', // Ensures correct pivot
         fontFamily: textOptions.font.split('-')[0],
         fontWeight: textOptions.font.includes('Bold') ? 'bold' : 'normal',
         fontStyle: textOptions.font.includes('Italic') ? 'italic' : 'normal',
@@ -270,6 +268,7 @@ export default function AdvancedWatermark() {
       return {
         opacity: imageOptions.opacity / 100,
         transform: `scale(${imageOptions.scale / 100}) rotate(${imageOptions.rotation}deg)`,
+        transformOrigin: 'center center',
         mixBlendMode: imageOptions.zIndex === 'background' ? 'overlay' : 'normal'
       };
     }
@@ -314,53 +313,54 @@ export default function AdvancedWatermark() {
                   <X size={20} />
                 </button>
 
-                {/* PDF RENDER BOX WITH LIVE WATERMARK OVERLAY */}
-                <div className="relative border border-gray-300 shadow-md bg-white overflow-hidden flex justify-center w-full max-w-[450px] min-h-[600px]">
-                  
-                  {/* LIVE OVERLAY LAYER */}
-                  {(pageRange === 'all' || pageRange === 'current' || 
-                   (pageRange === 'odd' && currentPage % 2 !== 0) || 
-                   (pageRange === 'even' && currentPage % 2 === 0)) && (
-                    <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
-                      {watermarkType === 'text' && textOptions.isMosaic ? (
-                        // TEXT TILE MODE PREVIEW
-                        <div className="w-full h-full flex flex-wrap content-start justify-start overflow-hidden">
-                          {Array.from({length: 30}).map((_, i) => (
-                            <div key={i} className="flex-shrink-0 p-8 whitespace-nowrap" style={generateOverlayStyle()}>
-                              {textOptions.text}
-                            </div>
-                          ))}
-                        </div>
-                      ) : watermarkType === 'image' && imageOptions.isMosaic && imageUrl ? (
-                        // IMAGE TILE MODE PREVIEW
-                        <div className="w-full h-full flex flex-wrap content-start justify-start overflow-hidden opacity-50">
-                          {Array.from({length: 30}).map((_, i) => (
-                            <img key={i} src={imageUrl} className="m-4" style={generateOverlayStyle()} alt="tile" />
-                          ))}
-                        </div>
-                      ) : (
-                        // SINGLE CENTERED PREVIEW
-                        <div className="w-full h-full flex items-center justify-center">
-                          {watermarkType === 'text' ? (
-                            <span className="whitespace-nowrap transition-all duration-75 text-center leading-none" style={generateOverlayStyle()}>
-                              {textOptions.text}
-                            </span>
-                          ) : imageUrl ? (
-                            <img src={imageUrl} style={generateOverlayStyle()} className="transition-all duration-75 max-w-[80%] max-h-[80%] object-contain" alt="Watermark" />
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                {/* 🔥 FIXED WRAPPER: Matches exactly to the PDF bounds */}
+                <div className="flex-1 w-full flex items-center justify-center overflow-auto min-h-[450px]">
+                  <div className="relative shadow-2xl bg-white inline-block">
+                    
+                    {/* LIVE OVERLAY LAYER */}
+                    {(pageRange === 'all' || pageRange === 'current' || 
+                     (pageRange === 'odd' && currentPage % 2 !== 0) || 
+                     (pageRange === 'even' && currentPage % 2 === 0)) && (
+                      <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
+                        {watermarkType === 'text' && textOptions.isMosaic ? (
+                          <div className="w-full h-full flex flex-wrap content-start justify-start overflow-hidden">
+                            {Array.from({length: 30}).map((_, i) => (
+                              <div key={i} className="flex-shrink-0 p-8 whitespace-nowrap" style={generateOverlayStyle()}>
+                                {textOptions.text}
+                              </div>
+                            ))}
+                          </div>
+                        ) : watermarkType === 'image' && imageOptions.isMosaic && imageUrl ? (
+                          <div className="w-full h-full flex flex-wrap content-start justify-start overflow-hidden opacity-50">
+                            {Array.from({length: 30}).map((_, i) => (
+                              <img key={i} src={imageUrl} className="m-4" style={generateOverlayStyle()} alt="tile" />
+                            ))}
+                          </div>
+                        ) : (
+                          // 🔥 EXACT CENTER FLEXBOX FOR SINGLE WATERMARK
+                          <div className="w-full h-full flex items-center justify-center">
+                            {watermarkType === 'text' ? (
+                              <span className="whitespace-nowrap transition-all duration-75 text-center leading-none" style={generateOverlayStyle()}>
+                                {textOptions.text}
+                              </span>
+                            ) : imageUrl ? (
+                              <img src={imageUrl} style={generateOverlayStyle()} className="transition-all duration-75 max-w-[80%] max-h-[80%] object-contain" alt="Watermark" />
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-                  {/* DOCUMENT VIEWER */}
-                  <div className="relative z-10">
-                    <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<Loader2 className="animate-spin text-blue-500 m-10" size={40}/>}>
-                      <Page pageNumber={currentPage} renderTextLayer={false} renderAnnotationLayer={false} width={450} />
-                    </Document>
+                    {/* DOCUMENT VIEWER */}
+                    <div className="relative z-10">
+                      <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<Loader2 className="animate-spin text-blue-500 m-10" size={40}/>}>
+                        <Page pageNumber={currentPage} renderTextLayer={false} renderAnnotationLayer={false} width={450} />
+                      </Document>
+                    </div>
                   </div>
                 </div>
 
+                {/* Pagination Controls */}
                 <div className="mt-6 flex items-center justify-between w-full max-w-[450px]">
                   <button disabled={currentPage <= 1} onClick={() => setCurrentPage(prev => prev - 1)} className="flex items-center gap-1 px-4 py-2 bg-white border rounded-lg shadow-sm disabled:opacity-50 hover:bg-gray-50 font-bold text-sm"><ChevronLeft size={16}/> Prev</button>
                   <span className="text-sm font-bold text-gray-700">Page {currentPage} of {numPages}</span>
