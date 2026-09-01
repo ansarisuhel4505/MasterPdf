@@ -1018,15 +1018,20 @@ else if (action === 'repair-pdf') {
         } catch (e) { console.log("Compress failed:", e.message); }
       }
 
-      if (applyTransform.watermark) {
+     if (applyTransform.watermark) {
         try {
+          const tmpBlob = await put(`temp-repaired-${Date.now()}.pdf`, finalBytes, { access: 'public', contentType: 'application/pdf' });
           const wmResult = await convertapi.convert('watermark', {
-            File: workingBlobUrl,
+            File: tmpBlob.url,
             Text: applyTransform.watermark.text || 'CONFIDENTIAL',
-            FontSize: '24', Opacity: '30', Rotation: '45',
-            HorizontalAlignment: 'center', VerticalAlignment: 'center'
+            FontSize: applyTransform.watermark.fontSize?.toString() || '60', 
+            Opacity: applyTransform.watermark.opacity?.toString() || '30', 
+            Rotation: applyTransform.watermark.rotation?.toString() || '-45',
+            FontColor: applyTransform.watermark.color || '#ff0000',
+            HorizontalAlignment: 'center', 
+            VerticalAlignment: 'center'
           }, 'pdf');
-          workingBlobUrl = wmResult.response.Files[0].Url;
+          finalBytes = await fetch(wmResult.response.Files[0].Url).then(r => r.arrayBuffer());
         } catch (e) { console.log("Watermark failed:", e.message); }
       }
 
