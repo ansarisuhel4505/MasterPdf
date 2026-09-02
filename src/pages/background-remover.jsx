@@ -13,11 +13,40 @@ import {
 
 // ---------- Constant Definitions ----------
 const PRESET_BGS = [
-  { id: 'bg1', url: 'https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=800&q=80', name: 'Gradient Color' },
-  { id: 'bg2', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80', name: 'Beach Vibes' },
-  { id: 'bg3', url: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=800&q=80', name: 'Modern Office' },
-  { id: 'bg4', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=800&q=80', name: 'Abstract Art' },
-  { id: 'bg5', url: 'https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?auto=format&fit=crop&w=800&q=80', name: 'Nature Wood' },
+  // --- Studio & Minimalist ---
+  { id: 'bg1', url: 'https://images.unsplash.com/photo-1616423640778-28d1b53229bd?auto=format&fit=crop&w=800&q=80', name: 'Luxury Studio' },
+  { id: 'bg2', url: 'https://images.unsplash.com/photo-1508615039623-a25605d2b022?auto=format&fit=crop&w=800&q=80', name: 'Clean White' },
+  { id: 'bg3', url: 'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?auto=format&fit=crop&w=800&q=80', name: 'Dark Texture' },
+  { id: 'bg4', url: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&w=800&q=80', name: 'Creative Desk' },
+  { id: 'bg5', url: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=800&q=80', name: 'Modern Room' },
+
+  // --- Abstract & 3D Art ---
+  { id: 'bg6', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80', name: 'Liquid 3D' },
+  { id: 'bg7', url: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=800&q=80', name: 'Color Splash' },
+  { id: 'bg8', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=800&q=80', name: 'Neon Geometry' },
+  { id: 'bg9', url: 'https://images.unsplash.com/photo-1500462918059-b1a0cb512f1d?auto=format&fit=crop&w=800&q=80', name: 'Vibrant Glass' },
+  { id: 'bg10', url: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=800&q=80', name: 'Pastel Dream' },
+
+  // --- Gradients & Lights ---
+  { id: 'bg11', url: 'https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=800&q=80', name: 'Soft Gradient' },
+  { id: 'bg12', url: 'https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?auto=format&fit=crop&w=800&q=80', name: 'Cyberpunk Neon' },
+  { id: 'bg13', url: 'https://images.unsplash.com/photo-1604871000636-074fa5117945?auto=format&fit=crop&w=800&q=80', name: 'Fluid Light' },
+  { id: 'bg14', url: 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?auto=format&fit=crop&w=800&q=80', name: 'Warm Orange' },
+  { id: 'bg15', url: 'https://images.unsplash.com/photo-1464802686167-b939a6910659?auto=format&fit=crop&w=800&q=80', name: 'Galaxy Space' },
+
+  // --- Nature & Scenery ---
+  { id: 'bg16', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80', name: 'Tropical Beach' },
+  { id: 'bg17', url: 'https://images.unsplash.com/photo-1500964757637-c85e8a162699?auto=format&fit=crop&w=800&q=80', name: 'Beautiful Peaks' },
+  { id: 'bg18', url: 'https://images.unsplash.com/photo-1483728642387-6c3ba6c664f1?auto=format&fit=crop&w=800&q=80', name: 'Moody Forest' },
+  { id: 'bg19', url: 'https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?auto=format&fit=crop&w=800&q=80', name: 'Classic Wood' },
+  { id: 'bg20', url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=800&q=80', name: 'Mountain Lake' },
+  
+  // --- Professional & Textures ---
+  { id: 'bg21', url: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=800&q=80', name: 'Glass Office' },
+  { id: 'bg22', url: 'https://images.unsplash.com/photo-1553095066-5014bc7b7f2d?auto=format&fit=crop&w=800&q=80', name: 'Brick Wall' },
+  { id: 'bg23', url: 'https://images.unsplash.com/photo-1501183638710-841dd1904471?auto=format&fit=crop&w=800&q=80', name: 'Cozy Room' },
+  { id: 'bg24', url: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?auto=format&fit=crop&w=800&q=80', name: 'Abstract Paint' },
+  { id: 'bg25', url: 'https://images.unsplash.com/photo-1519750783826-e2420f4d687f?auto=format&fit=crop&w=800&q=80', name: 'Clean Marble' },
 ];
 
 const PRESET_GRADIENTS = [
