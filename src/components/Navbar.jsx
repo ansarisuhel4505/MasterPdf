@@ -6,10 +6,9 @@ import {
   Merge, Scissors, Minimize2, FileText, Presentation, 
   FileSpreadsheet, PenTool, ImageIcon, FileSignature, Type, RotateCw, 
   Globe, Unlock, Lock, Layers, FileDigit, Wrench, ListOrdered, 
-  Scan, ScanText, SplitSquareHorizontal, Shield, Crop, FormInput, 
-  MessageSquare, Languages, FileCode2, FileMinus, FileOutput
+ Scan, ScanText, SplitSquareHorizontal, Shield, Crop, FormInput, 
+  MessageSquare, Languages, FileCode2, FileMinus, FileOutput, Eraser
 } from 'lucide-react';
-
 export default function Navbar() {
   const { isSignedIn } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -170,11 +169,12 @@ export default function Navbar() {
               <li><Link href="/organize-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Layers size={18} className="text-orange-700"/> Organize PDF</Link></li>
               <li><Link href="/scan-to-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Scan size={18} className="text-orange-500"/> Scan to PDF</Link></li>
             </ul>
-            <h4 className="text-gray-500 font-bold text-xs tracking-wider mt-8 mb-4">PDF INTELLIGENCE</h4>
+           <h4 className="text-gray-500 font-bold text-xs tracking-wider mt-8 mb-4">PDF INTELLIGENCE</h4>
             <ul className="space-y-1">
               <li><Link href="/ai-summarizer" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><MessageSquare size={18} className="text-indigo-600"/> AI Summarizer</Link></li>
               <li><Link href="/translate-pdf" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Languages size={18} className="text-blue-500"/> Translate PDF</Link></li>
               <li><Link href="/pdf-to-markdown" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><FileCode2 size={18} className="text-gray-700"/> PDF to Markdown</Link></li>
+              <li><Link href="/background-remover" className="flex items-center gap-3 text-[14px] text-gray-900 font-medium hover:bg-gray-200 p-2 rounded-lg transition"><Eraser size={18} className="text-pink-600"/> Background Remover</Link></li>
             </ul>
           </div>
           {/* Col 2 */}
@@ -319,11 +319,12 @@ export default function Navbar() {
                       <li><Link href="/organize-pdf" onClick={closeSidebar} className="flex items-center gap-2 text-[13px] text-gray-800 font-medium p-2 hover:bg-gray-200 rounded-md"><Layers size={16} className="text-orange-700"/> Organize PDF</Link></li>
                       <li><Link href="/scan-to-pdf" onClick={closeSidebar} className="flex items-center gap-2 text-[13px] text-gray-800 font-medium p-2 hover:bg-gray-200 rounded-md"><Scan size={16} className="text-orange-500"/> Scan to PDF</Link></li>
                    </ul>
-                   <h4 className="text-gray-500 font-bold text-xs tracking-wider mt-4 mb-2">PDF INTELLIGENCE</h4>
+                  <h4 className="text-gray-500 font-bold text-xs tracking-wider mt-4 mb-2">PDF INTELLIGENCE</h4>
                    <ul className="space-y-1 ml-1">
                       <li><Link href="/ai-summarizer" onClick={closeSidebar} className="flex items-center gap-2 text-[13px] text-gray-800 font-medium p-2 hover:bg-gray-200 rounded-md"><MessageSquare size={16} className="text-indigo-600"/> AI Summarizer</Link></li>
                       <li><Link href="/translate-pdf" onClick={closeSidebar} className="flex items-center gap-2 text-[13px] text-gray-800 font-medium p-2 hover:bg-gray-200 rounded-md"><Languages size={16} className="text-blue-500"/> Translate PDF</Link></li>
                       <li><Link href="/pdf-to-markdown" onClick={closeSidebar} className="flex items-center gap-2 text-[13px] text-gray-800 font-medium p-2 hover:bg-gray-200 rounded-md"><FileCode2 size={16} className="text-gray-700"/> PDF to Markdown</Link></li>
+                      <li><Link href="/background-remover" onClick={closeSidebar} className="flex items-center gap-2 text-[13px] text-gray-800 font-medium p-2 hover:bg-gray-200 rounded-md"><Eraser size={16} className="text-pink-600"/> Background Remover</Link></li>
                    </ul>
                  </div>
                  <div className="py-1">
