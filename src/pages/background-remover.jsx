@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import removeBackground from '@imgly/background-removal';
+import { removeBackground } from '@imgly/background-removal';
 import {
   UploadCloud, Image as ImageIcon, Download, Palette,
   Settings, Sliders, FileDigit, RefreshCw, CheckCircle,
@@ -65,9 +65,8 @@ function ToastProvider({ children }) {
   );
 }
 
-export default function BgRemover() {
+function BgRemover() {
   const { addToast } = useToast();
-
   // ---------- State Management ----------
   // File & previews
   const [files, setFiles] = useState([]); // array of {file, id}
