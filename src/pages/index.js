@@ -8,7 +8,7 @@ import {
   FileSpreadsheet, PenTool, ImageIcon, FileSignature, Type, RotateCw, 
   Globe, Unlock, Lock, Layers, FileDigit, Wrench, ListOrdered, 
   Scan, ScanText, SplitSquareHorizontal, Shield, Crop, FormInput, 
-  MessageSquare, Languages, FileCode2
+  MessageSquare, Languages, FileCode2, Eraser
 } from 'lucide-react';
 
 export default function Home() {
@@ -48,6 +48,7 @@ export default function Home() {
     { title: 'AI Summarizer', desc: 'Quickly generate concise summaries from articles, paragraphs, and essays.', color: 'text-indigo-600', badge: 'New!', icon: MessageSquare, category: 'PDF Intelligence' },
     { title: 'Translate PDF', desc: 'Easily translate PDF files powered by AI. Keep fonts, layout intact.', color: 'text-blue-500', badge: 'New!', icon: Languages, category: 'PDF Intelligence' },
     { title: 'PDF to Markdown', desc: 'Easily turn PDFs into Markdown files. Perfect for notes, docs, and LLMs.', color: 'text-gray-700', badge: 'New!', icon: FileCode2, category: 'Convert PDF' },
+    { title: 'Background Remover', desc: 'Instantly remove image backgrounds using AI. Add custom colors and exact KB compression.', color: 'text-pink-600', badge: 'New!', icon: Eraser, category: 'PDF Intelligence' },
   ];
 
   const tabs = ['All', 'Workflows', 'Organize PDF', 'Optimize PDF', 'Convert PDF', 'Edit PDF', 'PDF Security', 'PDF Intelligence'];
