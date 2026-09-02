@@ -679,27 +679,35 @@ function BgRemover() {
                   ) : (
                     /* 🔥 PREMIUM BEFORE/AFTER SLIDER 🔥 */
                     <div
-                      className="relative w-full max-w-2xl h-[400px] bg-gray-100 rounded-xl overflow-hidden shadow-inner group"
-                      style={{ backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAMElEQVQ4y2NgQAX8DIwg8n8QAwMMnBkYgAxi4yIokA1h4CKIIzYuAnKJAx8DDZwkAACAekM72iI2mAAAAABJRU5ErkJggg==")' }}
+                      className="relative w-full max-w-2xl h-[400px] bg-gray-100 rounded-xl overflow-hidden shadow-inner group touch-none" // 🔥 FIXED: Added touch-none to stop scrolling
+                      style={{ 
+                        backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAMElEQVQ4y2NgQAX8DIwg8n8QAwMMnBkYgAxi4yIokA1h4CKIIzYuAnKJAx8DDZwkAACAekM72iI2mAAAAABJRU5ErkJggg==")',
+                        transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`, 
+                        cursor: isDragging.current ? 'grabbing' : 'grab' // Better UX
+                      }}
                       onMouseDown={handlePanStart}
                       onMouseMove={handlePanMove}
                       onMouseUp={handlePanEnd}
                       onMouseLeave={handlePanEnd}
-                      style={{ transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`, cursor: 'grab' }}
+                      onTouchStart={(e) => { e.preventDefault(); handlePanStart({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); }} // 🔥 FIXED: Touch support
+                      onTouchMove={(e) => { e.preventDefault(); handlePanMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); }} // 🔥 FIXED: Touch support
+                      onTouchEnd={handlePanEnd}
                     >
                       {/* After (Processed) Image - Bottom Layer */}
-                      <img src={finalPreviewUrl} alt="Processed" className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none" />
+                      <img src={finalPreviewUrl} alt="Processed" className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none" draggable="false" />
 
                       {/* Before (Original) Image - Top Clipped Layer */}
                       <div className="absolute inset-0 overflow-hidden pointer-events-none select-none" style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}>
                         <div className="absolute inset-0 bg-white"></div>
-                        <img src={originalUrl} alt="Original" className="absolute inset-0 w-full h-full object-contain" />
+                        <img src={originalUrl} alt="Original" className="absolute inset-0 w-full h-full object-contain" draggable="false" />
                       </div>
 
                       {/* Invisible Slider Input */}
                       <input
                         type="range" min="0" max="100" value={sliderPosition}
                         onChange={(e) => setSliderPosition(e.target.value)}
+                        onMouseDown={(e) => e.stopPropagation()} // 🔥 FIXED: Stop panning when clicking slider
+                        onTouchStart={(e) => e.stopPropagation()} // 🔥 FIXED: Stop panning on mobile when touching slider
                         className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20"
                       />
 
