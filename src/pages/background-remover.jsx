@@ -608,7 +608,7 @@ function BgRemover() {
 
   // ---------- Render ----------
   return (
-    <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7]">
+    <div className="min-h-screen flex flex-col font-sans bg-[#F5F5F7] overflow-x-hidden w-full">
       <Head><title>Pro AI Background Remover | MasterPdf</title></Head>
       <Navbar />
 
@@ -632,10 +632,10 @@ function BgRemover() {
           </div>
         )}
 
-        <div className="w-full flex flex-col lg:flex-row gap-6">
+       <div className="w-full flex flex-col lg:flex-row gap-6">
 
           {/* LEFT: PREMIUM SLIDER VIEWER & WALLPAPERS */}
-          <div className="flex-1 flex flex-col gap-4">
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 flex flex-col items-center justify-center min-h-[450px] relative">
               {!files.length ? (
                 <div
@@ -677,20 +677,20 @@ function BgRemover() {
                       </button>
                     </div>
                   ) : (
-                    /* 🔥 PREMIUM BEFORE/AFTER SLIDER 🔥 */
+                   /* 🔥 PREMIUM BEFORE/AFTER SLIDER 🔥 */
                     <div
-                      className="relative w-full max-w-2xl h-[400px] bg-gray-100 rounded-xl overflow-hidden shadow-inner group touch-none" // 🔥 FIXED: Added touch-none to stop scrolling
+                      className="relative w-full max-w-2xl h-[400px] bg-gray-100 rounded-xl overflow-hidden shadow-inner group touch-none"
                       style={{ 
                         backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAMElEQVQ4y2NgQAX8DIwg8n8QAwMMnBkYgAxi4yIokA1h4CKIIzYuAnKJAx8DDZwkAACAekM72iI2mAAAAABJRU5ErkJggg==")',
                         transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`, 
-                        cursor: isDragging.current ? 'grabbing' : 'grab' // Better UX
+                        cursor: isDragging.current ? 'grabbing' : 'grab' 
                       }}
                       onMouseDown={handlePanStart}
                       onMouseMove={handlePanMove}
                       onMouseUp={handlePanEnd}
                       onMouseLeave={handlePanEnd}
-                      onTouchStart={(e) => { e.preventDefault(); handlePanStart({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); }} // 🔥 FIXED: Touch support
-                      onTouchMove={(e) => { e.preventDefault(); handlePanMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); }} // 🔥 FIXED: Touch support
+                      onTouchStart={(e) => { e.preventDefault(); handlePanStart({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); }}
+                      onTouchMove={(e) => { e.preventDefault(); handlePanMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); }}
                       onTouchEnd={handlePanEnd}
                     >
                       {/* After (Processed) Image - Bottom Layer */}
@@ -706,8 +706,8 @@ function BgRemover() {
                       <input
                         type="range" min="0" max="100" value={sliderPosition}
                         onChange={(e) => setSliderPosition(e.target.value)}
-                        onMouseDown={(e) => e.stopPropagation()} // 🔥 FIXED: Stop panning when clicking slider
-                        onTouchStart={(e) => e.stopPropagation()} // 🔥 FIXED: Stop panning on mobile when touching slider
+                        onMouseDown={(e) => e.stopPropagation()} 
+                        onTouchStart={(e) => e.stopPropagation()} 
                         className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20"
                       />
 
