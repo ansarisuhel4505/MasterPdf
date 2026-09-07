@@ -1,25 +1,14 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
-// 🔥 NEW: Definining which routes are public (crawlable by Google)
-const isPublicRoute = createRouteMatcher([
-  '/', 
-  '/background-remover',
-  '/api/clerk-webhook' // If you are using any clerk webhooks later
-]);
-
-export default clerkMiddleware((auth, request) => {
-  // 🔥 NEW: Check if the route is public, if NOT, protect it
-  if(!isPublicRoute(request)){
-    auth().protect();
-  }
-});
+export default clerkMiddleware();
 
 export const config = {
   matcher: [
-    // 🔥 FIXED: Added txt and xml so Clerk skips robots.txt and sitemap.xml
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|xml|txt)).*)',
-    // Always run for API routes
-    '/(api|trpc)(.*)',
+    // 🔥 Skip Next.js internals, static files, images, AND specifically robots.txt & sitemap.xml
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|xml|txt)).*)",
+    
+    // 🔥 Make sure the root home page is explicitly matched/skipped correctly if needed
+    // Run middleware on all API routes
+    "/(api|trpc)(.*)",
   ],
-};  
-
+};
