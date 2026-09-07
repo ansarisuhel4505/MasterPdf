@@ -1,6 +1,18 @@
-import { clerkMiddleware } from '@clerk/nextjs/server';
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
-export default clerkMiddleware();
+// 🔥 NEW: Definining which routes are public (crawlable by Google)
+const isPublicRoute = createRouteMatcher([
+  '/', 
+  '/background-remover',
+  '/api/clerk-webhook' // If you are using any clerk webhooks later
+]);
+
+export default clerkMiddleware((auth, request) => {
+  // 🔥 NEW: Check if the route is public, if NOT, protect it
+  if(!isPublicRoute(request)){
+    auth().protect();
+  }
+});
 
 export const config = {
   matcher: [
@@ -9,4 +21,4 @@ export const config = {
     // Always run for API routes
     '/(api|trpc)(.*)',
   ],
-};
+};  
