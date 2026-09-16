@@ -19,6 +19,13 @@ export default function Navbar() {
   const [activeDropdown, setActiveDropdown] = useState(null); 
   const [mobileConvertOpen, setMobileConvertOpen] = useState(false); 
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const { theme, setTheme } = useTheme(); // 🔥 NAYA HOOK
+  const [mounted, setMounted] = useState(false); // 🔥 NAYA STATE
+
+  // 🔥 Hydration error bachane ke liye
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (isSidebarOpen) {
@@ -135,6 +142,18 @@ export default function Navbar() {
         {/* Right side: Static Auth Buttons (No functionality yet) */}
         {/* Right side: NextAuth Dynamic Buttons */}
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4">
+          
+          {/* DARK MODE TOGGLE BUTTON */}
+          {mounted && (
+            <button 
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 transition"
+              title="Toggle Dark Mode"
+            >
+              {theme === 'dark' ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-gray-700" />}
+            </button>
+          )}
           {!session ? (
             <>
               <button onClick={() => signIn('google')} className="hidden md:block text-gray-700 font-bold hover:text-gray-900 transition">
