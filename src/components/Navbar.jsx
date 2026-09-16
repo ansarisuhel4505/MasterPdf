@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { SignInButton, SignUpButton, UserButton, useAuth } from '@clerk/nextjs';
 import { 
   Menu, X, ChevronDown, 
   Merge, Scissors, Minimize2, FileText, Presentation, 
@@ -9,14 +8,14 @@ import {
  Scan, ScanText, SplitSquareHorizontal, Shield, Crop, FormInput, 
   MessageSquare, Languages, FileCode2, FileMinus, FileOutput, Eraser
 } from 'lucide-react';
+
 export default function Navbar() {
-  const { isSignedIn } = useAuth();
+  // Clerk's useAuth removed
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState(null); // Desktop dropdown state
-  const [mobileConvertOpen, setMobileConvertOpen] = useState(false); // Mobile dropdown states
+  const [activeDropdown, setActiveDropdown] = useState(null); 
+  const [mobileConvertOpen, setMobileConvertOpen] = useState(false); 
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
 
-  // Prevent background scrolling when mobile sidebar is open
   useEffect(() => {
     if (isSidebarOpen) {
       document.body.style.overflow = 'hidden';
@@ -25,11 +24,10 @@ export default function Navbar() {
     }
   }, [isSidebarOpen]);
 
-  // Toggle mobile sidebar and cleanup desktop menu if open
   const toggleSidebar = (open) => {
     setIsSidebarOpen(open);
     if (open) {
-      setActiveDropdown(null); // Close desktop menu if mobile opens
+      setActiveDropdown(null); 
     } else {
       setMobileConvertOpen(false);
       setMobileToolsOpen(false);
@@ -75,7 +73,7 @@ export default function Navbar() {
               COMPRESS PDF
             </Link>
 
-            {/* CONVERT PDF DESKTOP DROPDOWN (Hover + Click support added) */}
+            {/* CONVERT PDF DESKTOP DROPDOWN */}
             <div 
               className="relative h-full flex items-center"
               onMouseEnter={() => setActiveDropdown('convert')}
@@ -114,7 +112,7 @@ export default function Navbar() {
               )}
             </div>
 
-            {/* ALL PDF TOOLS DESKTOP DROPDOWN (Hover + Click support added) */}
+            {/* ALL PDF TOOLS DESKTOP DROPDOWN */}
             <div 
               className="relative h-full flex items-center"
               onMouseEnter={() => setActiveDropdown('allTools')}
@@ -130,28 +128,18 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Right side: Auth Buttons */}
+        {/* Right side: Static Auth Buttons (No functionality yet) */}
         <div className="flex items-center gap-4">
-          {!isSignedIn ? (
-            <>
-              <SignInButton mode="modal">
-                <button className="hidden md:block text-gray-700 font-bold hover:text-gray-900 transition">
-                  Login
-                </button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <button className="hidden md:block bg-[#E5322D] hover:bg-red-700 text-white font-bold py-2 px-5 rounded-md transition shadow-sm hover:shadow-md">
-                  Sign up
-                </button>
-              </SignUpButton>
-            </>
-          ) : (
-            <UserButton afterSignOutUrl="/" />
-          )}
+          <button className="hidden md:block text-gray-700 font-bold hover:text-gray-900 transition">
+            Login
+          </button>
+          <button className="hidden md:block bg-[#E5322D] hover:bg-red-700 text-white font-bold py-2 px-5 rounded-md transition shadow-sm hover:shadow-md">
+            Sign up
+          </button>
         </div>
       </nav>
 
-      {/* DESKTOP ALL PDF TOOLS MEGA MENU (Full width) */}
+      {/* DESKTOP ALL PDF TOOLS MEGA MENU */}
       <div 
         className={`fixed top-[72px] left-0 w-full bg-[#F5F5F7] shadow-[0_15px_30px_rgba(0,0,0,0.1)] border-t border-gray-200 z-30 transition-all duration-300 origin-top overflow-hidden ${activeDropdown === 'allTools' ? 'opacity-100 max-h-[800px] visible' : 'opacity-0 max-h-0 invisible'}`}
         onMouseEnter={() => setActiveDropdown('allTools')}
@@ -380,16 +368,10 @@ export default function Navbar() {
             )}
           </div>
 
-          {!isSignedIn && (
-            <div className="flex flex-col gap-3 mt-6 pt-6 border-t border-gray-200 px-2">
-              <SignInButton mode="modal">
-                <button className="w-full text-center text-gray-700 font-bold bg-white border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition-shadow">Login</button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <button className="w-full text-center bg-[#E5322D] text-white font-bold py-3 rounded-lg hover:bg-red-700 shadow-md transition-shadow">Sign up</button>
-              </SignUpButton>
-            </div>
-          )}
+          <div className="flex flex-col gap-3 mt-6 pt-6 border-t border-gray-200 px-2">
+            <button className="w-full text-center text-gray-700 font-bold bg-white border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition-shadow">Login</button>
+            <button className="w-full text-center bg-[#E5322D] text-white font-bold py-3 rounded-lg hover:bg-red-700 shadow-md transition-shadow">Sign up</button>
+          </div>
         </div>
       </div>
     </>
