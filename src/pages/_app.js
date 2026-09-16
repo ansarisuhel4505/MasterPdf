@@ -11,7 +11,7 @@ export default function MyApp({ Component, pageProps }) {
         {/* 2. Modern Browsers ke liye SVG */}
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         
-        {/* 3. Apple/Mobile devices ke liye (Hamesha PNG chahiye hota hai) */}
+        {/* 3. Apple/Mobile devices ke liye (Hamesha PNG chahiye hota hai) */} 
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         
         <meta name="theme-color" content="#E5322D" />
