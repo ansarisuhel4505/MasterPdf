@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-// 🔥 FIX: Added Home, Info, Briefcase, aur Wrench icons yahan 🔥
+import Script from 'next/script'; // 🔥 NAYA IMPORT (SEO FIX KE LIYE)
+
 import { Globe, ChevronDown, Phone, MessageSquare, Mail, X, FileText, Settings, Shield, Image as ImageIcon, Layers, Lock, Home, Info, Briefcase, Wrench } from 'lucide-react';
 
 export default function Footer() {
@@ -9,19 +10,15 @@ export default function Footer() {
   const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
 
   useEffect(() => {
-    if (!document.querySelector('script[src*="translate.google.com"]')) {
-      const addScript = document.createElement('script');
-      addScript.src = '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
-      addScript.async = true;
-      document.body.appendChild(addScript);
-
-      window.googleTranslateElementInit = () => {
+    // 🔥 SEO FIX: Manual script injection hata di. Ab sirf init function yahan hai.
+    window.googleTranslateElementInit = () => {
+      if (window.google && window.google.translate) {
         new window.google.translate.TranslateElement(
           { pageLanguage: 'en', autoDisplay: false },
           'google_translate_element'
         );
-      };
-    }
+      }
+    };
 
     if (!document.getElementById('google-translate-styles')) {
       const style = document.createElement('style');
@@ -37,7 +34,6 @@ export default function Footer() {
       document.head.appendChild(style);
     }
   }, []);
-
   const languages = [
     { name: 'English', code: 'en' }, { name: 'Español', code: 'es' },
     { name: 'Français', code: 'fr' }, { name: 'Deutsch', code: 'de' },
@@ -81,8 +77,13 @@ export default function Footer() {
     { title: 'PDF to PDF/A', path: '/pdf-to-pdfa', icon: <Shield size={16} /> },
   ];
 
-  return (
+return (
     <>
+      {/* 🔥 SEO FIX: LazyLoad Script taaki Googlebot isey ignore kare */}
+      <Script 
+        src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" 
+        strategy="lazyOnload" 
+      />
       <div id="google_translate_element"></div>
 
       <footer className="bg-[#1A1A1A] text-[#999999] pt-16 pb-8 text-sm font-sans mt-auto border-t border-[#333]">
@@ -182,7 +183,8 @@ export default function Footer() {
               </button>
 
               {isLangOpen && (
-                <div className="absolute bottom-full left-0 mb-2 w-56 bg-[#222222] border border-[#333333] rounded-lg shadow-2xl py-2 max-h-60 overflow-y-auto z-50">
+                {/* 🔥 BUG FIX: 'notranslate' class add ki taaki ye naam change na hon */}
+                <div className="absolute bottom-full left-0 mb-2 w-56 bg-[#222222] border border-[#333333] rounded-lg shadow-2xl py-2 max-h-60 overflow-y-auto z-50 notranslate">
                   {languages.map((lang, index) => (
                     <button
                       key={index}
