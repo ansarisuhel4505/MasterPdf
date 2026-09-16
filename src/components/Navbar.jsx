@@ -6,7 +6,7 @@ import {
   FileSpreadsheet, PenTool, ImageIcon, FileSignature, Type, RotateCw, 
   Globe, Unlock, Lock, Layers, FileDigit, Wrench, ListOrdered, 
  Scan, ScanText, SplitSquareHorizontal, Shield, Crop, FormInput, 
-  MessageSquare, Languages, FileCode2, FileMinus, FileOutput, Eraser
+  MessageSquare, Languages, FileCode2, FileMinus, FileOutput, Eraser 
 } from 'lucide-react';
 
 export default function Navbar() {
