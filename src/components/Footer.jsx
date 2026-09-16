@@ -59,25 +59,31 @@ export default function Footer() {
     { name: 'العربية (Arabic)', code: 'ar' }, { name: 'मराठी (Marathi)', code: 'mr' }
   ];
 
-  const handleLanguageChange = (langName, langCode) => {
+ const handleLanguageChange = (langName, langCode) => {
     setSelectedLang(langName);
     setIsLangOpen(false);
     
-    const domain = window.location.hostname;
+    const hostname = window.location.hostname;
+    // Yeh tumhara main domain nikalega (e.g., suhelansari.tech)
+    const rootDomain = hostname.split('.').slice(-2).join('.');
 
-    // 🔥 FIX: Wipe out any old stuck translation cookies completely across all subdomains
+    // 🔥 AGGRESSIVE COOKIE WIPE: Har jagah se purani language delete karega 🔥
+    const domainsToWipe = [hostname, `.${hostname}`, rootDomain, `.${rootDomain}`];
+    domainsToWipe.forEach(domain => {
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${domain};`;
+    });
     document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${domain};`;
-    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${domain};`;
+
+    // Local Storage bhi saaf kar do taaki koi chance na bache
+    window.localStorage.removeItem('googtrans');
+    window.sessionStorage.removeItem('googtrans');
 
     if (langCode !== 'en') {
-      // Set new translation cookie
+      // Nayi language set karo
       document.cookie = `googtrans=/en/${langCode}; path=/;`;
-      document.cookie = `googtrans=/en/${langCode}; path=/; domain=${domain};`;
-      document.cookie = `googtrans=/en/${langCode}; path=/; domain=.${domain};`;
+      document.cookie = `googtrans=/en/${langCode}; path=/; domain=.${rootDomain};`;
     }
 
-    // Force reload to apply translation
     window.location.reload();
   };
 
