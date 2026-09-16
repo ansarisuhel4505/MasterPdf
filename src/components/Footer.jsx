@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Script from 'next/script'; // 🔥 NAYA IMPORT (SEO FIX KE LIYE)
-
+// Script import hata diya, direct HTML style use karenge taaki translation hamesha fast aur perfect kaam kare
 import { Globe, ChevronDown, Phone, MessageSquare, Mail, X, FileText, Settings, Shield, Image as ImageIcon, Layers, Lock, Home, Info, Briefcase, Wrench } from 'lucide-react';
 
 export default function Footer() {
@@ -10,16 +9,22 @@ export default function Footer() {
   const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
 
   useEffect(() => {
-    // 🔥 SEO FIX: Manual script injection hata di. Ab sirf init function yahan hai.
-    window.googleTranslateElementInit = () => {
-      if (window.google && window.google.translate) {
+    // 1. Check if script already exists to avoid duplicates
+    if (!document.querySelector('script[src*="translate_a/element.js"]')) {
+      const addScript = document.createElement('script');
+      addScript.src = '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+      addScript.async = true;
+      document.body.appendChild(addScript);
+
+      window.googleTranslateElementInit = () => {
         new window.google.translate.TranslateElement(
           { pageLanguage: 'en', autoDisplay: false },
           'google_translate_element'
         );
-      }
-    };
+      };
+    }
 
+    // 2. Add custom styles to hide the default Google banner and tooltip
     if (!document.getElementById('google-translate-styles')) {
       const style = document.createElement('style');
       style.id = 'google-translate-styles';
@@ -33,7 +38,16 @@ export default function Footer() {
       `;
       document.head.appendChild(style);
     }
+
+    // 3. Auto-detect current language from cookies on load to update button text
+    const match = document.cookie.match(/(^|;) ?googtrans=([^;]*)(;|$)/);
+    if (match) {
+      const currentCode = match[2].split('/')[2];
+      const langObj = languages.find(l => l.code === currentCode);
+      if (langObj) setSelectedLang(langObj.name);
+    }
   }, []);
+
   const languages = [
     { name: 'English', code: 'en' }, { name: 'Español', code: 'es' },
     { name: 'Français', code: 'fr' }, { name: 'Deutsch', code: 'de' },
@@ -51,16 +65,19 @@ export default function Footer() {
     
     const domain = window.location.hostname;
 
+    // 🔥 FIX: Wipe out any old stuck translation cookies completely across all subdomains
     document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
     document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${domain};`;
     document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${domain};`;
 
     if (langCode !== 'en') {
+      // Set new translation cookie
       document.cookie = `googtrans=/en/${langCode}; path=/;`;
       document.cookie = `googtrans=/en/${langCode}; path=/; domain=${domain};`;
       document.cookie = `googtrans=/en/${langCode}; path=/; domain=.${domain};`;
     }
 
+    // Force reload to apply translation
     window.location.reload();
   };
 
@@ -77,13 +94,8 @@ export default function Footer() {
     { title: 'PDF to PDF/A', path: '/pdf-to-pdfa', icon: <Shield size={16} /> },
   ];
 
-return (
+  return (
     <>
-      {/* 🔥 SEO FIX: LazyLoad Script taaki Googlebot isey ignore kare */}
-      <Script 
-        src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" 
-        strategy="lazyOnload" 
-      />
       <div id="google_translate_element"></div>
 
       <footer className="bg-[#1A1A1A] text-[#999999] pt-16 pb-8 text-sm font-sans mt-auto border-t border-[#333]">
@@ -103,7 +115,6 @@ return (
               </div>
             </div>
 
-            {/* 🔥 ICONS ADDED HERE 🔥 */}
             <div className="flex flex-col gap-3">
               <h4 className="text-white font-bold tracking-wider mb-2 text-xs uppercase">Quick Links</h4>
               <Link href="/" className="flex items-center gap-2 hover:text-white transition">
@@ -173,9 +184,10 @@ return (
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 relative">
             
             <div className="relative">
+              {/* 🔥 'notranslate' added here too, so the button text stays correct */}
               <button 
                 onClick={() => setIsLangOpen(!isLangOpen)}
-                className="flex items-center gap-2 bg-[#222222] border border-[#333333] px-4 py-2 rounded-md text-white text-xs font-semibold hover:bg-[#2a2a2a] transition"
+                className="flex items-center gap-2 bg-[#222222] border border-[#333333] px-4 py-2 rounded-md text-white text-xs font-semibold hover:bg-[#2a2a2a] transition notranslate"
               >
                 <Globe size={16} className="text-gray-400" />
                 <span>Translate: {selectedLang}</span>
