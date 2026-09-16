@@ -1,10 +1,9 @@
 import '@/styles/globals.css';
-import { ClerkProvider } from '@clerk/nextjs';
 import Head from 'next/head';
 
 export default function MyApp({ Component, pageProps }) {
   return (
-    <ClerkProvider {...pageProps}>
+    <>
       <Head>
         {/* 1. Standard ICO (Google Search Bot isko sabse pehle uthayega) */}
         <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -20,6 +19,6 @@ export default function MyApp({ Component, pageProps }) {
       
       {/* Tumhari saari website yahan load hoti hai */}
       <Component {...pageProps} />
-    </ClerkProvider>
+    </>
   );
 }
