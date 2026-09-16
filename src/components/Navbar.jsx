@@ -139,10 +139,8 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Right side: Static Auth Buttons (No functionality yet) */}
-        {/* Right side: NextAuth Dynamic Buttons */}
+       {/* 🔥 RIGHT SIDE: AUTHENTICATION BUTTONS & DARK MODE 🔥 */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-4">
           
           {/* DARK MODE TOGGLE BUTTON */}
           {mounted && (
@@ -154,9 +152,10 @@ export default function Navbar() {
               {theme === 'dark' ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-gray-700" />}
             </button>
           )}
+
           {!session ? (
             <>
-              <button onClick={() => signIn('google')} className="hidden md:block text-gray-700 font-bold hover:text-gray-900 transition">
+              <button onClick={() => signIn('google')} className="hidden md:block text-gray-700 font-bold hover:text-gray-900 transition dark:text-gray-200 dark:hover:text-white">
                 Login
               </button>
               <button onClick={() => signIn('google')} className="hidden md:block bg-[#E5322D] hover:bg-red-700 text-white font-bold py-2 px-5 rounded-md transition shadow-sm hover:shadow-md">
@@ -166,7 +165,7 @@ export default function Navbar() {
           ) : (
             <div className="hidden md:flex items-center gap-3">
               <img src={session.user.image} alt="Profile" className="w-8 h-8 rounded-full border border-gray-300" />
-              <button onClick={() => signOut()} className="text-gray-700 font-bold hover:text-[#E5322D] transition text-sm">
+              <button onClick={() => signOut()} className="text-gray-700 font-bold hover:text-[#E5322D] transition text-sm dark:text-gray-200 dark:hover:text-white">
                 Logout
               </button>
             </div>
