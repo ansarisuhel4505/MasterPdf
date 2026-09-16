@@ -13,6 +13,7 @@ export default function MyApp({ Component, pageProps: { session, ...pageProps } 
           <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
           <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
           <meta name="theme-color" content="#E5322D" />
+          <link rel="canonical" href="https://pdftools.suhelansari.tech" />
         </Head>
         
         <Component {...pageProps} />
