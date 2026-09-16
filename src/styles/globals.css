@@ -21,4 +21,59 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* =========================================
+   🔥 UNIVERSAL DARK MODE OVERRIDES 🔥
+   ========================================= */
 
+/* Main Body */
+.dark body {
+  background-color: #121212 !important;
+  color: #f3f4f6 !important;
+}
+
+/* Backgrounds ko dark karo (jo pehle white ya light gray the) */
+.dark .bg-white {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-gray-50, 
+.dark .bg-gray-100, 
+.dark .bg-[#F5F5F7], 
+.dark .bg-[#F8F9FA] {
+  background-color: #0f172a !important;
+}
+
+/* Text colors ko light karo */
+.dark .text-gray-900, 
+.dark .text-gray-800, 
+.dark .text-gray-700,
+.dark .text-black {
+  color: #f8fafc !important;
+}
+
+.dark .text-gray-600, 
+.dark .text-gray-500 {
+  color: #cbd5e1 !important;
+}
+
+/* Borders ko dark mode ke hisaab se set karo */
+.dark .border-gray-200, 
+.dark .border-gray-300, 
+.dark .border-gray-100 {
+  border-color: #334155 !important;
+}
+
+/* Navbar specific shadow & borders */
+.dark nav {
+  background-color: #1e293b !important;
+  border-bottom-color: #334155 !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Dropdowns, Modals aur Cards ke shadows */
+.dark .shadow-sm, 
+.dark .shadow-md, 
+.dark .shadow-lg, 
+.dark .shadow-2xl {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3) !important;
+}
