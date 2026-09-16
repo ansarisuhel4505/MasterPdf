@@ -183,7 +183,6 @@ return (
               </button>
 
               {isLangOpen && (
-                {/* 🔥 BUG FIX: 'notranslate' class add ki taaki ye naam change na hon */}
                 <div className="absolute bottom-full left-0 mb-2 w-56 bg-[#222222] border border-[#333333] rounded-lg shadow-2xl py-2 max-h-60 overflow-y-auto z-50 notranslate">
                   {languages.map((lang, index) => (
                     <button
