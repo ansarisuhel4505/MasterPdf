@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useTheme } from 'next-themes';
+import { Moon, Sun } from 'lucide-react'; // Ensure Moon and Sun are imported from lucide-react
 import { 
   Menu, X, ChevronDown, 
   Merge, Scissors, Minimize2, FileText, Presentation, 
