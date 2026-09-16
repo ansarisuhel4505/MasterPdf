@@ -1,13 +1,9 @@
-import { getAuth } from '@clerk/nextjs/server';
 import { put, del } from '@vercel/blob';
 import { sql } from '@vercel/postgres';
 
 export default async function handler(req, res) {
-  const { userId } = getAuth(req);
-  
-  if (!userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  // 🔥 Clerk hata diya hai, ab sabhi public users ko ek default ID assign kar rahe hain
+  const userId = 'public-user'; 
 
   const { action, fileId, fileUrl, fileName, fileSize, isPublic, actionText } = req.body;
 
@@ -87,8 +83,8 @@ export default async function handler(req, res) {
 
 // GET handler for fetching history and activities
 export async function GET(req, res) {
-  const { userId } = getAuth(req);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  // 🔥 Clerk hata diya hai
+  const userId = 'public-user'; 
   
   const { searchParams } = new URL(req.url);
   const action = searchParams.get('action');
