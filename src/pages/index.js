@@ -134,7 +134,8 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="bg-[#FFF4E5] rounded-2xl p-10 flex flex-col md:flex-row items-center justify-between mb-10 overflow-hidden relative">
+        {/* 🔥 Yahan dark:bg-slate-800 add kiya aur button text ko dark:text-gray-900 kiya 🔥 */}
+        <div className="bg-[#FFF4E5] dark:bg-slate-800 rounded-2xl p-10 flex flex-col md:flex-row items-center justify-between mb-10 overflow-hidden relative ">
           <div className="z-10 w-full md:w-1/2">
             <h2 className="text-4xl font-bold text-gray-900 mb-6">Get more with Premium</h2>
             <ul className="space-y-4 mb-8">
@@ -142,9 +143,9 @@ export default function Home() {
               <li className="flex items-start gap-3"><CheckCircle2 className="text-green-600 mt-1 shrink-0" size={20} /><span className="text-gray-700">Edit PDFs, get advanced OCR for scanned documents and request secure e-Signatures</span></li>
               <li className="flex items-start gap-3"><CheckCircle2 className="text-green-600 mt-1 shrink-0" size={20} /><span className="text-gray-700">Connect tools and create custom workflows</span></li>
             </ul>
-            <button className="bg-[#FFB822] hover:bg-[#F2A900] text-gray-900 font-bold px-8 py-3 rounded-md transition">Get Premium</button>
+            <button className="bg-[#FFB822] hover:bg-[#F2A900] text-gray-900 dark:text-gray-900 font-bold px-8 py-3 rounded-md transition">Get Premium</button>
           </div>
-          <div className="hidden md:block w-1/2 absolute right-0 top-0 h-full bg-cover bg-right opacity-30" style={{backgroundImage: "url('https://www.ilovepdf.com/img/ilovepdf/premium/premium-home-banner.svg')"}}></div>
+          <div className="hidden md:block w-1/2 absolute right-0 top-0 h-full bg-cover bg-right opacity-30 dark:opacity-10" style={{backgroundImage: "url('https://www.ilovepdf.com/img/ilovepdf/premium/premium-home-banner.svg')"}}></div>
         </div>
       </main>
       <Footer />
