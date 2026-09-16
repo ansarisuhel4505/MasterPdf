@@ -9,8 +9,10 @@ import {
   MessageSquare, Languages, FileCode2, FileMinus, FileOutput, Eraser 
 } from 'lucide-react';
 
+import { useSession, signIn, signOut } from "next-auth/react"; // NAYA IMPORT
+
 export default function Navbar() {
-  // Clerk's useAuth removed
+  const { data: session } = useSession(); // NAYA HOOK
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null); 
   const [mobileConvertOpen, setMobileConvertOpen] = useState(false); 
@@ -129,13 +131,25 @@ export default function Navbar() {
         </div>
 
         {/* Right side: Static Auth Buttons (No functionality yet) */}
+        {/* Right side: NextAuth Dynamic Buttons */}
         <div className="flex items-center gap-4">
-          <button className="hidden md:block text-gray-700 font-bold hover:text-gray-900 transition">
-            Login
-          </button>
-          <button className="hidden md:block bg-[#E5322D] hover:bg-red-700 text-white font-bold py-2 px-5 rounded-md transition shadow-sm hover:shadow-md">
-            Sign up
-          </button>
+          {!session ? (
+            <>
+              <button onClick={() => signIn('google')} className="hidden md:block text-gray-700 font-bold hover:text-gray-900 transition">
+                Login
+              </button>
+              <button onClick={() => signIn('google')} className="hidden md:block bg-[#E5322D] hover:bg-red-700 text-white font-bold py-2 px-5 rounded-md transition shadow-sm hover:shadow-md">
+                Sign up
+              </button>
+            </>
+          ) : (
+            <div className="hidden md:flex items-center gap-3">
+              <img src={session.user.image} alt="Profile" className="w-8 h-8 rounded-full border border-gray-300" />
+              <button onClick={() => signOut()} className="text-gray-700 font-bold hover:text-[#E5322D] transition text-sm">
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </nav>
 
@@ -369,8 +383,22 @@ export default function Navbar() {
           </div>
 
           <div className="flex flex-col gap-3 mt-6 pt-6 border-t border-gray-200 px-2">
-            <button className="w-full text-center text-gray-700 font-bold bg-white border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition-shadow">Login</button>
-            <button className="w-full text-center bg-[#E5322D] text-white font-bold py-3 rounded-lg hover:bg-red-700 shadow-md transition-shadow">Sign up</button>
+            {!session ? (
+              <>
+                <button onClick={() => signIn('google')} className="w-full text-center text-gray-700 font-bold bg-white border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition-shadow">Login</button>
+                <button onClick={() => signIn('google')} className="w-full text-center bg-[#E5322D] text-white font-bold py-3 rounded-lg hover:bg-red-700 shadow-md transition-shadow">Sign up</button>
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-3 w-full">
+                <div className="flex items-center gap-3 justify-center w-full bg-white border border-gray-200 py-3 rounded-lg">
+                  <img src={session.user.image} alt="Profile" className="w-8 h-8 rounded-full" />
+                  <span className="font-bold text-gray-800 text-sm truncate">{session.user.name}</span>
+                </div>
+                <button onClick={() => signOut()} className="w-full text-center bg-gray-100 text-gray-700 border border-gray-300 font-bold py-3 rounded-lg hover:bg-gray-200 hover:text-red-600 transition-colors">
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
