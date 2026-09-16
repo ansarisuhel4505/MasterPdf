@@ -9,7 +9,7 @@ import {
   MessageSquare, Languages, FileCode2, FileMinus, FileOutput, Eraser 
 } from 'lucide-react';
 
-import { useSession, signIn, signOut } from "next-auth/react"; // NAYA IMPORT
+import { useSession, signIn, signOut } from "next-auth/react"; // NAYA IMPORT 
 
 export default function Navbar() {
   const { data: session } = useSession(); // NAYA HOOK
