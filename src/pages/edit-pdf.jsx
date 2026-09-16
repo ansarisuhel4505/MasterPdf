@@ -16,7 +16,6 @@ import {
   User, Calendar, Stamp, Lock, Layers, ArrowLeft, ArrowRightCircle, 
   HardDrive, Link2, Plus, Menu, Bold
 } from 'lucide-react';
-import { useUser } from '@clerk/nextjs';
 
 if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -43,7 +42,6 @@ const HIGHLIGHT_COLORS = [
 const TEXT_COLORS = ['#E5322D', '#000000', '#1F2937', '#1E3A8A', '#065F46', '#D97706', '#FFFFFF'];
 
 export default function EditPdf() {
-  const { isLoaded, isSignedIn, user } = useUser();
   const [isMounted, setIsMounted] = useState(false);
   
   const [files, setFiles] = useState([]);
@@ -370,7 +368,7 @@ export default function EditPdf() {
         }
       }
 
-      pdfDoc.setAuthor(user?.fullName || 'MasterPdf User');
+      pdfDoc.setAuthor('MasterPdf User');
       pdfDoc.setCreator('MasterPdf Editor');
       pdfDoc.setModificationDate(new Date());
 
