@@ -1,41 +1,173 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  
-  <url><loc>https://master-pdf-gray.vercel.app/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/about</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/services</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-
-  <!-- PDF Tools -->
-  <url><loc>https://master-pdf-gray.vercel.app/ai-summarizer</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/compare-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/compress-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/crop-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/edit-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/excel-to-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/html-to-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/jpg-to-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/merge-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/ocr-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/organize-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/page-numbers</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/pdf-forms</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/pdf-to-excel</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/pdf-to-jpg</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/pdf-to-markdown</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/pdf-to-pdfa</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/pdf-to-powerpoint</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/pdf-to-word</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/powerpoint-to-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/protect-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/redact-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/repair-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/rotate-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/scan-to-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/sign-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/split-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/translate-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/unlock-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/watermark</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://master-pdf-gray.vercel.app/word-to-pdf</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-
+<url>
+<loc>https://pdftools.suhelansari.tech/</loc>
+<changefreq>weekly</changefreq>
+<priority>1.0</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/about</loc>
+<changefreq>monthly</changefreq>
+<priority>0.8</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/services</loc>
+<changefreq>monthly</changefreq>
+<priority>0.8</priority>
+</url>
+<!--  PDF Tools  -->
+<url>
+<loc>https://pdftools.suhelansari.tech/ai-summarizer</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/compare-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/compress-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/crop-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/edit-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/excel-to-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/html-to-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/jpg-to-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/merge-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/ocr-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/organize-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/page-numbers</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/pdf-forms</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/pdf-to-excel</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/pdf-to-jpg</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/pdf-to-markdown</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/pdf-to-pdfa</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/pdf-to-powerpoint</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/pdf-to-word</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/powerpoint-to-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/protect-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/redact-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/repair-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/rotate-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/scan-to-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/sign-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/split-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/translate-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/unlock-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/watermark</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
+<url>
+<loc>https://pdftools.suhelansari.tech/word-to-pdf</loc>
+<changefreq>monthly</changefreq>
+<priority>0.9</priority>
+</url>
 </urlset>
