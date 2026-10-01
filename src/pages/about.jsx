@@ -14,7 +14,7 @@ export default function About() {
         "name": "Suhel Ansari",
         "jobTitle": "Full-Stack Developer & Founder",
         "telephone": "+91-9335067990",
-        "url": "https://tumhari-website-ka-link.com",
+        "url": "https://pdftools.suhelansari.tech",
         "alumniOf": {
           "@type": "CollegeOrUniversity",
           "name": "Rajkiya Engineering College Gonda"
